@@ -2,10 +2,12 @@
 
 mod clients;
 pub mod clock;
+pub mod dashboard;
 pub mod error;
 pub mod events;
 pub mod id;
 pub mod model;
+pub mod notify;
 pub mod order;
 pub mod planning;
 mod projects;
@@ -20,12 +22,14 @@ mod tasks;
 pub mod tx;
 pub mod views;
 
+pub use dashboard::{ClientSummary, Dashboard, DayCount, ProjectProgress};
 pub use error::{Error, ErrorInfo, Result};
 pub use events::{
     Event, EventKind, EventPatch, EventStatus, NewEvent, Occurrence, OccurrencePatch,
 };
 pub use id::Id;
 pub use model::*;
+pub use notify::{Notification, NotificationKind, NotifySettings};
 pub use planning::{
     ClientHours, DayOverride, DayPlan, FindSlots, Interval, LoggedTime, NewTimeEntry, OverrideKind,
     Slot, SlotDay, SlotResult, TimeEntryPatch, WorkingDay,

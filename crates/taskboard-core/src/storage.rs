@@ -24,6 +24,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("migrations/0002_domain.sql")),
     M::up(include_str!("migrations/0003_query_indexes.sql")),
     M::up(include_str!("migrations/0004_task_progress.sql")),
+    M::up(include_str!("migrations/0005_notifications.sql")),
 ];
 
 /// Schema version this build writes (`PRAGMA user_version`).
@@ -119,6 +120,11 @@ impl Db {
 
     pub(crate) fn conn(&self) -> &Connection {
         &self.conn
+    }
+
+    /// Direct connection for local bookkeeping that is not user data (no log, no undo).
+    pub(crate) fn conn_mut(&mut self) -> &mut Connection {
+        &mut self.conn
     }
 
     /// Wall time for a new transaction, strictly after the previous one. This
