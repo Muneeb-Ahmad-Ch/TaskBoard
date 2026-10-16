@@ -1,3 +1,5 @@
 [env]
 # ts-rs writes generated TypeScript types here when `cargo test` runs.
 TS_RS_EXPORT_DIR = { value = "apps/taskboard-app/ui/src/lib/bindings", relative = true }
+# JSON carries i64 as plain numbers; all our values (ms timestamps, counts) fit in 2^53.
+TS_RS_LARGE_INT = "number"

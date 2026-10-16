@@ -59,6 +59,21 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
 - Proven by a property test: random edit sequences → undo all → state equals
   the start → redo all → state equals the end.
 
+### As built in M2 (app shell)
+
+- Every Tauri command is `async` and runs its DB work via `spawn_blocking`
+  on one `Arc<Mutex<Db>>` (non-async Tauri commands run on the main thread and
+  would stall the window). Reads take ~1–10 ms, so a single connection is
+  enough for now; a writer thread + read pool remains the upgrade path.
+- Mutations emit `data-changed`; the UI store bumps `dataVersion`, re-fetches
+  sidebar data, and views re-query only what is on screen.
+- `TASKBOARD_DB` overrides the database path (demos, development), matching
+  the CLI.
+- UI components are hand-written instead of Bits UI: the table, menus and
+  palette need tight control over keyboard handling and rendering, and the
+  whole UI ships in ~47 KB gzipped JS. Fixed-height row virtualization is
+  ~30 lines, so TanStack Virtual was not needed.
+
 ## 4. Storage
 
 - SQLite bundled via `rusqlite` (`bundled` feature) — currently **3.53.2** with

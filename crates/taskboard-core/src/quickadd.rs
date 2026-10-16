@@ -184,6 +184,7 @@ fn parse_date(ws: &[Word<'_>], i: usize, today: Date) -> Option<(Date, usize)> {
     match first {
         "today" | "tod" => return Some((today, 1)),
         "tomorrow" | "tmrw" | "tmr" => return Some((today.tomorrow().ok()?, 1)),
+        "yesterday" | "yday" => return Some((today.yesterday().ok()?, 1)),
         _ => {}
     }
     if let Some(day) = weekday(first) {
@@ -222,9 +223,10 @@ fn parse_date(ws: &[Word<'_>], i: usize, today: Date) -> Option<(Date, usize)> {
     {
         return day_month(today, m, d).map(|date| (date, 2));
     }
-    // "20 oct"
+    // "20 oct" — unless a day follows the month ("round 2 oct 22" means Oct 22).
     if let Ok(d) = first.parse::<i8>()
         && let Some(m) = w(1).and_then(|s| month(&s))
+        && !w(2).is_some_and(|s| s.trim_end_matches(',').parse::<i8>().is_ok())
     {
         return day_month(today, m, d).map(|date| (date, 2));
     }
@@ -499,6 +501,11 @@ mod tests {
         );
         assert_eq!(p("x 2026-12-31").due_date.as_deref(), Some("2026-12-31"));
         assert_eq!(p("x feb 30").due_date, None);
+        let r = p("Logo round 2 oct 22");
+        assert_eq!(
+            (r.title.as_str(), r.due_date.as_deref()),
+            ("Logo round 2", Some("2026-10-22"))
+        );
     }
 
     #[test]

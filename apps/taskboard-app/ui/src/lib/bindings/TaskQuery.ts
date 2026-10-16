@@ -19,8 +19,8 @@ parent_id?: Id,
 /**
  * Only tasks without a parent.
  */
-top_level?: boolean, include_archived?: boolean, sort?: TaskSort, descending?: boolean, offset?: bigint, 
+top_level?: boolean, include_archived?: boolean, sort?: TaskSort, descending?: boolean, offset?: number, 
 /**
  * Default 200, max 1000.
  */
-limit?: bigint, };
+limit?: number, };

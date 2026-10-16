@@ -142,6 +142,12 @@ const CLOSED: [Category; 2] = [Category::Done, Category::Cancelled];
 
 impl Db {
     pub fn list_tasks(&self, q: &TaskQuery) -> Result<TaskPage> {
+        let (where_sql, mut args) = self.task_filter(q)?;
+        self.task_page(q, &where_sql, &mut args)
+    }
+
+    /// WHERE clause (over `task t`) and its arguments for a query.
+    pub(crate) fn task_filter(&self, q: &TaskQuery) -> Result<(String, Vec<Value>)> {
         // Filters reference only `task t` (plus small subqueries), so the
         // planner can use the partial indexes; names are joined per page below.
         let mut filters = vec!["t.deleted_at IS NULL".to_owned()];
@@ -227,7 +233,10 @@ impl Db {
             filters.push("t.parent_id IS NULL".into());
         }
 
-        let where_sql = filters.join(" AND ");
+        Ok((filters.join(" AND "), args))
+    }
+
+    fn task_page(&self, q: &TaskQuery, where_sql: &str, args: &mut Vec<Value>) -> Result<TaskPage> {
         let total: i64 = self.conn().query_row(
             &format!("SELECT count(*) FROM task t WHERE {where_sql}"),
             params_from_iter(args.iter()),

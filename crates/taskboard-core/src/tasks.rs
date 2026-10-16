@@ -629,6 +629,11 @@ impl Db {
     /// then name prefix, then name substring (case-insensitive). Ties go to
     /// sidebar order.
     pub fn resolve_project(&self, hint: &str) -> Result<Option<Id>> {
+        Ok(self.find_project(hint)?.map(|p| p.project.id))
+    }
+
+    /// Like [`Db::resolve_project`], returning the matched project's summary.
+    pub fn find_project(&self, hint: &str) -> Result<Option<crate::model::ProjectSummary>> {
         let norm = |s: &str| {
             s.replace(['-', '_'], " ")
                 .split_whitespace()
@@ -655,7 +660,7 @@ impl Db {
         Ok(tiers
             .iter()
             .find_map(|tier| projects.iter().find(|p| tier(p)))
-            .map(|p| p.project.id))
+            .cloned())
     }
 
     /// Creates a task from a Quick Add line (see [`crate::quickadd`]).

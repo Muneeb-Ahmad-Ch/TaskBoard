@@ -2,6 +2,7 @@ import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'
 import { inTauri, ipc } from './lib/ipc'
+import { initStore } from './lib/store.svelte'
 import { applyTheme } from './lib/theme.svelte'
 
 async function boot() {
@@ -10,6 +11,9 @@ async function boot() {
     const mica = await ipc.hasMica().catch(() => false)
     document.documentElement.dataset.mica = String(mica)
   }
+
+  // Load sidebar data before the first paint so the window opens complete.
+  await initStore()
 
   const target = document.getElementById('app')
   if (!target) throw new Error('missing #app root')

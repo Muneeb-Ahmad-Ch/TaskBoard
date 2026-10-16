@@ -743,3 +743,45 @@ fn archived_projects_are_hidden_from_lists_unless_asked() {
     };
     assert_eq!(db.list_tasks(&open).unwrap().total, 1);
 }
+
+#[test]
+fn sidebar_counts_and_quick_add_preview() {
+    let mut db = db();
+    let today = jiff::civil::date(2026, 10, 15);
+    db.quick_add("overdue yesterday", today).ok();
+    db.quick_add("overdue 2026-10-14", today).unwrap();
+    db.quick_add("now today", today).unwrap();
+    db.quick_add("soon in 3 days", today).unwrap();
+    db.quick_add("later in 3 weeks", today).unwrap();
+    db.quick_add("undated", today).unwrap();
+    let c = db.sidebar_counts(today).unwrap();
+    assert_eq!((c.today, c.overdue, c.upcoming), (3, 2, 1));
+    assert_eq!(c.inbox, 6);
+
+    let acme = client(&mut db, "Acme");
+    project(&mut db, "Website", Some(acme.id));
+    let p = db.preview_quick_add("Fix nav @web !high", today).unwrap();
+    let project = p.project.unwrap();
+    assert_eq!(
+        (project.name.as_str(), project.client_name.as_deref()),
+        ("Website", Some("Acme"))
+    );
+    assert!(!p.project_missing);
+    assert!(
+        db.preview_quick_add("x @nope", today)
+            .unwrap()
+            .project_missing
+    );
+}
+
+#[test]
+fn summary_counts_done_and_estimates_over_the_whole_query() {
+    let mut db = db();
+    let today = jiff::civil::date(2026, 10, 15);
+    let a = db.quick_add("a ~30m", today).unwrap();
+    db.quick_add("b ~1h", today).unwrap();
+    db.quick_add("c", today).unwrap();
+    db.set_task_done(a.id, true).unwrap();
+    let s = db.summarize_tasks(&TaskQuery::default()).unwrap();
+    assert_eq!((s.total, s.done, s.estimate_minutes), (3, 1, 90));
+}

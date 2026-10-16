@@ -6,4 +6,4 @@ import type { Priority } from "./Priority";
 /**
  * One row for Table / Board / Calendar, with everything needed to render it.
  */
-export type TaskRow = { id: Id, title: string, priority: Priority, status_id: Id, status_name: string, status_color: string, category: Category, project_id: Id, project_name: string, project_color: string, client_id: Id | null, client_name: string | null, parent_id: Id | null, start_date: string | null, due_date: string | null, due_time: string | null, estimate_minutes: bigint | null, completed_at: bigint | null, sort_key: string, subtasks_total: bigint, subtasks_done: bigint, tags: Array<string>, };
+export type TaskRow = { id: Id, title: string, priority: Priority, status_id: Id, status_name: string, status_color: string, category: Category, project_id: Id, project_name: string, project_color: string, client_id: Id | null, client_name: string | null, parent_id: Id | null, start_date: string | null, due_date: string | null, due_time: string | null, estimate_minutes: number | null, completed_at: number | null, sort_key: string, subtasks_total: number, subtasks_done: number, tags: Array<string>, };

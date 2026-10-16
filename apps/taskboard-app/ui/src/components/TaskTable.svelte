@@ -1,0 +1,781 @@
+<script lang="ts">
+  import { ArrowDown, ArrowUp, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Trash2, X } from '@lucide/svelte'
+  import { untrack } from 'svelte'
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity'
+  import type { Id } from '../lib/bindings/Id'
+  import type { Priority } from '../lib/bindings/Priority'
+  import type { Status } from '../lib/bindings/Status'
+  import type { TaskPatch } from '../lib/bindings/TaskPatch'
+  import type { TaskRow } from '../lib/bindings/TaskRow'
+  import type { TaskSort } from '../lib/bindings/TaskSort'
+  import type { TaskSummary } from '../lib/bindings/TaskSummary'
+  import { dueLabel, isOverdue, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
+  import { errorMessage, inTauri, ipc } from '../lib/ipc'
+  import { act, app, scopeQuery } from '../lib/store.svelte'
+  import { toast } from '../lib/toast.svelte'
+  import Menu, { type MenuEntry } from './Menu.svelte'
+
+  const ROW = 36
+  const PAGE = 200
+  const OVERSCAN = 12
+
+  // ---------- columns ----------
+  type ColId = 'title' | 'project' | 'status' | 'priority' | 'due' | 'estimate' | 'tags'
+  interface Col {
+    id: ColId
+    label: string
+    width: number
+    sort?: TaskSort
+    align?: 'right'
+  }
+  const DEFAULT_COLS: Col[] = [
+    { id: 'title', label: 'Task', width: 0, sort: 'title' },
+    { id: 'project', label: 'Client / Project', width: 230 },
+    { id: 'status', label: 'Status', width: 130 },
+    { id: 'priority', label: 'Priority', width: 104, sort: 'priority' },
+    { id: 'due', label: 'Due', width: 136, sort: 'due' },
+    { id: 'estimate', label: 'Estimate', width: 88, align: 'right' },
+    { id: 'tags', label: 'Tags', width: 150 },
+  ]
+  const LAYOUT_KEY = 'taskboard.table.layout'
+  function loadLayout(): { widths: Record<string, number>; hidden: string[] } {
+    try {
+      return JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? '') ?? { widths: {}, hidden: [] }
+    } catch {
+      return { widths: {}, hidden: [] }
+    }
+  }
+  let layout = $state(loadLayout())
+  function saveLayout() {
+    try {
+      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
+    } catch {
+      // per-device convenience only
+    }
+  }
+  /** Auto-hidden first when the table is too narrow (user-hidden ones stay hidden). */
+  const TITLE_MIN = 180
+  const SQUEEZE_ORDER: ColId[] = ['tags', 'estimate', 'priority', 'status']
+  let width = $state(1200)
+  const cols = $derived.by(() => {
+    let list = DEFAULT_COLS.filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map((c) => ({
+      ...c,
+      width: layout.widths[c.id] ?? c.width,
+    }))
+    const need = () => 36 + TITLE_MIN + list.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0)
+    for (const id of SQUEEZE_ORDER) {
+      if (need() <= width) break
+      list = list.filter((c) => c.id !== id)
+    }
+    return list
+  })
+  const minWidth = $derived(36 + TITLE_MIN + cols.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0))
+  const gridTemplate = $derived(
+    `36px ${cols.map((c) => (c.id === 'title' ? `minmax(${TITLE_MIN}px, 1fr)` : `${c.width}px`)).join(' ')}`,
+  )
+
+  function startResize(e: PointerEvent, col: Col) {
+    e.preventDefault()
+    e.stopPropagation()
+    const startX = e.clientX
+    const startW = col.width
+    const move = (ev: PointerEvent) => {
+      layout.widths[col.id] = Math.max(70, Math.min(600, startW + ev.clientX - startX))
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      saveLayout()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  // ---------- data: windowed pages ----------
+  let total = $state(0)
+  let loaded = $state(false)
+  let summary = $state<TaskSummary | null>(null)
+  const pages = new SvelteMap<number, TaskRow[]>()
+  const inflight = new Set<number>()
+  let generation = 0
+  let viewport: HTMLDivElement | undefined = $state()
+  let scrollTop = $state(0)
+  let height = $state(600)
+
+  const queryKey = $derived(JSON.stringify(scopeQuery()))
+  /** The sticky header sits inside the scroller, above row 0. */
+  const HEADER = 36
+  const first = $derived(Math.max(0, Math.floor((scrollTop - HEADER) / ROW) - OVERSCAN))
+  const last = $derived(Math.min(total, Math.ceil((scrollTop + height) / ROW) + OVERSCAN))
+
+  function rowAt(i: number): TaskRow | undefined {
+    return pages.get(Math.floor(i / PAGE))?.[i % PAGE]
+  }
+
+  async function fetchPage(page: number, gen: number) {
+    if (inflight.has(page) || !inTauri) return
+    inflight.add(page)
+    try {
+      const q = { ...JSON.parse(queryKey), offset: page * PAGE, limit: PAGE }
+      const result = await ipc.listTasks(q)
+      if (gen !== generation) return
+      total = result.total
+      pages.set(page, result.rows)
+      loaded = true
+    } catch (err) {
+      if (gen === generation) toast(errorMessage(err), { kind: 'error' })
+    } finally {
+      inflight.delete(page)
+    }
+  }
+
+  function visiblePages(): number[] {
+    const from = Math.floor(first / PAGE)
+    const to = Math.floor(Math.max(first, last - 1) / PAGE)
+    return Array.from({ length: to - from + 1 }, (_, k) => from + k)
+  }
+
+  // New query → start over at the top. Depends on `queryKey` only.
+  $effect(() => {
+    void queryKey
+    untrack(() => {
+      generation++
+      pages.clear()
+      inflight.clear()
+      total = 0
+      loaded = false
+      selected.clear()
+      anchor = -1
+      cursor = -1
+      if (viewport) viewport.scrollTop = 0
+      scrollTop = 0
+      void fetchPage(0, generation)
+    })
+  })
+
+  // Data changed elsewhere → refresh what's on screen without clearing it.
+  // Depends on `dataVersion` only; untracked so loading pages can't re-trigger it.
+  $effect(() => {
+    if (!app.dataVersion) return
+    untrack(() => {
+      generation++
+      const keep = new Set(visiblePages())
+      for (const p of [...pages.keys()]) if (!keep.has(p)) pages.delete(p)
+      inflight.clear()
+      for (const p of keep) void fetchPage(p, generation)
+    })
+  })
+
+  // Scrolling into unloaded pages.
+  $effect(() => {
+    for (const p of visiblePages()) if (!pages.has(p)) void fetchPage(p, generation)
+  })
+
+  // Footer summary (debounced; it scans the whole query).
+  $effect(() => {
+    const key = queryKey
+    void app.dataVersion
+    if (!inTauri) return
+    const t = setTimeout(async () => {
+      try {
+        summary = await ipc.summarizeTasks(JSON.parse(key))
+      } catch {
+        summary = null
+      }
+    }, 120)
+    return () => clearTimeout(t)
+  })
+
+  $effect(() => {
+    if (!viewport) return
+    const ro = new ResizeObserver(() => {
+      height = viewport?.clientHeight ?? 600
+      width = viewport?.clientWidth ?? 1200
+    })
+    ro.observe(viewport)
+    return () => ro.disconnect()
+  })
+
+  // ---------- selection & keyboard ----------
+  const selected = new SvelteSet<Id>()
+  let anchor = -1
+  let cursor = $state(-1)
+  let renaming = $state<Id | null>(null)
+
+  function select(i: number, e?: MouseEvent | KeyboardEvent) {
+    const row = rowAt(i)
+    if (!row) return
+    if (e?.shiftKey && anchor >= 0) {
+      selected.clear()
+      for (let k = Math.min(anchor, i); k <= Math.max(anchor, i); k++) {
+        const r = rowAt(k)
+        if (r) selected.add(r.id)
+      }
+    } else if (e && (e.ctrlKey || e.metaKey)) {
+      if (selected.has(row.id)) selected.delete(row.id)
+      else selected.add(row.id)
+      anchor = i
+    } else {
+      selected.clear()
+      selected.add(row.id)
+      anchor = i
+    }
+    cursor = i
+  }
+
+  function scrollIntoView(i: number) {
+    if (!viewport) return
+    const top = HEADER + i * ROW
+    if (top - HEADER < viewport.scrollTop) viewport.scrollTop = top - HEADER
+    else if (top + ROW > viewport.scrollTop + viewport.clientHeight)
+      viewport.scrollTop = top + ROW - viewport.clientHeight
+  }
+
+  function selectedIds(): Id[] {
+    return [...selected]
+  }
+
+  function onkeydown(e: KeyboardEvent) {
+    if (renaming || (e.target as HTMLElement).closest('input, textarea')) return
+    const move = (d: number) => {
+      e.preventDefault()
+      const i = Math.max(0, Math.min(total - 1, (cursor < 0 ? -1 : cursor) + d))
+      select(i, e.shiftKey ? e : undefined)
+      scrollIntoView(i)
+      if (app.openTaskId) app.openTaskId = rowAt(i)?.id ?? null
+    }
+    const current = rowAt(cursor)
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'j':
+        return move(1)
+      case 'ArrowUp':
+      case 'k':
+        return move(-1)
+      case 'Enter':
+        if (current) app.openTaskId = current.id
+        return
+      case 'F2':
+      case 'e':
+        if (current) {
+          e.preventDefault()
+          renaming = current.id
+        }
+        return
+      case ' ':
+        if (selected.size) {
+          e.preventDefault()
+          const ids = selectedIds()
+          const allDone = ids.every((id) => rowById(id)?.completed_at)
+          void act(() => ipc.bulkSetDone(ids, !allDone))
+        }
+        return
+      case 'Delete':
+        if (selected.size) {
+          e.preventDefault()
+          void removeSelected()
+        }
+        return
+      case 'Escape':
+        selected.clear()
+        return
+      case 'a':
+        if (e.ctrlKey) {
+          e.preventDefault()
+          for (const rows of pages.values()) for (const r of rows) selected.add(r.id)
+        }
+    }
+  }
+
+  function rowById(id: Id): TaskRow | undefined {
+    for (const rows of pages.values()) {
+      const r = rows.find((x) => x.id === id)
+      if (r) return r
+    }
+    return undefined
+  }
+
+  // ---------- edits ----------
+  /** Replaces a loaded row with an updated copy (pages hold plain arrays). */
+  function patchRow(id: Id, changes: Partial<TaskRow>) {
+    for (const [page, rows] of pages) {
+      const i = rows.findIndex((r) => r.id === id)
+      if (i >= 0) {
+        const next = rows.slice()
+        next[i] = { ...rows[i], ...changes }
+        pages.set(page, next)
+        return
+      }
+    }
+  }
+
+  /** Optimistic done toggle: flip locally, roll back on failure. */
+  async function toggleDone(row: TaskRow) {
+    const was = { completed_at: row.completed_at, category: row.category }
+    const done = !row.completed_at
+    patchRow(row.id, { completed_at: done ? Date.now() : null, category: done ? 'done' : 'todo' })
+    try {
+      await ipc.setTaskDone(row.id, done)
+    } catch (err) {
+      patchRow(row.id, was)
+      toast(errorMessage(err), { kind: 'error' })
+    }
+  }
+
+  async function patch(ids: Id[], p: TaskPatch, message?: string) {
+    if (ids.length === 1) await act(() => ipc.updateTask(ids[0], p), message)
+    else await act(() => ipc.bulkUpdateTasks(ids, p), message ?? `Updated ${plural(ids.length, 'task')}`)
+  }
+
+  async function removeSelected() {
+    const ids = selectedIds()
+    selected.clear()
+    await act(
+      () => (ids.length === 1 ? ipc.deleteTask(ids[0]).then(() => 1) : ipc.bulkDelete(ids)),
+      ids.length === 1 ? 'Task deleted' : `Deleted ${plural(ids.length, 'task')}`,
+    )
+  }
+
+  async function rename(row: TaskRow, value: string) {
+    renaming = null
+    const title = value.trim()
+    if (title && title !== row.title) {
+      const old = row.title
+      patchRow(row.id, { title })
+      const ok = await act(() => ipc.updateTask(row.id, { title }))
+      if (!ok) patchRow(row.id, { title: old })
+    }
+  }
+
+  /** Targets for cell menus: the whole selection if the row is part of it. */
+  function targets(row: TaskRow): Id[] {
+    return selected.has(row.id) && selected.size > 1 ? selectedIds() : [row.id]
+  }
+
+  // ---------- cell menus ----------
+  let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
+  const statusCache = new SvelteMap<Id, Status[]>()
+  let datePicker: HTMLInputElement | undefined = $state()
+  let pickFor: Id[] = []
+  let estimating = $state<Id | null>(null)
+
+  function openMenu(e: MouseEvent, items: MenuEntry[]) {
+    e.stopPropagation()
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    menu = { x: r.left, y: r.bottom + 2, items }
+  }
+
+  async function statusMenu(e: MouseEvent, row: TaskRow) {
+    e.stopPropagation()
+    const anchorEl = e.currentTarget as HTMLElement
+    let statuses = statusCache.get(row.project_id)
+    if (!statuses) {
+      statuses = await ipc.listStatuses(row.project_id)
+      statusCache.set(row.project_id, statuses)
+    }
+    const r = anchorEl.getBoundingClientRect()
+    menu = {
+      x: r.left,
+      y: r.bottom + 2,
+      items: statuses.map((s) => ({
+        label: s.name,
+        color: s.color,
+        checked: s.id === row.status_id,
+        run: () => void patch([row.id], { status_id: s.id }),
+      })),
+    }
+  }
+
+  const PRIORITIES: { value: Priority; label: string }[] = [
+    { value: 'urgent', label: 'Urgent' },
+    { value: 'high', label: 'High' },
+    { value: 'med', label: 'Medium' },
+    { value: 'low', label: 'Low' },
+    { value: 'none', label: 'No priority' },
+  ]
+  const priorityLabel: Record<Priority, string> = { urgent: 'Urgent', high: 'High', med: 'Medium', low: 'Low', none: '' }
+
+  function priorityMenu(e: MouseEvent, row: TaskRow) {
+    openMenu(
+      e,
+      PRIORITIES.map((p) => ({
+        label: p.label,
+        checked: p.value === row.priority,
+        run: () => void patch(targets(row), { priority: p.value }),
+      })),
+    )
+  }
+
+  function shift(days: number): string {
+    const d = new Date()
+    d.setDate(d.getDate() + days)
+    return isoDate(d)
+  }
+
+  function dueMenu(e: MouseEvent, row: TaskRow) {
+    const ids = targets(row)
+    const nextMonday = (() => {
+      const d = new Date()
+      d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7))
+      return isoDate(d)
+    })()
+    openMenu(e, [
+      { label: 'Today', hint: dueLabel(todayIso()), run: () => void patch(ids, { due_date: todayIso() }) },
+      { label: 'Tomorrow', run: () => void patch(ids, { due_date: shift(1) }) },
+      { label: 'Next week', hint: dueLabel(nextMonday), run: () => void patch(ids, { due_date: nextMonday }) },
+      {
+        label: 'Pick a date…',
+        run: () => {
+          pickFor = ids
+          if (datePicker) {
+            datePicker.value = row.due_date ?? todayIso()
+            datePicker.showPicker()
+          }
+        },
+      },
+      'separator',
+      { label: 'No date', disabled: !row.due_date && ids.length === 1, run: () => void patch(ids, { due_date: null }) },
+    ])
+  }
+
+  function projectMenu(e: MouseEvent, row: TaskRow) {
+    const ids = targets(row)
+    openMenu(
+      e,
+      app.projects.map((p) => ({
+        label: p.client_name ? `${p.client_name} / ${p.name}` : p.name,
+        color: p.color,
+        checked: p.id === row.project_id,
+        run: () => void patch(ids, { project_id: p.id }, `Moved to ${p.name}`),
+      })),
+    )
+  }
+
+  function columnsMenu(e: MouseEvent) {
+    e.preventDefault()
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        ...DEFAULT_COLS.filter((c) => c.id !== 'title').map((c) => ({
+          label: c.label,
+          checked: !layout.hidden.includes(c.id),
+          run: () => {
+            layout.hidden = layout.hidden.includes(c.id)
+              ? layout.hidden.filter((h) => h !== c.id)
+              : [...layout.hidden, c.id]
+            saveLayout()
+          },
+        })),
+        'separator',
+        {
+          label: 'Reset widths',
+          run: () => {
+            layout.widths = {}
+            saveLayout()
+          },
+        },
+      ],
+    }
+  }
+
+  function sortBy(col: Col) {
+    if (!col.sort) return
+    if (app.sort === col.sort) app.descending = !app.descending
+    else {
+      app.sort = col.sort
+      app.descending = false
+    }
+  }
+
+  function autofocus(node: HTMLInputElement) {
+    node.focus()
+    node.select()
+  }
+
+  const bulkRow = $derived(selected.size > 1 ? rowById(selectedIds()[0]) : undefined)
+</script>
+
+<input
+  bind:this={datePicker}
+  type="date"
+  class="pointer-events-none absolute size-0 opacity-0"
+  tabindex="-1"
+  aria-hidden="true"
+  onchange={(e) => {
+    const v = e.currentTarget.value
+    if (v && pickFor.length) void patch(pickFor, { due_date: v })
+  }}
+/>
+
+<div class="table-shell flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-surface-2">
+  <!-- body -->
+  <div
+    bind:this={viewport}
+    class="relative min-h-0 flex-1 overflow-auto outline-none"
+    role="grid"
+    aria-rowcount={total}
+    aria-multiselectable="true"
+    tabindex="0"
+    onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
+    {onkeydown}
+  >
+    <!-- header (sticky, scrolls sideways with the rows) -->
+    <div class="sticky top-0 z-10 grid h-9 items-center border-b border-border bg-surface-2 text-xs text-muted select-none" style="grid-template-columns: {gridTemplate}; min-width: {minWidth}px" role="row" tabindex="-1" oncontextmenu={columnsMenu}>
+      <button class="grid h-full place-items-center text-subtle hover:text-text" title="Columns" aria-label="Choose columns" onclick={columnsMenu}><Columns3 size={14} /></button>
+      {#each cols as col (col.id)}
+        <div class="relative flex h-full items-center px-2 {col.align === 'right' ? 'justify-end' : ''}" role="columnheader" aria-sort={app.sort === col.sort ? (app.descending ? 'descending' : 'ascending') : 'none'}>
+          <button class="flex items-center gap-1 font-medium {col.sort ? 'hover:text-text' : 'cursor-default'}" onclick={() => sortBy(col)}>
+            {col.label}
+            {#if col.sort && app.sort === col.sort}
+              {#if app.descending}<ArrowDown size={12} />{:else}<ArrowUp size={12} />{/if}
+            {/if}
+          </button>
+          {#if col.id !== 'title'}
+            <span class="resizer" role="separator" aria-orientation="vertical" onpointerdown={(e) => startResize(e, col)}></span>
+          {/if}
+        </div>
+      {/each}
+    </div>
+
+    {#if loaded && total === 0}
+      <div class="absolute inset-0 top-9 grid place-items-center text-center">
+        <div>
+          <CheckCircle2 size={28} class="mx-auto mb-2 text-subtle" />
+          <p class="font-medium">{app.search ? 'No matching tasks' : 'Nothing here'}</p>
+          <p class="text-muted">{app.search ? 'Try a different search.' : 'Add a task above, or press N.'}</p>
+        </div>
+      </div>
+    {/if}
+    <div style="height: {total * ROW}px; min-width: {minWidth}px" class="relative">
+      {#each { length: last - first } as _, k (first + k)}
+        {@const i = first + k}
+        {@const row = rowAt(i)}
+        <div
+          class="row absolute inset-x-0 grid items-center border-b border-border"
+          class:selected={row && selected.has(row.id)}
+          class:cursor={i === cursor}
+          class:done={row?.completed_at}
+          style="top: {i * ROW}px; height: {ROW}px; grid-template-columns: {gridTemplate}"
+          role="row"
+          tabindex="-1"
+          aria-rowindex={i + 1}
+          aria-selected={row ? selected.has(row.id) : false}
+          onclick={(e) => {
+            select(i, e)
+            if (row && !e.ctrlKey && !e.shiftKey) app.openTaskId = row.id
+          }}
+          onkeydown={() => {}}
+        >
+          {#if row}
+            <button
+              class="grid h-full place-items-center {row.category === 'done' ? 'text-success' : row.category === 'active' ? 'text-accent' : 'text-subtle'} hover:text-accent"
+              aria-label={row.completed_at ? 'Mark not done' : 'Mark done'}
+              onclick={(e) => {
+                e.stopPropagation()
+                void toggleDone(row)
+              }}
+            >
+              {#if row.category === 'done' || row.category === 'cancelled'}<CheckCircle2 size={17} />
+              {:else if row.category === 'active'}<CircleDot size={17} />
+              {:else if row.status_name === 'Backlog'}<CircleDashed size={17} />
+              {:else}<Circle size={17} />{/if}
+            </button>
+            {#each cols as col (col.id)}
+              <div class="cell min-w-0 px-2 {col.align === 'right' ? 'text-right' : ''}" role="gridcell">
+                {#if col.id === 'title'}
+                  {#if renaming === row.id}
+                    <input
+                      class="h-7 w-full rounded border border-accent bg-surface-1 px-1.5 outline-none"
+                      value={row.title}
+                      use:autofocus
+                      onclick={(e) => e.stopPropagation()}
+                      onkeydown={(e) => {
+                        if (e.key === 'Enter') void rename(row, e.currentTarget.value)
+                        if (e.key === 'Escape') renaming = null
+                      }}
+                      onblur={(e) => void rename(row, e.currentTarget.value)}
+                    />
+                  {:else}
+                    <span class="title flex items-center gap-2">
+                      <span class="truncate" role="textbox" tabindex="-1" ondblclick={() => (renaming = row.id)}>{row.title}</span>
+                      {#if row.subtasks_total}<span class="tabular shrink-0 text-xs text-subtle">{row.subtasks_done}/{row.subtasks_total}</span>{/if}
+                    </span>
+                  {/if}
+                {:else if col.id === 'project'}
+                  <button class="cell-btn" onclick={(e) => projectMenu(e, row)}>
+                    <span class="size-2 shrink-0 rounded-full" style="background: {swatch(row.project_color)}"></span>
+                    {#if row.client_name}<span class="truncate text-muted">{row.client_name}</span><span class="text-subtle">/</span>{/if}
+                    <span class="truncate">{row.project_name}</span>
+                  </button>
+                {:else if col.id === 'status'}
+                  <button class="cell-btn text-muted" onclick={(e) => void statusMenu(e, row)}>
+                    <span class="size-1.5 shrink-0 rounded-full" style="background: {swatch(row.status_color, 0.62, 0.13)}"></span>
+                    <span class="truncate">{row.status_name}</span>
+                  </button>
+                {:else if col.id === 'priority'}
+                  <button class="cell-btn text-muted" onclick={(e) => priorityMenu(e, row)}>
+                    {#if row.priority !== 'none'}
+                      <span class="size-1.5 shrink-0 rounded-full" style="background: var(--priority-{row.priority})"></span>
+                      {priorityLabel[row.priority]}
+                    {:else}<span class="ghost">—</span>{/if}
+                  </button>
+                {:else if col.id === 'due'}
+                  <button class="cell-btn tabular {isOverdue(row.due_date, !!row.completed_at) ? 'font-medium text-danger' : 'text-muted'}" onclick={(e) => dueMenu(e, row)}>
+                    {#if row.due_date}{dueLabel(row.due_date)}{#if row.due_time}<span class="text-subtle">&nbsp;{row.due_time}</span>{/if}{:else}<span class="ghost">—</span>{/if}
+                  </button>
+                {:else if col.id === 'estimate'}
+                  {#if estimating === row.id}
+                    <input
+                      class="h-7 w-full rounded border border-accent bg-surface-1 px-1.5 text-right outline-none"
+                      value={row.estimate_minutes ? minutes(row.estimate_minutes) : ''}
+                      placeholder="1h30m"
+                      use:autofocus
+                      onclick={(e) => e.stopPropagation()}
+                      onkeydown={(e) => {
+                        if (e.key === 'Escape') estimating = null
+                        if (e.key !== 'Enter') return
+                        const m = parseMinutes(e.currentTarget.value)
+                        estimating = null
+                        if (Number.isNaN(m)) toast('Use a duration like 45m, 2h or 1h30m', { kind: 'error' })
+                        else void patch(targets(row), { estimate_minutes: m })
+                      }}
+                      onblur={() => (estimating = null)}
+                    />
+                  {:else}
+                    <button class="cell-btn tabular w-full justify-end text-muted" onclick={(e) => { e.stopPropagation(); estimating = row.id }}>
+                      {#if row.estimate_minutes}{minutes(row.estimate_minutes)}{:else}<span class="ghost">—</span>{/if}
+                    </button>
+                  {/if}
+                {:else if col.id === 'tags'}
+                  <span class="flex gap-1 overflow-hidden">
+                    {#each row.tags as tag (tag)}<span class="tag">#{tag}</span>{/each}
+                  </span>
+                {/if}
+              </div>
+            {/each}
+          {:else}
+            <div></div>
+            <div class="mx-2 h-3 w-1/2 rounded bg-surface-3"></div>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div class="flex h-9 shrink-0 items-center gap-3 border-t border-border px-3 text-xs text-muted">
+    {#if selected.size > 1 && bulkRow}
+      <span class="font-medium text-text">{selected.size} selected</span>
+      <button class="bulk" onclick={() => void act(() => ipc.bulkSetDone(selectedIds(), true), `Completed ${plural(selected.size, 'task')}`)}>Complete</button>
+      <button class="bulk" onclick={(e) => dueMenu(e, bulkRow)}>Due date</button>
+      <button class="bulk" onclick={(e) => priorityMenu(e, bulkRow)}>Priority</button>
+      <button class="bulk" onclick={(e) => projectMenu(e, bulkRow)}>Move to</button>
+      <button class="bulk text-danger" onclick={() => void removeSelected()}><Trash2 size={13} /> Delete</button>
+      <button class="bulk ml-auto" onclick={() => selected.clear()}><X size={13} /> Clear</button>
+    {:else if summary}
+      <span class="tabular">{plural(summary.total, 'task')}</span>
+      {#if summary.total && app.showDone}
+        <span aria-hidden="true">·</span>
+        <span class="flex items-center gap-2">
+          <span class="progress"><span style="width: {(summary.done / summary.total) * 100}%"></span></span>
+          <span class="tabular">{Math.round((summary.done / summary.total) * 100)}% done</span>
+        </span>
+      {/if}
+      {#if summary.estimate_minutes}
+        <span aria-hidden="true">·</span>
+        <span class="tabular">{minutes(summary.estimate_minutes)} estimated</span>
+      {/if}
+      <span class="ml-auto hidden text-subtle xl:inline">↑↓ move · Enter open · F2 rename · Space done · Del delete</span>
+    {/if}
+  </div>
+</div>
+
+{#if menu}
+  <Menu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
+{/if}
+
+<style>
+  .row {
+    transition: background-color 80ms var(--ease-out);
+  }
+  .row:hover {
+    background: var(--hover);
+  }
+  .row.selected {
+    background: var(--accent-soft);
+  }
+  .row.cursor {
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+  .row.done .title {
+    color: var(--text-subtle);
+    text-decoration: line-through;
+    text-decoration-color: var(--border-strong);
+  }
+  .cell-btn {
+    display: flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 0.4rem;
+    height: 26px;
+    padding-inline: 0.35rem;
+    margin-inline: -0.35rem;
+    border-radius: 5px;
+  }
+  .cell-btn:hover {
+    background: var(--surface-3);
+  }
+  .ghost {
+    color: var(--border-strong);
+  }
+  .row:hover .ghost {
+    color: var(--text-subtle);
+  }
+  .tag {
+    flex-shrink: 0;
+    border-radius: 4px;
+    padding: 0 5px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    background: var(--surface-3);
+  }
+  .resizer {
+    position: absolute;
+    top: 6px;
+    bottom: 6px;
+    right: 0;
+    width: 6px;
+    cursor: col-resize;
+    border-right: 1px solid var(--border);
+  }
+  .resizer:hover {
+    border-right: 2px solid var(--accent);
+  }
+  .bulk {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 24px;
+    padding-inline: 0.5rem;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  .bulk:hover {
+    background: var(--hover);
+  }
+  .progress {
+    display: inline-block;
+    width: 64px;
+    height: 5px;
+    border-radius: 99px;
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+  .progress span {
+    display: block;
+    height: 100%;
+    background: var(--success);
+  }
+</style>

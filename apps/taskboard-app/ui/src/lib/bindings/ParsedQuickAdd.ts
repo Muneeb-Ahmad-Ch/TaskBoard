@@ -10,4 +10,4 @@ project_hint: string | null, due_date: string | null, due_time: string | null,
 /**
  * Set when a range like `3-4pm` was typed (a meeting, from M4).
  */
-end_time: string | null, estimate_minutes: bigint | null, tokens: Array<Token>, };
+end_time: string | null, estimate_minutes: number | null, tokens: Array<Token>, };

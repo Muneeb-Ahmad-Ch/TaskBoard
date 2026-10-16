@@ -2,4 +2,4 @@
 import type { Category } from "./Category";
 import type { Id } from "./Id";
 
-export type Status = { id: Id, project_id: Id, name: string, color: string, category: Category, wip_limit: bigint | null, sort_key: string, };
+export type Status = { id: Id, project_id: Id, name: string, color: string, category: Category, wip_limit: number | null, sort_key: string, };

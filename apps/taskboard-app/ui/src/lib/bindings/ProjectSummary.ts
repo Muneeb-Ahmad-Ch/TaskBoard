@@ -5,4 +5,4 @@ import type { ProjectState } from "./ProjectState";
 /**
  * A project with its client name and task counts, for sidebars and pickers.
  */
-export type ProjectSummary = { client_name: string | null, open_tasks: bigint, total_tasks: bigint, done_tasks: bigint, id: Id, client_id: Id | null, name: string, code: string | null, color: string, icon: string | null, state: ProjectState, start_date: string | null, deadline: string | null, is_inbox: boolean, sort_key: string, archived_at: bigint | null, created_at: bigint, updated_at: bigint, };
+export type ProjectSummary = { client_name: string | null, open_tasks: number, total_tasks: number, done_tasks: number, id: Id, client_id: Id | null, name: string, code: string | null, color: string, icon: string | null, state: ProjectState, start_date: string | null, deadline: string | null, is_inbox: boolean, sort_key: string, archived_at: number | null, created_at: number, updated_at: number, };

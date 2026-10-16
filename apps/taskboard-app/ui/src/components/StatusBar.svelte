@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { Database } from '@lucide/svelte'
+  import { Database, Redo2, Undo2 } from '@lucide/svelte'
   import type { DbInfo } from '../lib/bindings/DbInfo'
   import { inTauri, ipc, isErrorInfo } from '../lib/ipc'
+  import { app, redo, undo } from '../lib/store.svelte'
 
   let info = $state<DbInfo | null>(null)
   let error = $state<string | null>(null)
@@ -21,17 +22,31 @@
 <footer class="flex h-7 shrink-0 items-center gap-3 border-t border-border px-4 text-[11.5px] text-subtle">
   <Database size={12} />
   {#if info}
-    <span>SQLite {info.sqlite_version}</span>
-    <span aria-hidden="true">·</span>
-    <span>{info.journal_mode.toUpperCase()}</span>
-    <span aria-hidden="true">·</span>
-    <span class={info.fts5 ? 'text-success' : 'text-danger'}>FTS5 {info.fts5 ? 'ready' : 'missing'}</span>
-    <span aria-hidden="true">·</span>
-    <span>schema v{info.schema_version}</span>
+    <span>SQLite {info.sqlite_version} · {info.journal_mode.toUpperCase()} · schema v{info.schema_version}</span>
   {:else if error}
     <span>{error}</span>
   {:else}
     <span>Opening database…</span>
   {/if}
-  <span class="ml-auto rounded bg-warn/15 px-1.5 py-px font-medium text-warn">Preview data · M0</span>
+  <span class="ml-auto flex items-center gap-1">
+    <button class="hist" disabled={!app.history.undo} title={app.history.undo ? `Undo: ${app.history.undo} (Ctrl+Z)` : 'Nothing to undo'} onclick={() => void undo()}><Undo2 size={13} /></button>
+    <button class="hist" disabled={!app.history.redo} title={app.history.redo ? `Redo: ${app.history.redo} (Ctrl+Shift+Z)` : 'Nothing to redo'} onclick={() => void redo()}><Redo2 size={13} /></button>
+  </span>
 </footer>
+
+<style>
+  .hist {
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 20px;
+    border-radius: 4px;
+  }
+  .hist:hover:not(:disabled) {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .hist:disabled {
+    opacity: 0.35;
+  }
+</style>
