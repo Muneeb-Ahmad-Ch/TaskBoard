@@ -332,7 +332,7 @@ client/project color, and the scope switcher (All / client / project) applies.
   and Meeting before saving.
 - **Today / Agenda** show meetings and tasks interleaved by time, with the
   next meeting pinned at the top of the Today view.
-- **External calendars (P1)**: subscribe to read-only ICS feeds (Outlook's or
+- **External calendars (P2; the user's meetings live only in Taskboard today)**: subscribe to read-only ICS feeds (Outlook's or
   Google Calendar's private "secret address") so meetings booked elsewhere
   show in Taskboard and count against capacity. Opt-in network access,
   refreshed every 15 minutes. Each feed can map to a client. Two-way sync with
@@ -394,8 +394,10 @@ range (no invoicing in v1).
 ### Notifications (P0)
 - **Desktop:** OS notification APIs do not schedule ahead, so the app keeps a
   lightweight tray/menu-bar process running (default on, can be turned off) and
-  fires reminders itself. Autostart is opt-in. Missed reminders are shown on
-  next launch.
+  fires reminders itself. Closing the window hides it to the tray; Quit is in
+  the tray menu. Autostart at Windows login is **on by default**, starting
+  minimized to the tray (both switchable in Settings). Missed reminders are
+  shown on next launch.
 - **Mobile:** schedule OS local notifications ahead of time and re-sync the
   schedule after every relevant change. iOS allows 64 pending notifications,
   so schedule the nearest 60. On Android 14+ exact alarms need permission; fall
@@ -661,10 +663,15 @@ Options to decide in a phase-2 ADR:
 
 ---
 
-## 14. Open decisions to confirm before coding
+## 14. Decisions
 
+Decided 2026-10-16:
+- Tray-resident by default; autostart at login, minimized (both switchable).
+- `cancelled` status category: yes.
+- Client contact: one free-text field.
+- Time reports: hours only, no hourly rates or earnings.
+- Meetings are created in Taskboard (no existing calendar); ICS feeds are P2.
+
+Still open:
 1. **Windows code-signing** option (needed by M8; unsigned builds trigger
    SmartScreen warnings).
-2. **Tray-resident by default** so reminders fire? (Recommended: yes, with an
-   off switch.)
-3. Add the **`cancelled`** status category? (Recommended: yes.)

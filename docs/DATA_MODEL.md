@@ -1,6 +1,6 @@
 # Taskboard — Data Model
 
-Status: **draft for approval** before M1. The SQL below becomes migration 2.
+Status: **approved 2026-10-16**. The SQL below becomes migration 2 (M1).
 Conventions: all tables `STRICT`; ids are UUIDv7 stored as 16-byte `BLOB`;
 instants are UTC milliseconds (`INTEGER`); plan dates are civil `TEXT`
 (`YYYY-MM-DD`, no time zone); every syncable row has `hlc` + `device_id`.
@@ -340,11 +340,11 @@ date range, planned (meetings + blocks) vs logged, CSV export.
   Pure function over in-memory intervals; property tests check no overlap with
   busy time, containment in working hours, and correctness across DST.
 
-## 7. Open questions
+## 7. Decisions (2026-10-16)
 
-1. `cancelled` status category — included above (counts as closed, excluded
-   from progress). Remove?
-2. Client `contact` as one free-text field (simple) vs structured fields
-   (name / email / phone). Draft uses free text.
-3. Hourly rate per client/project for time reports — not in the draft (would
-   lead toward invoicing, which is out of scope). Add?
+- `cancelled` status category: kept (closed, excluded from progress).
+- Client `contact`: one free-text field.
+- No hourly rate: time reports are hours only.
+
+Until v1 ships, migrations may still be edited in place; after the first
+release they are frozen and only appended to.
