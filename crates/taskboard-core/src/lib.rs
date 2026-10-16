@@ -8,6 +8,7 @@ pub mod model;
 pub mod order;
 mod projects;
 pub mod query;
+pub mod quickadd;
 pub mod storage;
 mod tasks;
 pub mod tx;

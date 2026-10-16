@@ -22,7 +22,11 @@ const MIGRATIONS: &[M<'static>] = &[
         ) STRICT;",
     ),
     M::up(include_str!("migrations/0002_domain.sql")),
+    M::up(include_str!("migrations/0003_query_indexes.sql")),
 ];
+
+/// Schema version this build writes (`PRAGMA user_version`).
+pub const SCHEMA_VERSION: usize = MIGRATIONS.len();
 
 /// Applied to every connection. `synchronous=FULL` keeps committed edits safe
 /// across power loss (SPEC §7); writes are rare, so the cost is negligible.
@@ -93,6 +97,8 @@ impl Db {
         }
         Migrations::from_slice(MIGRATIONS).to_latest(&mut conn)?;
         quick_check(&conn)?;
+        // Refresh planner statistics when stale or missing (cheap, bounded).
+        conn.execute_batch("PRAGMA optimize = 0x10002;")?;
 
         let device = load_device_id(&conn)?;
         let last: Option<String> =

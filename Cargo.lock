@@ -3726,6 +3726,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "jiff",
  "serde_json",
  "taskboard-core",
  "tracing",

@@ -44,15 +44,37 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
    events invalidate affected windows only.
 5. **Optimistic UI** with rollback and a toast on error.
 
+### As built in M1
+
+- `Tx` (`core/src/tx.rs`) is the only way to write. `insert` / `update` /
+  `delete` stamp `updated_at`, `hlc`, `device_id` on syncable tables and append
+  to `op_log` (`before_json` / `after_json`, typed-value JSON that round-trips
+  exactly). Updates log only columns that actually changed; a no-op edit
+  records nothing.
+- `history` is the undo stack (one row per user action, `undone` flag). Undo
+  and redo replay `op_log` for a group in reverse / forward order and write new
+  `undo` / `redo` log records, so `op_log` is append-only (sync-ready).
+- Each transaction gets a timestamp strictly after the previous one, so cascade
+  stamps (`archived_at`, `deleted_at`) identify exactly what one action touched.
+- Proven by a property test: random edit sequences → undo all → state equals
+  the start → redo all → state equals the end.
+
 ## 4. Storage
 
 - SQLite bundled via `rusqlite` (`bundled` feature) — currently **3.53.2** with
   FTS5. Same engine everywhere, independent of the OS.
 - Pragmas: `journal_mode=WAL`, `synchronous=FULL` (power-loss safe),
   `foreign_keys=ON`, `busy_timeout=5s`, `temp_store=MEMORY`.
-- Startup: refuse a newer schema → migrate (forward-only, `user_version`) →
-  `PRAGMA quick_check`. Backup-before-migrate lands in M1 with the first real
-  migration.
+- Startup: refuse a newer schema → **back up** (`VACUUM INTO
+  backups/pre-migrate-v{n}-{ms}.db`) if an existing database needs migrating →
+  migrate (forward-only, `user_version`) → `PRAGMA quick_check` →
+  `PRAGMA optimize=0x10002` (refreshes planner stats when stale).
+- `task.rid` is an explicit `INTEGER PRIMARY KEY` so the FTS rowid mapping
+  survives `VACUUM`.
+- List queries (`core/src/query.rs`) filter on `task` only, use
+  `completed_at IS NULL` for "open" (kept in sync with closed categories), sort
+  with expressions that match the migration-3 partial indexes, select the page's
+  `rid`s first (`WITH page AS MATERIALIZED`) and join names for those rows only.
 - Location: `%APPDATA%\app.taskboard.desktop\taskboard.db` (Tauri
   `app_data_dir`). The CLI uses the same default; override with `--db` or
   `TASKBOARD_DB`.
@@ -145,7 +167,24 @@ The Tauri CLI is run from `ui/` with `TAURI_APP_PATH=../src-tauri` (set by the
 `tauri` script; `.npmrc` enables pnpm's shell emulator so this works in cmd,
 PowerShell and Git Bash).
 
-## 11. Decisions log
+## 11. Measured performance (M1, 2026-10-16)
+
+Seeded with `taskboard seed --tasks 50000` (12 clients, 38 projects, subtasks,
+tags, ~1/3 done). Release build, this dev machine, warm cache, timings include
+the count and the page query.
+
+| Query (50k tasks) | Budget | Measured |
+|---|---|---|
+| Open tasks, page of 200, sort by due / manual / priority / created | view switch < 100 ms | 8.7–9.9 ms |
+| All tasks, page of 1000 | — | 17.5 ms |
+| Full-text search ("report", 2,851 hits) | < 30 ms | 12.6 ms |
+| One client (2,596 tasks) / one project (829 tasks) | — | 10.5 / 7.2 ms |
+| Single write (create task, `synchronous=FULL`) | p95 < 10 ms | ≈ 4.4 ms avg |
+
+Before migration 3 and the query rewrite, the same list took ~230 ms.
+Seeding is one transaction per task (≈ 5 min for 50k); bulk import will batch.
+
+## 12. Decisions log
 
 | Date | Decision |
 |---|---|
@@ -154,3 +193,7 @@ PowerShell and Git Bash).
 | 2026-10-16 | Rust 1.99 pinned (rusqlite_migration 2.6 needs ≥ 1.95) |
 | 2026-10-16 | `ts-rs` for bindings (tauri-specta still RC) |
 | 2026-10-16 | Plain Vite SPA, no SvelteKit |
+| 2026-10-16 | Generic, log-replay undo (one mechanism for every table) instead of per-command inverse code |
+| 2026-10-16 | `op_log.key_json` instead of `entity_id`, to support composite keys (`task_tag`, `working_hours`) |
+| 2026-10-16 | New tasks go to the last `todo` status ("To Do"), not "Backlog" |
+| 2026-10-16 | Deleting a client is refused while it has projects (no silent mass delete); deleting a project soft-deletes its tasks (one undo) |

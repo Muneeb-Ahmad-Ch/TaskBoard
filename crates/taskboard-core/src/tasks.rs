@@ -623,3 +623,63 @@ impl Db {
         self.task(copy)
     }
 }
+
+impl Db {
+    /// Finds the project an `@hint` refers to: exact name, then `client/name`,
+    /// then name prefix, then name substring (case-insensitive). Ties go to
+    /// sidebar order.
+    pub fn resolve_project(&self, hint: &str) -> Result<Option<Id>> {
+        let norm = |s: &str| {
+            s.replace(['-', '_'], " ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_lowercase()
+        };
+        let hint = norm(hint);
+        if hint.is_empty() {
+            return Ok(None);
+        }
+        let projects = self.projects(false)?;
+        let full = |p: &crate::model::ProjectSummary| {
+            p.client_name
+                .as_deref()
+                .map(|c| norm(&format!("{c}/{}", p.project.name)))
+        };
+        let tiers: [&dyn Fn(&crate::model::ProjectSummary) -> bool; 4] = [
+            &|p| norm(&p.project.name) == hint,
+            &|p| full(p).as_deref() == Some(hint.as_str()),
+            &|p| norm(&p.project.name).starts_with(&hint),
+            &|p| norm(&p.project.name).contains(&hint),
+        ];
+        Ok(tiers
+            .iter()
+            .find_map(|tier| projects.iter().find(|p| tier(p)))
+            .map(|p| p.project.id))
+    }
+
+    /// Creates a task from a Quick Add line (see [`crate::quickadd`]).
+    pub fn quick_add(&mut self, line: &str, today: jiff::civil::Date) -> Result<Task> {
+        let parsed = crate::quickadd::parse(line, today);
+        if parsed.title.trim().is_empty() {
+            return Err(invalid("type a task title"));
+        }
+        let project_id = match &parsed.project_hint {
+            Some(hint) => Some(
+                self.resolve_project(hint)?
+                    .ok_or_else(|| invalid(format!("no project matches “@{hint}”")))?,
+            ),
+            None => None,
+        };
+        self.create_task(NewTask {
+            title: parsed.title,
+            project_id,
+            priority: parsed.priority,
+            due_date: parsed.due_date,
+            due_time: parsed.due_time,
+            estimate_minutes: parsed.estimate_minutes,
+            tags: parsed.tags,
+            ..Default::default()
+        })
+    }
+}

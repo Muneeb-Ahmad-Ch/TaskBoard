@@ -558,7 +558,10 @@ fn upgrading_an_existing_database_backs_it_up_first() {
         .unwrap();
     }
     let db = Db::open(&path).unwrap();
-    assert_eq!(db.info().unwrap().schema_version, 2);
+    assert_eq!(
+        db.info().unwrap().schema_version as usize,
+        storage::SCHEMA_VERSION
+    );
     let backups: Vec<_> = std::fs::read_dir(dir.path().join("backups"))
         .unwrap()
         .collect();
@@ -667,4 +670,76 @@ proptest! {
         while db.redo().is_ok() {}
         prop_assert_eq!(dump(&db), end);
     }
+}
+
+// ---------- quick add ----------
+
+#[test]
+fn quick_add_resolves_projects_by_name_and_client() {
+    let mut db = db();
+    let acme = client(&mut db, "Acme Corp");
+    let site = project(&mut db, "Website redesign", Some(acme.id));
+    let north = client(&mut db, "Northwind");
+    let app = project(&mut db, "Website", Some(north.id));
+    let today = jiff::civil::date(2026, 10, 15);
+
+    let t = db
+        .quick_add(
+            "Wireframes tomorrow 3pm @website-re #design !high ~2h",
+            today,
+        )
+        .unwrap();
+    assert_eq!(t.project_id, site.id, "prefix match");
+    assert_eq!(t.title, "Wireframes");
+    assert_eq!(
+        (t.due_date.as_deref(), t.due_time.as_deref()),
+        (Some("2026-10-16"), Some("15:00"))
+    );
+    assert_eq!(
+        (t.priority, t.estimate_minutes, t.tags.clone()),
+        (Priority::High, Some(120), vec!["design".to_owned()])
+    );
+
+    let t = db.quick_add("Deploy @website", today).unwrap();
+    assert_eq!(t.project_id, app.id, "exact name beats prefix");
+    let t = db
+        .quick_add("Audit @\"acme corp/website redesign\"", today)
+        .unwrap();
+    assert_eq!(t.project_id, site.id, "client/project form");
+
+    assert_eq!(
+        db.quick_add("x @nowhere", today).unwrap_err().code(),
+        "invalid_input"
+    );
+    assert_eq!(
+        db.quick_add("#only-a-tag", today).unwrap_err().code(),
+        "invalid_input"
+    );
+    assert_eq!(
+        db.quick_add("Inbox item", today).unwrap().project_id,
+        db.inbox_id().unwrap()
+    );
+}
+
+#[test]
+fn archived_projects_are_hidden_from_lists_unless_asked() {
+    let mut db = db();
+    let old = project(&mut db, "Old", None);
+    task(&mut db, "hidden", Some(old.id));
+    task(&mut db, "visible", None);
+    db.set_project_archived(old.id, true).unwrap();
+    assert_eq!(
+        titles(&db.list_tasks(&TaskQuery::default()).unwrap()),
+        ["visible"]
+    );
+    let all = TaskQuery {
+        include_archived: true,
+        ..Default::default()
+    };
+    assert_eq!(db.list_tasks(&all).unwrap().total, 2);
+    let open = TaskQuery {
+        categories: vec![Category::Todo, Category::Active],
+        ..Default::default()
+    };
+    assert_eq!(db.list_tasks(&open).unwrap().total, 1);
 }

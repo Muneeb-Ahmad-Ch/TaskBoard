@@ -1,6 +1,6 @@
 # Taskboard — Data Model
 
-Status: open questions resolved 2026-10-16. The SQL below becomes migration 2 (M1).
+Status: implemented in M1 as migrations 2 and 3 (`crates/taskboard-core/src/migrations/`); those files are the exact schema. Differences from the sketch below: `task.rid INTEGER PRIMARY KEY` (FTS rowid), `op_log.kind` + `key_json` (append-only log), a `history` table for the undo stack, `created_at` on status/tag/saved_view, and sort-order partial indexes (migration 3).
 Conventions: all tables `STRICT`; ids are UUIDv7 stored as 16-byte `BLOB`;
 instants are UTC milliseconds (`INTEGER`); plan dates are civil `TEXT`
 (`YYYY-MM-DD`, no time zone); every syncable row has `hlc` + `device_id`.

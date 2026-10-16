@@ -114,58 +114,100 @@ pub(crate) fn fts_query(input: &str) -> Option<String> {
     (!terms.is_empty()).then(|| terms.join(" "))
 }
 
+/// ORDER BY clauses written to match the migration-3 indexes exactly, so
+/// SQLite can walk an index in order and stop after one page.
 fn order_by(sort: TaskSort, desc: bool) -> String {
     let dir = if desc { "DESC" } else { "ASC" };
     match sort {
-        TaskSort::Manual => format!("t.sort_key {dir}, t.rid"),
+        TaskSort::Manual => format!("t.sort_key {dir}, t.rid {dir}"),
         TaskSort::Due => format!(
-            "t.due_date IS NULL, t.due_date {dir}, t.due_time IS NULL, t.due_time {dir}, t.sort_key"
+            "coalesce(t.due_date, '~') {dir}, coalesce(t.due_time, '~') {dir}, t.sort_key {dir}"
         ),
-        TaskSort::Priority => format!(
-            "t.priority {}, t.due_date IS NULL, t.due_date, t.sort_key",
-            if desc { "ASC" } else { "DESC" }
-        ),
-        TaskSort::Created => format!("t.created_at {dir}, t.rid"),
-        TaskSort::Updated => format!("t.updated_at {dir}, t.rid"),
-        TaskSort::Title => format!("t.title COLLATE NOCASE {dir}, t.rid"),
+        TaskSort::Priority => {
+            let (p, rest) = if desc {
+                ("ASC", "DESC")
+            } else {
+                ("DESC", "ASC")
+            };
+            format!("t.priority {p}, coalesce(t.due_date, '~') {rest}, t.sort_key {rest}")
+        }
+        TaskSort::Created => format!("t.created_at {dir}, t.rid {dir}"),
+        TaskSort::Updated => format!("t.updated_at {dir}, t.rid {dir}"),
+        TaskSort::Title => format!("t.title COLLATE NOCASE {dir}, t.rid {dir}"),
     }
 }
 
+const OPEN: [Category; 2] = [Category::Todo, Category::Active];
+const CLOSED: [Category; 2] = [Category::Done, Category::Cancelled];
+
 impl Db {
     pub fn list_tasks(&self, q: &TaskQuery) -> Result<TaskPage> {
-        let mut filters = vec![
-            "t.deleted_at IS NULL".to_owned(),
-            "p.deleted_at IS NULL".to_owned(),
-        ];
+        // Filters reference only `task t` (plus small subqueries), so the
+        // planner can use the partial indexes; names are joined per page below.
+        let mut filters = vec!["t.deleted_at IS NULL".to_owned()];
         let mut args: Vec<Value> = Vec::new();
 
         if !q.include_archived {
-            filters.push("t.archived_at IS NULL AND p.archived_at IS NULL".into());
+            filters.push("t.archived_at IS NULL".into());
         }
-        if let Some(client) = q.client_id {
-            filters.push("p.client_id = ?".into());
-            args.push(client.into());
+        if q.client_id.is_some() || q.personal {
+            // Selective: drive the query from the matching projects.
+            let mut project_filter = vec!["deleted_at IS NULL".to_owned()];
+            if !q.include_archived {
+                project_filter.push("archived_at IS NULL".into());
+            }
+            if let Some(client) = q.client_id {
+                project_filter.push("client_id = ?".into());
+                args.push(client.into());
+            }
+            if q.personal {
+                project_filter.push("client_id IS NULL AND is_inbox = 0".into());
+            }
+            filters.push(format!(
+                "t.project_id IN (SELECT id FROM project WHERE {})",
+                project_filter.join(" AND ")
+            ));
+        } else if !q.include_archived {
+            // Deleting a project deletes its tasks, so only archived projects
+            // need excluding. NOT IN over that short list keeps the planner on
+            // the sort-order index instead of looking tasks up per project.
+            filters.push(
+                "t.project_id NOT IN (SELECT id FROM project WHERE archived_at IS NOT NULL)".into(),
+            );
         }
         if let Some(project) = q.project_id {
             filters.push("t.project_id = ?".into());
             args.push(project.into());
         }
-        if q.personal {
-            filters.push("p.client_id IS NULL AND p.is_inbox = 0".into());
+
+        // completed_at mirrors the closed categories, so open/closed filters
+        // need no status lookup.
+        let cats = &q.categories;
+        let all_open = !cats.is_empty() && cats.iter().all(|c| OPEN.contains(c));
+        let all_closed = !cats.is_empty() && cats.iter().all(|c| CLOSED.contains(c));
+        if all_open {
+            filters.push("t.completed_at IS NULL".into());
+        } else if all_closed {
+            filters.push("t.completed_at IS NOT NULL".into());
         }
-        if !q.categories.is_empty() {
-            let marks = vec!["?"; q.categories.len()].join(", ");
-            filters.push(format!("s.category IN ({marks})"));
-            args.extend(q.categories.iter().map(|c| text(c.as_str())));
+        let covers = |set: &[Category]| set.iter().all(|c| cats.contains(c));
+        let exact = (all_open && covers(&OPEN)) || (all_closed && covers(&CLOSED));
+        if !cats.is_empty() && !exact {
+            let marks = vec!["?"; cats.len()].join(", ");
+            filters.push(format!(
+                "t.status_id IN (SELECT id FROM status WHERE category IN ({marks}))"
+            ));
+            args.extend(cats.iter().map(|c| text(c.as_str())));
         }
+
         if let Some(search) = q.search.as_deref().and_then(fts_query) {
             filters.push("t.rid IN (SELECT rowid FROM task_fts WHERE task_fts MATCH ?)".into());
             args.push(text(search));
         }
         if let Some(tag) = q.tag.as_deref().map(|t| t.trim().trim_start_matches('#')) {
             filters.push(
-                "EXISTS (SELECT 1 FROM task_tag tt JOIN tag g ON g.id = tt.tag_id
-                         WHERE tt.task_id = t.id AND g.name = ? COLLATE NOCASE)"
+                "t.id IN (SELECT tt.task_id FROM task_tag tt JOIN tag g ON g.id = tt.tag_id
+                          WHERE g.name = ? COLLATE NOCASE)"
                     .into(),
             );
             args.push(text(tag));
@@ -185,14 +227,9 @@ impl Db {
             filters.push("t.parent_id IS NULL".into());
         }
 
-        let from = "FROM task t
-                    JOIN project p ON p.id = t.project_id
-                    JOIN status s ON s.id = t.status_id
-                    LEFT JOIN client c ON c.id = p.client_id";
         let where_sql = filters.join(" AND ");
-
         let total: i64 = self.conn().query_row(
-            &format!("SELECT count(*) {from} WHERE {where_sql}"),
+            &format!("SELECT count(*) FROM task t WHERE {where_sql}"),
             params_from_iter(args.iter()),
             |r| r.get(0),
         )?;
@@ -202,8 +239,14 @@ impl Db {
         } else {
             q.limit.min(MAX_LIMIT)
         };
+        let order = order_by(q.sort, q.descending);
+        // Pick the page's rows first (index walk + LIMIT), then join names for
+        // just those rows. MATERIALIZED stops SQLite flattening the CTE.
         let sql = format!(
-            "SELECT t.id, t.title, t.priority, t.status_id, s.name, s.color, s.category,
+            "WITH page AS MATERIALIZED (
+                SELECT t.rid FROM task t WHERE {where_sql} ORDER BY {order} LIMIT ? OFFSET ?
+             )
+             SELECT t.id, t.title, t.priority, t.status_id, s.name, s.color, s.category,
                     t.project_id, p.name, p.color, p.client_id, c.name, t.parent_id,
                     t.start_date, t.due_date, t.due_time, t.estimate_minutes, t.completed_at,
                     t.sort_key,
@@ -212,9 +255,12 @@ impl Db {
                        AND x.completed_at IS NOT NULL),
                     (SELECT group_concat(g.name, char(31)) FROM task_tag tt
                        JOIN tag g ON g.id = tt.tag_id WHERE tt.task_id = t.id)
-             {from} WHERE {where_sql}
-             ORDER BY {} LIMIT ? OFFSET ?",
-            order_by(q.sort, q.descending)
+             FROM page
+             JOIN task t ON t.rid = page.rid
+             JOIN project p ON p.id = t.project_id
+             JOIN status s ON s.id = t.status_id
+             LEFT JOIN client c ON c.id = p.client_id
+             ORDER BY {order}"
         );
         args.push(Value::Integer(limit));
         args.push(Value::Integer(q.offset.max(0)));
