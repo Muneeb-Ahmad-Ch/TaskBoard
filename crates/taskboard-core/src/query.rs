@@ -103,6 +103,7 @@ pub struct TaskRow {
     /// 0–100: 100 when closed; else the average of direct subtasks (done = 100,
     /// open = their manual progress); else the task's own manual progress.
     pub progress: i64,
+    pub recurring: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -298,7 +299,8 @@ impl Db {
                                                        ELSE coalesce(x.progress, 0) END)) AS INTEGER)
                               FROM task x WHERE x.parent_id = t.id AND x.deleted_at IS NULL),
                            t.progress, 0)
-                    END
+                    END,
+                    t.recurrence_rule IS NOT NULL
              FROM page
              JOIN task t ON t.rid = page.rid
              JOIN project p ON p.id = t.project_id
@@ -340,6 +342,7 @@ impl Db {
                         .map(|t| t.split(TAG_SEP).map(str::to_owned).collect())
                         .unwrap_or_default(),
                     progress: r.get(22)?,
+                    recurring: r.get(23)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

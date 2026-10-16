@@ -11,4 +11,4 @@ export type TaskRow = { id: Id, title: string, priority: Priority, status_id: Id
  * 0–100: 100 when closed; else the average of direct subtasks (done = 100,
  * open = their manual progress); else the task's own manual progress.
  */
-progress: number, };
+progress: number, recurring: boolean, };

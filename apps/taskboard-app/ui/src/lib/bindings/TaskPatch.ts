@@ -6,4 +6,8 @@ export type TaskPatch = { title?: string, description_md?: string, priority?: Pr
 /**
  * Manual progress 0–100; `null` clears it.
  */
-progress?: number | null, };
+progress?: number | null, 
+/**
+ * Repeat rule; `null` stops repeating.
+ */
+recurrence_rule?: string | null, };

@@ -1050,3 +1050,125 @@ fn progress_is_manual_without_subtasks_and_derived_with_them() {
     // (100 + 50 + 0 + 0) / 4, and the parent's own 90% is ignored once it has subtasks.
     assert_eq!(row(&db, parent.id).progress, 38);
 }
+
+// ---------- repeating tasks ----------
+
+#[test]
+fn completing_a_repeating_task_creates_the_next_one() {
+    let mut db = db();
+    let t = db
+        .create_task(NewTask {
+            title: "Send invoices".into(),
+            due_date: Some("2030-01-07".into()), // a Monday, safely in the future
+            recurrence_rule: Some("FREQ=WEEKLY;BYDAY=MO".into()),
+            tags: vec!["admin".into()],
+            ..Default::default()
+        })
+        .unwrap();
+    db.set_task_done(t.id, true).unwrap();
+    let open = db
+        .list_tasks(&TaskQuery {
+            search: Some("invoices".into()),
+            categories: vec![Category::Todo],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(open.total, 1);
+    let next = db.task(open.rows[0].id).unwrap();
+    assert_eq!(next.due_date.as_deref(), Some("2030-01-14"));
+    assert_eq!(next.tags, ["admin"]);
+    assert_eq!(next.series_id, db.task(t.id).unwrap().series_id);
+    assert!(open.rows[0].recurring);
+
+    // Reopen and complete again: no duplicate.
+    db.set_task_done(t.id, false).unwrap();
+    db.set_task_done(t.id, true).unwrap();
+    let count = |db: &Db| {
+        db.list_tasks(&TaskQuery {
+            search: Some("invoices".into()),
+            categories: vec![Category::Todo, Category::Active],
+            ..Default::default()
+        })
+        .unwrap()
+        .total
+    };
+    assert_eq!(count(&db), 1, "only the one open instance");
+
+    // One undo removes the completion and the spawned instance together.
+    let mut db2 = self::db();
+    let t2 = db2
+        .create_task(NewTask {
+            title: "Backup".into(),
+            recurrence_rule: Some("AFTER:3D".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    db2.set_task_done(t2.id, true).unwrap();
+    assert_eq!(
+        db2.list_tasks(&TaskQuery {
+            categories: vec![Category::Todo],
+            ..Default::default()
+        })
+        .unwrap()
+        .total,
+        1
+    );
+    db2.undo().unwrap();
+    let all = db2.list_tasks(&TaskQuery::default()).unwrap();
+    assert_eq!((all.total, all.rows[0].completed_at), (1, None));
+}
+
+#[test]
+fn moving_a_repeating_card_to_done_also_repeats() {
+    let mut db = db();
+    let t = db
+        .create_task(NewTask {
+            title: "Weekly review".into(),
+            due_date: Some("2030-01-11".into()),
+            recurrence_rule: Some("FREQ=WEEKLY".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let done = db
+        .statuses(t.project_id)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.name == "Done")
+        .unwrap();
+    db.move_task(
+        t.id,
+        MoveTask {
+            status_id: Some(done.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let open = db
+        .list_tasks(&TaskQuery {
+            categories: vec![Category::Todo],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(open.rows[0].due_date.as_deref(), Some("2030-01-18"));
+}
+
+#[test]
+fn quick_add_every_sets_rule_and_first_date() {
+    let mut db = db();
+    let today = jiff::Zoned::now().date();
+    let t = db.quick_add("Water plants every! 3 days", today).unwrap();
+    assert_eq!(t.recurrence_rule.as_deref(), Some("AFTER:3D"));
+    let t = db.quick_add("Team report every friday", today).unwrap();
+    assert_eq!(t.recurrence_rule.as_deref(), Some("FREQ=WEEKLY;BYDAY=FR"));
+    let due: jiff::civil::Date = t.due_date.unwrap().parse().unwrap();
+    assert_eq!(due.weekday(), jiff::civil::Weekday::Friday);
+    assert!(due >= today);
+    assert!(
+        db.create_task(NewTask {
+            title: "x".into(),
+            recurrence_rule: Some("FREQ=NEVER".into()),
+            ..Default::default()
+        })
+        .is_err()
+    );
+}

@@ -25,6 +25,7 @@ pub enum TokenKind {
     Time,
     TimeRange,
     Estimate,
+    Recurrence,
 }
 
 /// A recognized span of the input (byte offsets), for live highlighting.
@@ -49,6 +50,8 @@ pub struct ParsedQuickAdd {
     /// Set when a range like `3-4pm` was typed (a meeting, from M4).
     pub end_time: Option<String>,
     pub estimate_minutes: Option<i64>,
+    /// From `every …` (fixed) or `every! …` (after completion).
+    pub recurrence_rule: Option<String>,
     pub tokens: Vec<Token>,
 }
 
@@ -325,6 +328,98 @@ fn priority(s: &str) -> Option<Priority> {
     })
 }
 
+/// `every day|weekday|week|month|year`, `every other week`, `every 2 weeks`,
+/// `every mon and thu`; `every! 3 days` repeats 3 days after completion.
+fn parse_every(ws: &[Word<'_>], i: usize) -> Option<(String, usize)> {
+    let w = |k: usize| {
+        ws.get(i + k)
+            .filter(|w| !w.quoted)
+            .map(|w| w.text.trim_end_matches(',').to_lowercase())
+    };
+    let head = w(0)?;
+    let after = match head.as_str() {
+        "every" => false,
+        "every!" => true,
+        _ => return None,
+    };
+    let unit = |s: &str| -> Option<(&'static str, char)> {
+        match s.trim_end_matches('s') {
+            "day" | "daily" => Some(("DAILY", 'D')),
+            "week" | "weekly" => Some(("WEEKLY", 'W')),
+            "month" | "monthly" => Some(("MONTHLY", 'M')),
+            "year" | "yearly" => Some(("YEARLY", 'Y')),
+            _ => None,
+        }
+    };
+    let first = w(1)?;
+    // every! N units / every! unit
+    if after {
+        let (n, u, used) = match first.parse::<i64>() {
+            Ok(n) => (n, unit(&w(2)?)?.1, 3),
+            Err(_) => (1, unit(&first)?.1, 2),
+        };
+        if u == 'Y' || !(1..=999).contains(&n) {
+            return None;
+        }
+        return Some((format!("AFTER:{n}{u}"), used));
+    }
+    if matches!(
+        first.as_str(),
+        "weekday" | "weekdays" | "workday" | "workdays"
+    ) {
+        return Some(("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR".into(), 2));
+    }
+    if first == "other" {
+        let (freq, _) = unit(&w(2)?)?;
+        return Some((format!("FREQ={freq};INTERVAL=2"), 3));
+    }
+    if let Ok(n) = first.parse::<u32>() {
+        let (freq, _) = unit(&w(2)?)?;
+        if !(1..=999).contains(&n) {
+            return None;
+        }
+        return Some((
+            if n == 1 {
+                format!("FREQ={freq}")
+            } else {
+                format!("FREQ={freq};INTERVAL={n}")
+            },
+            3,
+        ));
+    }
+    if let Some((freq, _)) = unit(&first) {
+        return Some((format!("FREQ={freq}"), 2));
+    }
+    // every mon, thu / every monday and friday
+    let mut days: Vec<&'static str> = Vec::new();
+    let mut used = 1;
+    while let Some(word) = w(used) {
+        if word == "and" && !days.is_empty() {
+            used += 1;
+            continue;
+        }
+        let Some(day) = weekday(&word) else { break };
+        let code = match day {
+            Weekday::Monday => "MO",
+            Weekday::Tuesday => "TU",
+            Weekday::Wednesday => "WE",
+            Weekday::Thursday => "TH",
+            Weekday::Friday => "FR",
+            Weekday::Saturday => "SA",
+            Weekday::Sunday => "SU",
+        };
+        if !days.contains(&code) {
+            days.push(code);
+        }
+        used += 1;
+    }
+    // A trailing "and" isn't part of the rule.
+    if w(used - 1).as_deref() == Some("and") {
+        used -= 1;
+    }
+    (!days.is_empty()).then(|| (format!("FREQ=WEEKLY;BYDAY={}", days.join(",")), used))
+}
+
 fn fmt_time(t: Time) -> String {
     format!("{:02}:{:02}", t.hour(), t.minute())
 }
@@ -379,6 +474,13 @@ pub fn parse(input: &str, today: Date) -> ParsedQuickAdd {
                 out.project_hint = Some(hint.trim().to_owned());
                 mark(&mut out, &mut used, TokenKind::Project, i, n);
             }
+        } else if out.recurrence_rule.is_none()
+            && let Some((rule, n)) = parse_every(&ws, i)
+        {
+            out.recurrence_rule = Some(rule);
+            mark(&mut out, &mut used, TokenKind::Recurrence, i, n);
+            i += n;
+            continue;
         } else if out.estimate_minutes.is_none()
             && let Some(m) = parse_estimate(text)
         {
@@ -550,6 +652,46 @@ mod tests {
         let r = p("move monday meeting to tuesday");
         assert_eq!(r.due_date.as_deref(), Some("2026-10-19"));
         assert_eq!(r.title, "move meeting to tuesday");
+    }
+
+    #[test]
+    fn recurrence_phrases() {
+        let rule = |s: &str| p(s).recurrence_rule;
+        assert_eq!(
+            rule("Standup notes every weekday").as_deref(),
+            Some("FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR")
+        );
+        assert_eq!(rule("Backup every day").as_deref(), Some("FREQ=DAILY"));
+        assert_eq!(
+            rule("Report every mon and thu").as_deref(),
+            Some("FREQ=WEEKLY;BYDAY=MO,TH")
+        );
+        assert_eq!(rule("Invoice every month").as_deref(), Some("FREQ=MONTHLY"));
+        assert_eq!(
+            rule("Sync every 2 weeks").as_deref(),
+            Some("FREQ=WEEKLY;INTERVAL=2")
+        );
+        assert_eq!(
+            rule("Review every other week").as_deref(),
+            Some("FREQ=WEEKLY;INTERVAL=2")
+        );
+        assert_eq!(
+            rule("Water plants every! 3 days").as_deref(),
+            Some("AFTER:3D")
+        );
+        assert_eq!(rule("Haircut every! month").as_deref(), Some("AFTER:1M"));
+        let r = p("Weekly report every friday 4pm #admin");
+        assert_eq!(
+            (r.title.as_str(), r.due_time.as_deref()),
+            ("Weekly report", Some("16:00"))
+        );
+        assert_eq!(r.recurrence_rule.as_deref(), Some("FREQ=WEEKLY;BYDAY=FR"));
+        assert_eq!(
+            p("Read every page").recurrence_rule,
+            None,
+            "plain words stay"
+        );
+        assert_eq!(p("Read every page").title, "Read every page");
     }
 
     #[test]

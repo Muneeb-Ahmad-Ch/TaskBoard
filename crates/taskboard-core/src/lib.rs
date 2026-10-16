@@ -11,6 +11,7 @@ pub mod planning;
 mod projects;
 pub mod query;
 pub mod quickadd;
+pub mod recur;
 pub mod rrule;
 pub mod slots;
 mod statuses;

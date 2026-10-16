@@ -10,4 +10,8 @@ project_id?: Id, parent_id?: Id,
 /**
  * Defaults to the project's default status ("To Do").
  */
-status_id?: Id, description_md?: string, priority?: Priority, start_date?: string, due_date?: string, due_time?: string, estimate_minutes?: number, tags?: Array<string>, progress?: number, };
+status_id?: Id, description_md?: string, priority?: Priority, start_date?: string, due_date?: string, due_time?: string, estimate_minutes?: number, tags?: Array<string>, progress?: number, 
+/**
+ * RRULE (fixed schedule) or `AFTER:<n><D|W|M>` (after completion).
+ */
+recurrence_rule?: string, };

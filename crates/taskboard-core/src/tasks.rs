@@ -12,12 +12,13 @@ use crate::model::{
     clean_time, int, opt_id, opt_int, opt_text, text,
 };
 use crate::order::key_between;
+use crate::recur::TaskRule;
 use crate::storage::Db;
 use crate::tx::{Table, Tx};
 
 const COLS: &str = "id, project_id, parent_id, status_id, title, description_md, priority,
                     start_date, due_date, due_time, estimate_minutes, sort_key, recurrence_rule,
-                    completed_at, archived_at, deleted_at, created_at, updated_at, progress";
+                    completed_at, archived_at, deleted_at, created_at, updated_at, progress, series_id";
 
 fn map(r: &Row<'_>) -> rusqlite::Result<Task> {
     Ok(Task {
@@ -40,6 +41,7 @@ fn map(r: &Row<'_>) -> rusqlite::Result<Task> {
         created_at: r.get(16)?,
         updated_at: r.get(17)?,
         progress: r.get(18)?,
+        series_id: r.get(19)?,
         tags: Vec::new(),
     })
 }
@@ -308,6 +310,84 @@ fn status_changes(tx: &Tx<'_>, task: &Task, status: Id) -> Result<Vec<(&'static 
     ])
 }
 
+/// Local calendar date for "today".
+fn local_today() -> jiff::civil::Date {
+    jiff::Zoned::now().date()
+}
+
+/// If `before` was an open repeating task that this transaction completed,
+/// creates its next instance (same action, so one undo reverts both).
+fn after_completion(tx: &mut Tx<'_>, before: &Task) -> Result<()> {
+    if before.completed_at.is_some() {
+        return Ok(());
+    }
+    let Some(rule_str) = &before.recurrence_rule else {
+        return Ok(());
+    };
+    let now = load(tx, before.id)?;
+    if now.completed_at.is_none() || now.deleted_at.is_some() {
+        return Ok(());
+    }
+    let rule = TaskRule::parse(rule_str)?;
+    let due = before
+        .due_date
+        .as_deref()
+        .and_then(|d| d.parse::<jiff::civil::Date>().ok());
+    let Some((next_due, next_rule)) = rule.next(due, local_today()) else {
+        return Ok(()); // series finished
+    };
+    let series = before.series_id.unwrap_or(before.id);
+    if before.series_id.is_none() {
+        tx.update(
+            Table::Task,
+            &[before.id.into()],
+            &[("series_id", series.into())],
+        )?;
+    }
+    // Reopen + complete again must not create a second copy.
+    let exists: bool = tx.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM task WHERE series_id = ?1 AND id <> ?2
+           AND deleted_at IS NULL AND completed_at IS NULL)",
+        params![series, before.id],
+        |r| r.get(0),
+    )?;
+    if exists {
+        return Ok(());
+    }
+    let start = match (before.start_date.as_deref(), due) {
+        (Some(s), Some(d)) => s
+            .parse::<jiff::civil::Date>()
+            .ok()
+            .and_then(|s| s.checked_add(next_due - d).ok())
+            .map(|s| s.to_string()),
+        _ => None,
+    };
+    let status = default_status(tx, before.project_id)?;
+    let id = Id::new();
+    tx.insert(
+        Table::Task,
+        &[
+            ("id", id.into()),
+            ("project_id", before.project_id.into()),
+            ("parent_id", opt_id(before.parent_id)),
+            ("status_id", status.into()),
+            ("title", text(before.title.clone())),
+            ("description_md", text(before.description_md.clone())),
+            ("priority", int(before.priority.as_i64())),
+            ("start_date", opt_text(start)),
+            ("due_date", text(next_due.to_string())),
+            ("due_time", opt_text(before.due_time.clone())),
+            ("estimate_minutes", opt_int(before.estimate_minutes)),
+            ("sort_key", text(end_key(tx, before.project_id, status)?)),
+            ("series_id", series.into()),
+            ("recurrence_rule", text(next_rule.to_rule_string())),
+            ("created_at", int(tx.now())),
+        ],
+    )?;
+    set_tags(tx, id, &before.tags)?;
+    Ok(())
+}
+
 fn label_title(title: &str) -> String {
     let short: String = title.chars().take(40).collect();
     if short.len() < title.len() {
@@ -342,7 +422,18 @@ impl Db {
     pub fn create_task(&mut self, input: NewTask) -> Result<Task> {
         let title = clean_name(&input.title, "task title")?;
         let start = input.start_date.as_deref().map(clean_date).transpose()?;
-        let due = input.due_date.as_deref().map(clean_date).transpose()?;
+        let rule = input
+            .recurrence_rule
+            .as_deref()
+            .map(TaskRule::parse)
+            .transpose()?;
+        let mut due = input.due_date.as_deref().map(clean_date).transpose()?;
+        // A fixed schedule needs an anchor: default to its first date from today.
+        if due.is_none()
+            && let Some(r) = &rule
+        {
+            due = r.first_on_or_after(local_today()).map(|d| d.to_string());
+        }
         let due_time = input.due_time.as_deref().map(clean_time).transpose()?;
         if due_time.is_some() && due.is_none() {
             return Err(invalid("a due time needs a due date"));
@@ -400,6 +491,10 @@ impl Db {
                     ("due_time", opt_text(due_time.clone())),
                     ("estimate_minutes", opt_int(input.estimate_minutes)),
                     ("progress", opt_int(clean_progress(input.progress)?)),
+                    (
+                        "recurrence_rule",
+                        opt_text(rule.as_ref().map(TaskRule::to_rule_string)),
+                    ),
                     ("sort_key", text(sort_key)),
                     (
                         "completed_at",
@@ -437,10 +532,22 @@ impl Db {
                     Some(d) => d.as_deref().map(clean_date).transpose()?,
                     None => current.start_date.clone(),
                 };
-                let due = match &patch.due_date {
+                let mut due = match &patch.due_date {
                     Some(d) => d.as_deref().map(clean_date).transpose()?,
                     None => current.due_date.clone(),
                 };
+                if let Some(rule) = &patch.recurrence_rule {
+                    let rule = rule.as_deref().map(TaskRule::parse).transpose()?;
+                    if due.is_none()
+                        && let Some(r) = &rule
+                    {
+                        due = r.first_on_or_after(local_today()).map(|d| d.to_string());
+                    }
+                    changes.push((
+                        "recurrence_rule",
+                        opt_text(rule.as_ref().map(TaskRule::to_rule_string)),
+                    ));
+                }
                 let due_time = match &patch.due_time {
                     Some(t) => t.as_deref().map(clean_time).transpose()?,
                     // Clearing the due date clears its time too.
@@ -514,7 +621,7 @@ impl Db {
                 if let Some(tags) = &patch.tags {
                     set_tags(tx, id, tags)?;
                 }
-                Ok(())
+                after_completion(tx, &current)
             },
         )?;
         self.task(id)
@@ -533,7 +640,8 @@ impl Db {
                     default_status(tx, current.project_id)?
                 };
                 let changes = status_changes(tx, &current, status)?;
-                tx.update(Table::Task, &[id.into()], &changes)
+                tx.update(Table::Task, &[id.into()], &changes)?;
+                after_completion(tx, &current)
             },
         )?;
         self.task(id)
@@ -570,7 +678,8 @@ impl Db {
                     _ => key_between(above.as_deref(), below.as_deref())?,
                 };
                 changes.push(("sort_key", text(key)));
-                tx.update(Table::Task, &[id.into()], &changes)
+                tx.update(Table::Task, &[id.into()], &changes)?;
+                after_completion(tx, &current)
             },
         )?;
         self.task(id)
@@ -738,6 +847,7 @@ impl Db {
             due_time: parsed.due_time,
             estimate_minutes: parsed.estimate_minutes,
             tags: parsed.tags,
+            recurrence_rule: parsed.recurrence_rule,
             ..Default::default()
         })
     }

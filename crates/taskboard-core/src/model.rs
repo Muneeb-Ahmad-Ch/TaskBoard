@@ -183,6 +183,8 @@ pub struct Task {
     pub updated_at: i64,
     /// Manual progress 0–100 for tasks without subtasks (see `TaskRow::progress`).
     pub progress: Option<i64>,
+    /// Shared by every instance of a repeating task.
+    pub series_id: Option<Id>,
     pub tags: Vec<String>,
 }
 
@@ -310,6 +312,10 @@ pub struct NewTask {
     #[serde(default)]
     #[ts(optional)]
     pub progress: Option<i64>,
+    /// RRULE (fixed schedule) or `AFTER:<n><D|W|M>` (after completion).
+    #[serde(default)]
+    #[ts(optional)]
+    pub recurrence_rule: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, TS)]
@@ -346,6 +352,10 @@ pub struct TaskPatch {
     #[serde(default, deserialize_with = "nullable")]
     #[ts(optional, type = "number | null")]
     pub progress: Option<Option<i64>>,
+    /// Repeat rule; `null` stops repeating.
+    #[serde(default, deserialize_with = "nullable")]
+    #[ts(optional, type = "string | null")]
+    pub recurrence_rule: Option<Option<String>>,
 }
 
 /// `field: null` → `Some(None)` (clear); missing → `None` (leave unchanged).

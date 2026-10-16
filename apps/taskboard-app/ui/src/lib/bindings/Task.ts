@@ -6,4 +6,8 @@ export type Task = { id: Id, project_id: Id, parent_id: Id | null, status_id: Id
 /**
  * Manual progress 0–100 for tasks without subtasks (see `TaskRow::progress`).
  */
-progress: number | null, tags: Array<string>, };
+progress: number | null, 
+/**
+ * Shared by every instance of a repeating task.
+ */
+series_id: Id | null, tags: Array<string>, };
