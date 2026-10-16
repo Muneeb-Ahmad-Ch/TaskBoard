@@ -1,0 +1,15 @@
+/target/
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+!fixtures/**/*.db
+.vite/
+coverage/
+playwright-report/
+test-results/
+apps/taskboard-app/src-tauri/gen/
+.env
+.DS_Store
+.playwright-mcp/

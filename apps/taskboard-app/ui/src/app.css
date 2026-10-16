@@ -1,0 +1,123 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens (SPEC §6.2). Components use only these semantic tokens.
+ * Colors are OKLCH; `light-dark()` picks the value for the active color-scheme,
+ * so switching theme is a single attribute change with no re-render.
+ * --accent-h is the user's accent hue (0–360).
+ */
+:root {
+  color-scheme: light dark;
+  --accent-h: 262;
+
+  --bg: light-dark(oklch(0.962 0.005 var(--accent-h)), oklch(0.165 0.006 var(--accent-h)));
+  --surface-1: light-dark(oklch(0.994 0.002 var(--accent-h)), oklch(0.205 0.007 var(--accent-h)));
+  --surface-2: light-dark(oklch(1 0 0), oklch(0.238 0.008 var(--accent-h)));
+  --surface-3: light-dark(oklch(0.948 0.007 var(--accent-h)), oklch(0.28 0.009 var(--accent-h)));
+  --hover: light-dark(oklch(0.2 0.02 var(--accent-h) / 0.055), oklch(0.98 0.01 var(--accent-h) / 0.06));
+  --border: light-dark(oklch(0.905 0.006 var(--accent-h)), oklch(0.3 0.008 var(--accent-h)));
+  --border-strong: light-dark(oklch(0.84 0.008 var(--accent-h)), oklch(0.38 0.01 var(--accent-h)));
+
+  --text: light-dark(oklch(0.22 0.012 var(--accent-h)), oklch(0.955 0.004 var(--accent-h)));
+  --text-muted: light-dark(oklch(0.47 0.014 var(--accent-h)), oklch(0.74 0.01 var(--accent-h)));
+  --text-subtle: light-dark(oklch(0.6 0.012 var(--accent-h)), oklch(0.6 0.01 var(--accent-h)));
+
+  --accent: light-dark(oklch(0.54 0.19 var(--accent-h)), oklch(0.74 0.14 var(--accent-h)));
+  --accent-hover: light-dark(oklch(0.49 0.19 var(--accent-h)), oklch(0.8 0.13 var(--accent-h)));
+  --on-accent: light-dark(oklch(0.99 0 0), oklch(0.17 0.02 var(--accent-h)));
+  --accent-soft: light-dark(oklch(0.94 0.04 var(--accent-h)), oklch(0.32 0.06 var(--accent-h)));
+  --accent-soft-text: light-dark(oklch(0.42 0.16 var(--accent-h)), oklch(0.86 0.09 var(--accent-h)));
+  --focus-ring: light-dark(oklch(0.54 0.19 var(--accent-h) / 0.55), oklch(0.74 0.14 var(--accent-h) / 0.6));
+
+  --danger: light-dark(oklch(0.55 0.2 25), oklch(0.7 0.17 25));
+  --warn: light-dark(oklch(0.66 0.15 65), oklch(0.8 0.14 75));
+  --success: light-dark(oklch(0.56 0.14 150), oklch(0.74 0.14 150));
+
+  --priority-urgent: var(--danger);
+  --priority-high: light-dark(oklch(0.64 0.17 45), oklch(0.75 0.15 50));
+  --priority-med: var(--warn);
+  --priority-low: light-dark(oklch(0.58 0.12 240), oklch(0.74 0.11 240));
+
+  --sidebar-bg: var(--bg);
+  --shadow-panel: light-dark(0 0 0 1px oklch(0.2 0.02 var(--accent-h) / 0.06), 0 0 0 1px oklch(1 0 0 / 0.05));
+  --radius: 8px;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+}
+
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
+
+/* Windows 11 Mica shows through the window chrome; content panels stay opaque. */
+:root[data-mica='true'] { --sidebar-bg: transparent; }
+:root[data-mica='true'] body { background: transparent; }
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-hover: var(--hover);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-subtle: var(--text-subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-text: var(--accent-soft-text);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-success: var(--success);
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'tnum' 0;
+  user-select: none;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}

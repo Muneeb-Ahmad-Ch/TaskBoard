@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (from rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/taskboard-app/ui/pnpm-lock.yaml
+
+      - name: Install UI dependencies
+        working-directory: apps/taskboard-app/ui
+        run: pnpm install --frozen-lockfile
+
+      # The Tauri crate embeds ui/dist at compile time, so build the UI first.
+      - name: UI type-check and build
+        working-directory: apps/taskboard-app/ui
+        run: |
+          pnpm check
+          pnpm build
+
+      - name: rustfmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: tests
+        run: cargo test --workspace
+
+      - name: Generated TS bindings are up to date
+        run: git diff --exit-code -- apps/taskboard-app/ui/src/lib/bindings
