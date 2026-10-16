@@ -28,6 +28,8 @@ pub(crate) struct AppState {
     pub(crate) db: Arc<Mutex<Db>>,
     /// Launched by autostart with `--minimized`: stay in the tray.
     start_hidden: bool,
+    /// Process start, for the cold-start measurement (SPEC §7).
+    started: std::time::Instant,
     /// True when the Mica backdrop applied; the UI uses solid surfaces otherwise.
     mica: bool,
 }
@@ -598,7 +600,11 @@ fn has_mica(state: State<'_, AppState>) -> bool {
 /// The window starts hidden so the user never sees an unthemed frame;
 /// the UI calls this after its first paint.
 #[tauri::command]
-fn show_main_window(window: WebviewWindow) -> CmdResult<()> {
+fn show_main_window(window: WebviewWindow, state: State<'_, AppState>) -> CmdResult<()> {
+    tracing::info!(
+        ms = state.started.elapsed().as_millis() as u64,
+        "window shown (cold start to first paint)"
+    );
     window.show().map_err(internal)?;
     window.set_focus().map_err(internal)
 }
@@ -625,12 +631,51 @@ fn quick_add_shortcut() -> Shortcut {
     Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Space)
 }
 
+/// Local diagnostics: stdout plus daily log files (7 kept) in
+/// `%APPDATA%/app.taskboard.desktop/logs`. Nothing leaves the machine.
+fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    use tracing_subscriber::prelude::*;
+    let filter =
+        || tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+    let dir = std::env::var_os("APPDATA").map(|d| {
+        std::path::PathBuf::from(d)
+            .join("app.taskboard.desktop")
+            .join("logs")
+    });
+    let file = dir.and_then(|dir| {
+        tracing_appender::rolling::Builder::new()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("taskboard")
+            .filename_suffix("log")
+            .max_log_files(7)
+            .build(dir)
+            .ok()
+    });
+    let (file_layer, guard) = match file {
+        Some(appender) => {
+            let (writer, guard) = tracing_appender::non_blocking(appender);
+            (
+                Some(
+                    tracing_subscriber::fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(writer)
+                        .with_filter(filter()),
+                ),
+                Some(guard),
+            )
+        }
+        None => (None, None),
+    };
+    let _ = tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_filter(filter()))
+        .with(file_layer)
+        .try_init();
+    guard
+}
+
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .init();
+    let started = std::time::Instant::now();
+    let _log_guard = init_logging();
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -669,14 +714,18 @@ pub fn run() {
                 })
                 .build(),
         )
-        .setup(|app| {
+        .setup(move |app| {
             // TASKBOARD_DB points the app at another file (development, demos).
             let path = match std::env::var_os("TASKBOARD_DB") {
                 Some(path) => std::path::PathBuf::from(path),
                 None => app.path().app_data_dir()?.join("taskboard.db"),
             };
-            let db = Db::open(&path)?;
-            tracing::info!(path = %path.display(), "database opened");
+            let db = Db::open_deferred_check(&path)?;
+            tracing::info!(
+                path = %path.display(),
+                ms = started.elapsed().as_millis() as u64,
+                "database opened"
+            );
             let mica = app
                 .get_webview_window("main")
                 .is_some_and(|window| apply_backdrop(&window));
@@ -686,17 +735,20 @@ pub fn run() {
             app.manage(AppState {
                 db: Arc::clone(&db),
                 start_hidden,
+                started,
                 mica,
             });
             if let Err(err) = desktop::build_tray(app.handle()) {
                 tracing::warn!(%err, "tray icon unavailable");
             }
             desktop::sync_autostart(app.handle(), settings.autostart);
+            desktop::spawn_integrity_check(app.handle().clone(), path);
             desktop::spawn_reminders(app.handle().clone(), db);
             // Another app may own the shortcut; Taskboard still works without it.
             if let Err(err) = app.global_shortcut().register(quick_add_shortcut()) {
                 tracing::warn!(%err, "quick-add shortcut unavailable");
             }
+            tracing::info!(ms = started.elapsed().as_millis() as u64, "setup done");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -244,16 +244,21 @@ impl Db {
             );
             args.push(text(tag));
         }
+        // Written over coalesce(due_date, '~') to match the migration 3 indexes,
+        // so date-range counts are index-only. '~' sorts after every date, so
+        // `<= date` already excludes undated tasks and `< '~'` excludes them
+        // from open-ended ranges.
         if let Some(from) = &q.due_from {
-            filters.push("t.due_date >= ?".into());
+            filters
+                .push("coalesce(t.due_date, '~') >= ? AND coalesce(t.due_date, '~') < '~'".into());
             args.push(text(clean_date(from)?));
         }
         if let Some(to) = &q.due_to {
-            filters.push("t.due_date <= ?".into());
+            filters.push("coalesce(t.due_date, '~') <= ?".into());
             args.push(text(clean_date(to)?));
         }
         if q.undated {
-            filters.push("t.due_date IS NULL".into());
+            filters.push("coalesce(t.due_date, '~') = '~'".into());
         }
         if let Some(parent) = q.parent_id {
             filters.push("t.parent_id = ?".into());

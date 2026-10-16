@@ -149,6 +149,11 @@ export function onEvent(name: 'data-changed' | 'quick-add', handler: () => void)
   return listen(name, handler)
 }
 
+export function onIntegrityFailed(handler: (message: string) => void): Promise<UnlistenFn> {
+  if (!inTauri) return Promise.resolve(() => {})
+  return listen<string>('integrity-failed', (e) => handler(e.payload))
+}
+
 export function onReminders(handler: (list: Notification[]) => void): Promise<UnlistenFn> {
   if (!inTauri) return Promise.resolve(() => {})
   return listen<Notification[]>('reminders', (e) => handler(e.payload))

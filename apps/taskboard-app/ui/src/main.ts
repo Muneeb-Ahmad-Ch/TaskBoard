@@ -6,6 +6,7 @@ import { initStore } from './lib/store.svelte'
 import { applyTheme } from './lib/theme.svelte'
 
 async function boot() {
+  performance.mark('boot')
   applyTheme()
   if (inTauri) {
     const mica = await ipc.hasMica().catch(() => false)
@@ -14,16 +15,31 @@ async function boot() {
 
   // Load sidebar data before the first paint so the window opens complete.
   await initStore()
+  performance.mark('store-ready')
 
   const target = document.getElementById('app')
   if (!target) throw new Error('missing #app root')
   mount(App, { target })
+  performance.mark('mounted')
+}
 
+async function reveal() {
   // Show the hidden window only after the first themed frame has painted.
   // Started by Windows login with --minimized: stay in the tray.
   if (inTauri && !(await ipc.startHidden().catch(() => false))) {
-    requestAnimationFrame(() => requestAnimationFrame(() => void ipc.showMainWindow()))
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        performance.mark('reveal')
+        void ipc.showMainWindow()
+      }),
+    )
   }
 }
 
-void boot()
+// Reveal the window even if boot fails, so an error is never an invisible app.
+boot()
+  .catch((err) => {
+    console.error(err)
+    document.body.textContent = `Taskboard failed to start: ${err instanceof Error ? err.message : String(err)}`
+  })
+  .finally(() => void reveal())

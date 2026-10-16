@@ -188,18 +188,27 @@ impl Db {
     /// All live projects with client names and task counts, ordered for the
     /// sidebar: Inbox, then by client order, then project order.
     pub fn projects(&self, include_archived: bool) -> Result<Vec<ProjectSummary>> {
+        // One grouped pass over tasks, not three correlated scans per project
+        // (325 ms → see ARCHITECTURE.md on a 50k-task database).
         let sql = format!(
-            "SELECT {COLS}, c.name,
-                (SELECT count(*) FROM task t JOIN status s ON s.id = t.status_id
-                  WHERE t.project_id = p.id AND t.deleted_at IS NULL AND t.parent_id IS NULL
-                    AND s.category IN ('todo','active')),
-                (SELECT count(*) FROM task t JOIN status s ON s.id = t.status_id
-                  WHERE t.project_id = p.id AND t.deleted_at IS NULL AND t.parent_id IS NULL
-                    AND s.category <> 'cancelled'),
-                (SELECT count(*) FROM task t JOIN status s ON s.id = t.status_id
-                  WHERE t.project_id = p.id AND t.deleted_at IS NULL AND t.parent_id IS NULL
-                    AND s.category = 'done')
-             FROM project p LEFT JOIN client c ON c.id = p.client_id
+            "WITH per_status AS (
+                SELECT t.project_id AS project_id, t.status_id AS status_id, count(*) AS n
+                FROM task t
+                WHERE t.deleted_at IS NULL AND t.parent_id IS NULL
+                GROUP BY t.project_id, t.status_id
+             ), counts AS (
+                SELECT ps.project_id AS project_id,
+                       sum(CASE WHEN s.category IN ('todo','active') THEN ps.n ELSE 0 END) AS open,
+                       sum(CASE WHEN s.category <> 'cancelled' THEN ps.n ELSE 0 END) AS total,
+                       sum(CASE WHEN s.category = 'done' THEN ps.n ELSE 0 END) AS done
+                FROM per_status ps JOIN status s ON s.id = ps.status_id
+                GROUP BY ps.project_id
+             )
+             SELECT {COLS}, c.name,
+                coalesce(k.open, 0), coalesce(k.total, 0), coalesce(k.done, 0)
+             FROM project p
+             LEFT JOIN client c ON c.id = p.client_id
+             LEFT JOIN counts k ON k.project_id = p.id
              WHERE p.deleted_at IS NULL {}
              ORDER BY p.is_inbox DESC, c.sort_key IS NULL, c.sort_key, p.sort_key",
             if include_archived {

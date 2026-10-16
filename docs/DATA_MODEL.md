@@ -1,6 +1,6 @@
 # Taskboard — Data Model
 
-Status: implemented in M1 as migrations 2 and 3 (`crates/taskboard-core/src/migrations/`); those files are the exact schema. Differences from the sketch below: `task.rid INTEGER PRIMARY KEY` (FTS rowid), `op_log.kind` + `key_json` (append-only log), a `history` table for the undo stack, `created_at` on status/tag/saved_view, and sort-order partial indexes (migration 3).
+Status: implemented in M1 as migrations 2 and 3 (`crates/taskboard-core/src/migrations/`); those files are the exact schema. Differences from the sketch below: `task.rid INTEGER PRIMARY KEY` (FTS rowid), `op_log.kind` + `key_json` (append-only log), a `history` table for the undo stack, `created_at` on status/tag/saved_view, and sort-order partial indexes (migration 3). Later migrations: 4 adds `task.progress`, 5 adds `notification_log` (which reminders have fired; local, not synced), 6 adds `task_top_counts` and `op_log_hlc` indexes for the startup queries.
 Conventions: all tables `STRICT`; ids are UUIDv7 stored as 16-byte `BLOB`;
 instants are UTC milliseconds (`INTEGER`); plan dates are civil `TEXT`
 (`YYYY-MM-DD`, no time zone); every syncable row has `hlc` + `device_id`.

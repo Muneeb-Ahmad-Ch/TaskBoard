@@ -94,6 +94,33 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   blocks, ± buffer), then suggestions at window edges (`core/src/slots.rs`,
   property-tested interval arithmetic).
 
+### As built in M5–M8
+
+- **Repeating tasks**: an RRULE subset, or `AFTER:<n><D|W|M>` for "after
+  completion". Completing a task creates the next instance inside the same
+  transaction, so one undo removes both and nothing is duplicated.
+- **Reminders** (migration 5): a `reminders` thread checks every 20 s for due
+  meeting/task reminders and the daily digest, records each in
+  `notification_log` (fires once), and shows a Windows toast plus an in-app
+  banner with Join (http/https links only, via the opener plugin).
+- **Dashboard**: streaks, a 14-day trend, per-client summary and project
+  burndown, all computed in core (`dashboard.rs`).
+- **Settings** live as JSON in the `setting` table and are not undoable.
+- **Backups**: `VACUUM INTO` + integrity check of the copy; daily automatic
+  backup (first check 2 min after launch, then hourly) with 7 daily / 4 weekly
+  / 12 monthly retention; restore swaps the file and restarts.
+- **Import/export**: JSON (merge by key, deferred foreign-key checks), CSV
+  (Taskboard, Todoist, Trello, Notion), ICS (with EXDATE and UID dedup).
+- **Desktop**: tray icon, close-to-tray, autostart with `--minimized`,
+  single instance, rolling daily log files (7 kept) in
+  `%APPDATA%\app.taskboard.desktop\logs`.
+- **Startup path** (M8): the database opens without `quick_check`; a separate
+  `integrity` thread runs it 30 s later on its own read-only connection, so it
+  never holds the lock the UI needs, and emits `integrity-failed` to a banner.
+  Migration 6 adds the indexes the pre-paint queries need (per-project counts,
+  `max(hlc)`). `main.ts` reveals the window even if boot fails, with the error
+  in the page, so a failure is never an invisible app.
+
 ## 4. Storage
 
 - SQLite bundled via `rusqlite` (`bundled` feature) — currently **3.53.2** with
@@ -102,8 +129,9 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   `foreign_keys=ON`, `busy_timeout=5s`, `temp_store=MEMORY`.
 - Startup: refuse a newer schema → **back up** (`VACUUM INTO
   backups/pre-migrate-v{n}-{ms}.db`) if an existing database needs migrating →
-  migrate (forward-only, `user_version`) → `PRAGMA quick_check` →
-  `PRAGMA optimize=0x10002` (refreshes planner stats when stale).
+  migrate (forward-only, `user_version`) → `PRAGMA optimize=0x10002`
+  (refreshes planner stats when stale). The app runs `PRAGMA quick_check`
+  in the background; the CLI and tests run it before returning.
 - `task.rid` is an explicit `INTEGER PRIMARY KEY` so the FTS rowid mapping
   survives `VACUUM`.
 - List queries (`core/src/query.rs`) filter on `task` only, use
@@ -136,8 +164,11 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
 
 - CSP: `default-src 'self'`, no remote scripts, no `eval`; IPC only.
 - Capabilities (`src-tauri/capabilities/default.json`): `core:default`,
-  `core:window:allow-set-theme`, `window-state:default`. Each new plugin adds
-  only the permissions it needs.
+  `core:window:allow-set-theme`, `window-state:default`, dialog open/save,
+  and opener URLs restricted to `http(s)://`. Each new plugin adds only the
+  permissions it needs.
+- No network requests of its own; no telemetry. Logs contain timings and
+  errors, never task content.
 - Markdown rendering (M2+) happens in core and is sanitized before the UI sees it.
 
 ## 7. Pinned versions (2026-10-16)
@@ -199,10 +230,12 @@ cargo run -p taskboard-cli -- info
 ```
 
 The Tauri CLI is run from `ui/` with `TAURI_APP_PATH=../src-tauri` (set by the
-`tauri` script; `.npmrc` enables pnpm's shell emulator so this works in cmd,
-PowerShell and Git Bash).
+`tauri` script; `shellEmulator: true` in `pnpm-workspace.yaml` makes this work
+in cmd, PowerShell and Git Bash).
 
-## 11. Measured performance (M1, 2026-10-16)
+## 11. Measured performance (2026-10-16)
+
+### Core queries (M1)
 
 Seeded with `taskboard seed --tasks 50000` (12 clients, 38 projects, subtasks,
 tags, ~1/3 done). Release build, this dev machine, warm cache, timings include
@@ -219,6 +252,25 @@ the count and the page query.
 Before migration 3 and the query rewrite, the same list took ~230 ms.
 Seeding is one transaction per task (≈ 5 min for 50k); bulk import will batch.
 
+### Desktop app (M8, 2026-10-16)
+
+Release build (`pnpm app:build`), this dev machine, Windows 11, five launches
+each, warm file cache. "First paint" is the `window shown` log line: process
+start to the first themed frame with sidebar data loaded.
+
+| Measure | Budget | Small database | 50k-task database (92 MB) |
+|---|---|---|---|
+| Cold start to first paint | < 400 ms | 357–371 ms | 358–386 ms |
+| First launch after a rebuild (exe not cached) | — | ≈ 790 ms | — |
+| Idle memory, all 7 processes, private working set (Task Manager) | < 150 MB | 112 MB | 125 MB |
+| Installer size | < 25 MB | NSIS 4.3 MB, MSI 7.3 MB | |
+
+Of the ~360 ms, about 215 ms is Tauri and WebView2 starting before setup runs.
+Before the M8 fixes the 50k database took ~965 ms: the background integrity
+check held the database lock for ~240 ms, and the sidebar queries scanned
+every task (`projects` 95 → 3 ms, `sidebar_counts` 79 → 3 ms, `max(hlc)`
+26 ms → 24 µs).
+
 ## 12. Decisions log
 
 | Date | Decision |
@@ -232,3 +284,7 @@ Seeding is one transaction per task (≈ 5 min for 50k); bulk import will batch.
 | 2026-10-16 | `op_log.key_json` instead of `entity_id`, to support composite keys (`task_tag`, `working_hours`) |
 | 2026-10-16 | New tasks go to the last `todo` status ("To Do"), not "Backlog" |
 | 2026-10-16 | Deleting a client is refused while it has projects (no silent mass delete); deleting a project soft-deletes its tasks (one undo) |
+| 2026-10-16 | Tray-resident by default, autostart minimized, hours only (no rates) (user choices) |
+| 2026-10-16 | Meeting work time is derived from events, not copied into `time_entry` |
+| 2026-10-16 | Integrity check moved off the startup path to a delayed read-only connection |
+| 2026-10-16 | Installers unsigned and no updater until the owner provides a signing identity and updater key (see RELEASING.md) |

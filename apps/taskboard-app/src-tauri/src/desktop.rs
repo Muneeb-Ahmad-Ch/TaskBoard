@@ -1,6 +1,7 @@
 //! Windows desktop integration: tray icon, close-to-tray, autostart and the
 //! reminder scheduler (SPEC §5 Notifications, §14 decisions).
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -82,11 +83,31 @@ pub fn sync_autostart(app: &AppHandle, enabled: bool) {
 
 /// Polls for due reminders every 20 seconds; shows each as a Windows toast and
 /// forwards it to the window (for the in-app banner with a Join button).
+/// Startup integrity check, off the critical path (SPEC §5): delayed, and on
+/// its own read-only connection so it never holds the lock the UI needs. On
+/// damage the UI offers to restore the latest backup.
+pub fn spawn_integrity_check(app: AppHandle, path: PathBuf) {
+    let spawned = std::thread::Builder::new()
+        .name("integrity".into())
+        .spawn(move || {
+            std::thread::sleep(Duration::from_secs(30));
+            if let Err(err) = Db::check_integrity_file(&path) {
+                tracing::error!(%err, "database integrity check failed");
+                let _ = app.emit("integrity-failed", err.to_string());
+            }
+        });
+    if let Err(err) = spawned {
+        tracing::warn!(%err, "integrity check not started");
+    }
+}
+
 pub fn spawn_reminders(app: AppHandle, db: Arc<Mutex<Db>>) {
     std::thread::Builder::new()
         .name("reminders".into())
         .spawn(move || {
-            let mut last_backup_check = 0i64;
+            // First backup check two minutes after launch, so it never competes
+            // with startup for the database lock.
+            let mut last_backup_check = taskboard_core::clock::now_ms() - 3_600_000 + 120_000;
             loop {
                 let now = taskboard_core::clock::now_ms();
                 // Automatic daily backup (checked hourly; cheap when already done).

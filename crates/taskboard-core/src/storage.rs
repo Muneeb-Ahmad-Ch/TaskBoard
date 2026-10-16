@@ -25,6 +25,7 @@ const MIGRATIONS: &[M<'static>] = &[
     M::up(include_str!("migrations/0003_query_indexes.sql")),
     M::up(include_str!("migrations/0004_task_progress.sql")),
     M::up(include_str!("migrations/0005_notifications.sql")),
+    M::up(include_str!("migrations/0006_startup_indexes.sql")),
 ];
 
 /// Schema version this build writes (`PRAGMA user_version`).
@@ -78,15 +79,42 @@ impl Db {
             std::fs::create_dir_all(dir)?;
         }
         let conn = Connection::open(path)?;
-        Self::init(conn, Some(path))
+        Self::init(conn, Some(path), true)
+    }
+
+    /// Like [`Db::open`] but skips the startup `quick_check`, for callers that
+    /// run [`Db::check_integrity`] in the background (the app does, so a large
+    /// database doesn't delay the first paint).
+    pub fn open_deferred_check(path: &Path) -> Result<Self> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let conn = Connection::open(path)?;
+        Self::init(conn, Some(path), false)
+    }
+
+    /// `PRAGMA quick_check`; errors with [`Error::Integrity`] on damage.
+    pub fn check_integrity(&self) -> Result<()> {
+        quick_check(&self.conn)
+    }
+
+    /// `PRAGMA quick_check` on a separate read-only connection, so a check of
+    /// a large database never holds up the connection serving the UI.
+    pub fn check_integrity_file(path: &Path) -> Result<()> {
+        let conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(BUSY_TIMEOUT)?;
+        quick_check(&conn)
     }
 
     /// In-memory database for tests and benchmarks.
     pub fn open_in_memory() -> Result<Self> {
-        Self::init(Connection::open_in_memory()?, None)
+        Self::init(Connection::open_in_memory()?, None, true)
     }
 
-    fn init(mut conn: Connection, path: Option<&Path>) -> Result<Self> {
+    fn init(mut conn: Connection, path: Option<&Path>, check: bool) -> Result<Self> {
         conn.busy_timeout(BUSY_TIMEOUT)?;
         // journal_mode returns a row, so it can't go in execute_batch.
         let _mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
@@ -100,7 +128,9 @@ impl Db {
             backup_before_migration(&conn, path, version)?;
         }
         Migrations::from_slice(MIGRATIONS).to_latest(&mut conn)?;
-        quick_check(&conn)?;
+        if check {
+            quick_check(&conn)?;
+        }
         // Refresh planner statistics when stale or missing (cheap, bounded).
         conn.execute_batch("PRAGMA optimize = 0x10002;")?;
 

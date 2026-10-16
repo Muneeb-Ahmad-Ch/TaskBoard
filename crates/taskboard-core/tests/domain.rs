@@ -775,6 +775,61 @@ fn sidebar_counts_and_quick_add_preview() {
 }
 
 #[test]
+fn date_filters_handle_undated_tasks() {
+    let mut db = db();
+    let today = jiff::civil::date(2026, 10, 15);
+    db.quick_add("past 2026-10-01", today).unwrap();
+    db.quick_add("future 2026-12-01", today).unwrap();
+    db.quick_add("undated", today).unwrap();
+    let count = |db: &Db, q: TaskQuery| db.list_tasks(&q).unwrap().total;
+    let from = |d: &str| TaskQuery {
+        due_from: Some(d.into()),
+        ..Default::default()
+    };
+    // Open-ended "from" must not pick up undated tasks.
+    assert_eq!(count(&db, from("2026-10-15")), 1);
+    assert_eq!(count(&db, from("2000-01-01")), 2);
+    let to = TaskQuery {
+        due_to: Some("2099-01-01".into()),
+        ..Default::default()
+    };
+    assert_eq!(count(&db, to), 2);
+    let undated = TaskQuery {
+        undated: true,
+        ..Default::default()
+    };
+    let page = db.list_tasks(&undated).unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.rows[0].title, "undated");
+}
+
+#[test]
+fn project_counts_skip_subtasks_and_deleted_tasks() {
+    let mut db = db();
+    let web = project(&mut db, "Website", None);
+    let a = task(&mut db, "a", Some(web.id));
+    let b = task(&mut db, "b", Some(web.id));
+    let gone = task(&mut db, "gone", Some(web.id));
+    db.create_task(NewTask {
+        title: "sub".into(),
+        project_id: Some(web.id),
+        parent_id: Some(a.id),
+        ..Default::default()
+    })
+    .unwrap();
+    db.set_task_done(b.id, true).unwrap();
+    db.delete_task(gone.id).unwrap();
+    project(&mut db, "Empty", None);
+
+    let projects = db.projects(false).unwrap();
+    let find = |name: &str| projects.iter().find(|p| p.project.name == name).unwrap();
+    let w = find("Website");
+    assert_eq!((w.open_tasks, w.total_tasks, w.done_tasks), (1, 2, 1));
+    let e = find("Empty");
+    assert_eq!((e.open_tasks, e.total_tasks, e.done_tasks), (0, 0, 0));
+}
+
+#[test]
 fn summary_counts_done_and_estimates_over_the_whole_query() {
     let mut db = db();
     let today = jiff::civil::date(2026, 10, 15);

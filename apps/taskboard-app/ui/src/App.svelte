@@ -123,6 +123,13 @@
   <Sidebar />
 
   <main class="panel flex min-w-0 flex-1 flex-col bg-surface-1">
+    {#if app.integrityError}
+      <div class="flex items-center gap-3 border-b border-danger bg-[color-mix(in_oklch,var(--danger)_12%,transparent)] px-6 py-2 text-[13px]" role="alert">
+        <span class="flex-1"><strong>Taskboard found a problem in its database file.</strong> Your latest backups are safe; restoring one is recommended.</span>
+        <button class="btn !h-7 text-xs" onclick={() => (app.settingsOpen = true)}>Open backups</button>
+        <button class="btn !h-7 text-xs" onclick={() => (app.integrityError = null)}>Dismiss</button>
+      </div>
+    {/if}
     <header class="flex h-14 shrink-0 items-center gap-3 px-6">
       <div class="flex min-w-0 flex-1 items-baseline gap-2.5">
         <h1 class="font-display truncate text-lg font-semibold tracking-tight">{app.view === 'dashboard' ? 'Dashboard' : scopeTitle()}</h1>

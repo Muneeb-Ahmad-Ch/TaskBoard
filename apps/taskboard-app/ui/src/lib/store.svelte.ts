@@ -10,7 +10,7 @@ import type { Status } from './bindings/Status'
 import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
 import { isoDate, todayIso } from './format'
-import { errorMessage, inTauri, ipc, onEvent } from './ipc'
+import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
 import { toast } from './toast.svelte'
 
 export type Scope =
@@ -45,6 +45,8 @@ export const app = $state({
   paletteOpen: false,
   /** Client / project whose settings dialog is open. */
   settingsOpen: false,
+  /** Set when the startup integrity check found damage. */
+  integrityError: null as string | null,
   clientDialog: null as Id | null,
   projectDialog: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
@@ -212,5 +214,8 @@ export async function initStore() {
   })
   await onEvent('quick-add', () => {
     app.quickAddFocus++
+  })
+  await onIntegrityFailed((message) => {
+    app.integrityError = message
   })
 }

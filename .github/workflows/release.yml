@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain (from rust-toolchain.toml)
+        shell: bash
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: apps/taskboard-app/ui/pnpm-lock.yaml
+
+      - name: Install UI dependencies
+        working-directory: apps/taskboard-app/ui
+        run: pnpm install --frozen-lockfile
+
+      # Builds NSIS + MSI and attaches them to a draft release for review.
+      # Signing / updater secrets are optional; see docs/RELEASING.md.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/taskboard-app/ui
+          tauriScript: pnpm tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: Taskboard ${{ github.ref_name }}
+          releaseBody: See the commit history for changes. Installers are not code-signed yet.
+          releaseDraft: true
+          prerelease: false
