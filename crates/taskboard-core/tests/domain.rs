@@ -1,0 +1,670 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
+
+use proptest::prelude::*;
+use rusqlite::Connection;
+use taskboard_core::*;
+
+fn db() -> Db {
+    Db::open_in_memory().unwrap()
+}
+
+fn client(db: &mut Db, name: &str) -> Client {
+    db.create_client(NewClient {
+        name: name.into(),
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+fn project(db: &mut Db, name: &str, client: Option<Id>) -> Project {
+    db.create_project(NewProject {
+        name: name.into(),
+        client_id: client,
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+fn task(db: &mut Db, title: &str, project: Option<Id>) -> Task {
+    db.create_task(NewTask {
+        title: title.into(),
+        project_id: project,
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+fn titles(page: &TaskPage) -> Vec<&str> {
+    page.rows.iter().map(|r| r.title.as_str()).collect()
+}
+
+// ---------- structure ----------
+
+#[test]
+fn inbox_is_created_once_with_default_workflow() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+    let first = Db::open(&path).unwrap().inbox_id().unwrap();
+    let db = Db::open(&path).unwrap();
+    assert_eq!(db.inbox_id().unwrap(), first);
+    let names: Vec<String> = db
+        .statuses(first)
+        .unwrap()
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(names, ["Backlog", "To Do", "In Progress", "Review", "Done"]);
+    // Seeding is not an undoable user action.
+    assert_eq!(db.history_state().unwrap().undo, None);
+}
+
+#[test]
+fn tasks_default_to_inbox_and_to_do_and_append_in_order() {
+    let mut db = db();
+    let a = task(&mut db, "first", None);
+    let b = task(&mut db, "second", None);
+    assert_eq!(a.project_id, db.inbox_id().unwrap());
+    let status = db.statuses(a.project_id).unwrap();
+    assert_eq!(
+        status.iter().find(|s| s.id == a.status_id).unwrap().name,
+        "To Do"
+    );
+    assert!(a.sort_key < b.sort_key);
+}
+
+#[test]
+fn client_project_hierarchy_and_sidebar_order() {
+    let mut db = db();
+    let acme = client(&mut db, "Acme");
+    let north = client(&mut db, "Northwind");
+    project(&mut db, "Site", Some(acme.id));
+    project(&mut db, "App", Some(north.id));
+    project(&mut db, "Portfolio", None);
+    let names: Vec<String> = db
+        .projects(false)
+        .unwrap()
+        .into_iter()
+        .map(|p| p.project.name)
+        .collect();
+    assert_eq!(names, ["Inbox", "Site", "App", "Portfolio"]);
+    assert_ne!(acme.color, north.color, "palette assigns different colors");
+}
+
+#[test]
+fn archiving_a_client_archives_and_restores_exactly_its_projects() {
+    let mut db = db();
+    let acme = client(&mut db, "Acme");
+    let live = project(&mut db, "Live", Some(acme.id));
+    let old = project(&mut db, "Old", Some(acme.id));
+    db.set_project_archived(old.id, true).unwrap();
+
+    db.set_client_archived(acme.id, true).unwrap();
+    assert!(db.project(live.id).unwrap().archived_at.is_some());
+
+    db.set_client_archived(acme.id, false).unwrap();
+    assert!(db.project(live.id).unwrap().archived_at.is_none());
+    assert!(
+        db.project(old.id).unwrap().archived_at.is_some(),
+        "stays archived"
+    );
+}
+
+#[test]
+fn client_with_projects_cannot_be_deleted() {
+    let mut db = db();
+    let acme = client(&mut db, "Acme");
+    let p = project(&mut db, "Site", Some(acme.id));
+    assert_eq!(db.delete_client(acme.id).unwrap_err().code(), "conflict");
+    db.delete_project(p.id).unwrap();
+    db.delete_client(acme.id).unwrap();
+    assert_eq!(db.client(acme.id).unwrap_err().code(), "not_found");
+}
+
+#[test]
+fn inbox_is_protected() {
+    let mut db = db();
+    let inbox = db.inbox_id().unwrap();
+    assert!(db.delete_project(inbox).is_err());
+    assert!(db.set_project_archived(inbox, true).is_err());
+    let acme = client(&mut db, "Acme");
+    let patch = ProjectPatch {
+        client_id: Some(Some(acme.id)),
+        ..Default::default()
+    };
+    assert!(db.update_project(inbox, patch).is_err());
+}
+
+// ---------- tasks ----------
+
+#[test]
+fn completing_sets_and_reopening_clears_completed_at() {
+    let mut db = db();
+    let t = task(&mut db, "ship", None);
+    let done = db.set_task_done(t.id, true).unwrap();
+    assert!(done.completed_at.is_some());
+    let statuses = db.statuses(t.project_id).unwrap();
+    assert_eq!(
+        statuses
+            .iter()
+            .find(|s| s.id == done.status_id)
+            .unwrap()
+            .name,
+        "Done"
+    );
+    let open = db.set_task_done(t.id, false).unwrap();
+    assert!(open.completed_at.is_none());
+    assert_eq!(open.status_id, t.status_id);
+}
+
+#[test]
+fn moving_to_a_done_column_completes_the_task() {
+    let mut db = db();
+    let t = task(&mut db, "ship", None);
+    let done = db
+        .statuses(t.project_id)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.name == "Done")
+        .unwrap();
+    let moved = db.move_task(
+        t.id,
+        MoveTask {
+            status_id: Some(done.id),
+            ..Default::default()
+        },
+    );
+    assert!(moved.unwrap().completed_at.is_some());
+}
+
+#[test]
+fn date_rules() {
+    let mut db = db();
+    let bad = NewTask {
+        title: "x".into(),
+        due_time: Some("10:00".into()),
+        ..Default::default()
+    };
+    assert_eq!(db.create_task(bad).unwrap_err().code(), "invalid_input");
+    let t = db
+        .create_task(NewTask {
+            title: "x".into(),
+            due_date: Some("2026-10-20".into()),
+            due_time: Some("10:00".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    // Clearing the due date clears the time.
+    let t = db
+        .update_task(
+            t.id,
+            TaskPatch {
+                due_date: Some(None),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!((t.due_date, t.due_time), (None, None));
+    let backwards = TaskPatch {
+        start_date: Some(Some("2026-10-21".into())),
+        due_date: Some(Some("2026-10-20".into())),
+        ..Default::default()
+    };
+    assert!(db.update_task(t.id, backwards).is_err());
+}
+
+#[test]
+fn subtasks_reject_cycles_and_cross_project_parents() {
+    let mut db = db();
+    let a = task(&mut db, "a", None);
+    let b = db
+        .create_task(NewTask {
+            title: "b".into(),
+            parent_id: Some(a.id),
+            ..Default::default()
+        })
+        .unwrap();
+    let c = db
+        .create_task(NewTask {
+            title: "c".into(),
+            parent_id: Some(b.id),
+            ..Default::default()
+        })
+        .unwrap();
+    let cycle = TaskPatch {
+        parent_id: Some(Some(c.id)),
+        ..Default::default()
+    };
+    assert_eq!(
+        db.update_task(a.id, cycle).unwrap_err().code(),
+        "invalid_input"
+    );
+
+    let other = project(&mut db, "Other", None);
+    let elsewhere = task(&mut db, "elsewhere", Some(other.id));
+    let cross = TaskPatch {
+        parent_id: Some(Some(elsewhere.id)),
+        ..Default::default()
+    };
+    assert!(db.update_task(a.id, cross).is_err());
+}
+
+#[test]
+fn delete_and_restore_cascade_to_subtasks() {
+    let mut db = db();
+    let parent = task(&mut db, "parent", None);
+    let child = db
+        .create_task(NewTask {
+            title: "child".into(),
+            parent_id: Some(parent.id),
+            ..Default::default()
+        })
+        .unwrap();
+    db.delete_task(parent.id).unwrap();
+    assert!(db.task(child.id).is_err());
+    db.restore_task(parent.id).unwrap();
+    assert!(db.task(child.id).is_ok());
+}
+
+#[test]
+fn moving_to_another_project_maps_status_and_carries_subtasks() {
+    let mut db = db();
+    let src = project(&mut db, "Src", None);
+    let dst = project(&mut db, "Dst", None);
+    let parent = task(&mut db, "parent", Some(src.id));
+    let child = db
+        .create_task(NewTask {
+            title: "child".into(),
+            parent_id: Some(parent.id),
+            ..Default::default()
+        })
+        .unwrap();
+    db.set_task_done(child.id, true).unwrap();
+
+    db.update_task(
+        parent.id,
+        TaskPatch {
+            project_id: Some(dst.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let dst_statuses = db.statuses(dst.id).unwrap();
+    let parent = db.task(parent.id).unwrap();
+    let child = db.task(child.id).unwrap();
+    assert_eq!((parent.project_id, child.project_id), (dst.id, dst.id));
+    assert!(
+        dst_statuses
+            .iter()
+            .any(|s| s.id == parent.status_id && s.name == "To Do")
+    );
+    assert!(
+        dst_statuses
+            .iter()
+            .any(|s| s.id == child.status_id && s.name == "Done")
+    );
+    assert_eq!(child.parent_id, Some(parent.id));
+}
+
+#[test]
+fn reorder_between_neighbours() {
+    let mut db = db();
+    let a = task(&mut db, "a", None);
+    let b = task(&mut db, "b", None);
+    let c = task(&mut db, "c", None);
+    db.move_task(
+        c.id,
+        MoveTask {
+            above: Some(a.id),
+            below: Some(b.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let page = db.list_tasks(&TaskQuery::default()).unwrap();
+    assert_eq!(titles(&page), ["a", "c", "b"]);
+}
+
+#[test]
+fn tags_are_normalized_and_searchable() {
+    let mut db = db();
+    let t = db
+        .create_task(NewTask {
+            title: "Write report".into(),
+            tags: vec!["#Work".into(), "work".into(), " urgent ".into()],
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(t.tags, ["urgent", "Work"]);
+    let by_tag = db.list_tasks(&TaskQuery {
+        tag: Some("#work".into()),
+        ..Default::default()
+    });
+    assert_eq!(by_tag.unwrap().total, 1);
+    let by_text = db.list_tasks(&TaskQuery {
+        search: Some("urg".into()),
+        ..Default::default()
+    });
+    assert_eq!(by_text.unwrap().total, 1, "tags are in the search index");
+}
+
+#[test]
+fn search_finds_prefixes_and_ignores_deleted() {
+    let mut db = db();
+    let t = task(&mut db, "Quarterly report for Acme", None);
+    task(&mut db, "Unrelated", None);
+    let q = TaskQuery {
+        search: Some("quart acm".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        titles(&db.list_tasks(&q).unwrap()),
+        ["Quarterly report for Acme"]
+    );
+    db.delete_task(t.id).unwrap();
+    assert_eq!(db.list_tasks(&q).unwrap().total, 0);
+    db.undo().unwrap();
+    assert_eq!(
+        db.list_tasks(&q).unwrap().total,
+        1,
+        "undo restores the index entry"
+    );
+    db.update_task(
+        t.id,
+        TaskPatch {
+            title: Some("Annual summary".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        db.list_tasks(&q).unwrap().total,
+        0,
+        "renames update the index"
+    );
+}
+
+#[test]
+fn queries_filter_by_client_personal_category_and_paginate() {
+    let mut db = db();
+    let acme = client(&mut db, "Acme");
+    let site = project(&mut db, "Site", Some(acme.id));
+    let mine = project(&mut db, "Mine", None);
+    for i in 0..5 {
+        task(&mut db, &format!("acme {i}"), Some(site.id));
+    }
+    let done = task(&mut db, "personal", Some(mine.id));
+    db.set_task_done(done.id, true).unwrap();
+    task(&mut db, "inbox", None);
+
+    let q = |q: TaskQuery| db.list_tasks(&q).unwrap();
+    assert_eq!(
+        q(TaskQuery {
+            client_id: Some(acme.id),
+            ..Default::default()
+        })
+        .total,
+        5
+    );
+    assert_eq!(
+        titles(&q(TaskQuery {
+            personal: true,
+            ..Default::default()
+        })),
+        ["personal"]
+    );
+    let open = q(TaskQuery {
+        categories: vec![Category::Todo, Category::Active],
+        ..Default::default()
+    });
+    assert_eq!(open.total, 6);
+    let page = q(TaskQuery {
+        limit: 2,
+        offset: 2,
+        ..Default::default()
+    });
+    assert_eq!((page.rows.len(), page.total), (2, 7));
+    let row = &q(TaskQuery {
+        client_id: Some(acme.id),
+        limit: 1,
+        ..Default::default()
+    })
+    .rows[0];
+    assert_eq!(row.client_name.as_deref(), Some("Acme"));
+    assert_eq!(row.project_name, "Site");
+}
+
+#[test]
+fn sort_by_due_puts_undated_last() {
+    let mut db = db();
+    for (title, due) in [
+        ("none", None),
+        ("late", Some("2026-12-01")),
+        ("soon", Some("2026-10-20")),
+    ] {
+        db.create_task(NewTask {
+            title: title.into(),
+            due_date: due.map(Into::into),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    let page = db
+        .list_tasks(&TaskQuery {
+            sort: TaskSort::Due,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(titles(&page), ["soon", "late", "none"]);
+}
+
+// ---------- undo / redo ----------
+
+#[test]
+fn undo_redo_create_edit_delete() {
+    let mut db = db();
+    let t = db
+        .create_task(NewTask {
+            title: "a".into(),
+            tags: vec!["x".into()],
+            ..Default::default()
+        })
+        .unwrap();
+    db.update_task(
+        t.id,
+        TaskPatch {
+            title: Some("b".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        db.history_state().unwrap().undo.as_deref(),
+        Some("Edit task “a”")
+    );
+
+    db.undo().unwrap();
+    assert_eq!(db.task(t.id).unwrap().title, "a");
+    db.undo().unwrap();
+    assert!(db.task(t.id).is_err());
+    assert_eq!(db.undo().unwrap_err().code(), "nothing_to_do");
+
+    db.redo().unwrap();
+    let back = db.task(t.id).unwrap();
+    assert_eq!(
+        (back.title.as_str(), back.tags.clone()),
+        ("a", vec!["x".to_owned()])
+    );
+    db.redo().unwrap();
+    assert_eq!(db.task(t.id).unwrap().title, "b");
+}
+
+#[test]
+fn a_new_action_clears_redo() {
+    let mut db = db();
+    task(&mut db, "a", None);
+    db.undo().unwrap();
+    assert!(db.history_state().unwrap().redo.is_some());
+    task(&mut db, "b", None);
+    assert!(db.history_state().unwrap().redo.is_none());
+}
+
+#[test]
+fn deleting_a_project_is_one_undo() {
+    let mut db = db();
+    let p = project(&mut db, "Site", None);
+    let t = task(&mut db, "t", Some(p.id));
+    db.delete_project(p.id).unwrap();
+    assert!(db.task(t.id).is_err());
+    db.undo().unwrap();
+    assert!(db.project(p.id).is_ok() && db.task(t.id).is_ok());
+}
+
+#[test]
+fn no_op_edits_are_not_recorded() {
+    let mut db = db();
+    let t = task(&mut db, "same", None);
+    db.update_task(
+        t.id,
+        TaskPatch {
+            title: Some("same".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        db.history_state().unwrap().undo.as_deref(),
+        Some("Create task “same”")
+    );
+}
+
+// ---------- migrations ----------
+
+#[test]
+fn upgrading_an_existing_database_backs_it_up_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("t.db");
+    {
+        // A schema-v1 database, as created by the M0 build.
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE app_meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL) STRICT;
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+    }
+    let db = Db::open(&path).unwrap();
+    assert_eq!(db.info().unwrap().schema_version, 2);
+    let backups: Vec<_> = std::fs::read_dir(dir.path().join("backups"))
+        .unwrap()
+        .collect();
+    assert_eq!(backups.len(), 1);
+}
+
+// ---------- property: undo everything returns to the start ----------
+
+#[derive(Debug, Clone)]
+enum Op {
+    Create(u8),
+    Rename(usize, u8),
+    Done(usize, bool),
+    Delete(usize),
+    Tag(usize, u8),
+    Nest(usize, usize),
+}
+
+fn op() -> impl Strategy<Value = Op> {
+    prop_oneof![
+        any::<u8>().prop_map(Op::Create),
+        (any::<usize>(), any::<u8>()).prop_map(|(i, n)| Op::Rename(i, n)),
+        (any::<usize>(), any::<bool>()).prop_map(|(i, d)| Op::Done(i, d)),
+        any::<usize>().prop_map(Op::Delete),
+        (any::<usize>(), any::<u8>()).prop_map(|(i, n)| Op::Tag(i, n)),
+        (any::<usize>(), any::<usize>()).prop_map(|(a, b)| Op::Nest(a, b)),
+    ]
+}
+
+/// Every user-visible table, minus sync stamps (which legitimately change).
+fn dump(db: &Db) -> String {
+    let page = db
+        .list_tasks(&TaskQuery {
+            include_archived: true,
+            limit: 1000,
+            ..Default::default()
+        })
+        .unwrap();
+    let mut out: Vec<String> = page
+        .rows
+        .iter()
+        .map(|r| {
+            format!(
+                "{} {} {:?} {} {:?} {:?} {}",
+                r.id,
+                r.title,
+                r.category,
+                r.sort_key,
+                r.parent_id,
+                r.tags,
+                r.completed_at.is_some()
+            )
+        })
+        .collect();
+    out.sort();
+    out.join("\n")
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn undo_all_then_redo_all_round_trips(ops in prop::collection::vec(op(), 1..25)) {
+        let mut db = db();
+        let start = dump(&db);
+        let mut ids: Vec<Id> = Vec::new();
+        for op in ops {
+            let pick = |i: usize| (!ids.is_empty()).then(|| ids[i % ids.len()]);
+            // Invalid operations (e.g. on deleted tasks, cycles) may fail; that's fine.
+            let _ = match op {
+                Op::Create(n) => db
+                    .create_task(NewTask { title: format!("t{n}"), ..Default::default() })
+                    .map(|t| ids.push(t.id)),
+                Op::Rename(i, n) => match pick(i) {
+                    Some(id) => db
+                        .update_task(id, TaskPatch { title: Some(format!("r{n}")), ..Default::default() })
+                        .map(drop),
+                    None => Ok(()),
+                },
+                Op::Done(i, d) => match pick(i) {
+                    Some(id) => db.set_task_done(id, d).map(drop),
+                    None => Ok(()),
+                },
+                Op::Delete(i) => match pick(i) {
+                    Some(id) => db.delete_task(id),
+                    None => Ok(()),
+                },
+                Op::Tag(i, n) => match pick(i) {
+                    Some(id) => db
+                        .update_task(id, TaskPatch { tags: Some(vec![format!("g{}", n % 4)]), ..Default::default() })
+                        .map(drop),
+                    None => Ok(()),
+                },
+                Op::Nest(a, b) => match (pick(a), pick(b)) {
+                    (Some(a), Some(b)) => db
+                        .update_task(a, TaskPatch { parent_id: Some(Some(b)), ..Default::default() })
+                        .map(drop),
+                    _ => Ok(()),
+                },
+            };
+        }
+        let end = dump(&db);
+
+        while db.undo().is_ok() {}
+        prop_assert_eq!(dump(&db), start);
+        while db.redo().is_ok() {}
+        prop_assert_eq!(dump(&db), end);
+    }
+}
