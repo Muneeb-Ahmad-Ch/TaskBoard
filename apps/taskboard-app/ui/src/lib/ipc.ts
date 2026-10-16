@@ -2,6 +2,20 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type { Client } from './bindings/Client'
+import type { ClientHours } from './bindings/ClientHours'
+import type { DayOverride } from './bindings/DayOverride'
+import type { DayPlan } from './bindings/DayPlan'
+import type { Event } from './bindings/Event'
+import type { EventPatch } from './bindings/EventPatch'
+import type { FindSlots } from './bindings/FindSlots'
+import type { LoggedTime } from './bindings/LoggedTime'
+import type { NewEvent } from './bindings/NewEvent'
+import type { NewTimeEntry } from './bindings/NewTimeEntry'
+import type { Occurrence } from './bindings/Occurrence'
+import type { OccurrencePatch } from './bindings/OccurrencePatch'
+import type { SlotResult } from './bindings/SlotResult'
+import type { TimeEntryPatch } from './bindings/TimeEntryPatch'
+import type { WorkingDay } from './bindings/WorkingDay'
 import type { ClientPatch } from './bindings/ClientPatch'
 import type { DbInfo } from './bindings/DbInfo'
 import type { ErrorInfo } from './bindings/ErrorInfo'
@@ -72,6 +86,31 @@ export const ipc = {
   updateStatus: (id: Id, patch: StatusPatch) => invoke<Status>('update_status', { id, patch }),
   moveStatus: (id: Id, after: Id | null) => invoke<Status>('move_status', { id, after }),
   deleteStatus: (id: Id, moveTo: Id) => invoke<void>('delete_status', { id, moveTo }),
+
+  // calendar
+  occurrences: (from: number, to: number) => invoke<Occurrence[]>('occurrences', { from, to }),
+  getEvent: (id: Id) => invoke<Event>('get_event', { id }),
+  createEvent: (input: NewEvent) => invoke<Event>('create_event', { input }),
+  updateEvent: (id: Id, patch: EventPatch) => invoke<Event>('update_event', { id, patch }),
+  deleteEvent: (id: Id) => invoke<void>('delete_event', { id }),
+  editOccurrence: (id: Id, originalStart: number, patch: OccurrencePatch) =>
+    invoke<void>('edit_occurrence', { id, originalStart, patch }),
+  splitSeries: (id: Id, originalStart: number, patch: EventPatch) =>
+    invoke<Event>('split_series', { id, originalStart, patch }),
+  workingHours: () => invoke<WorkingDay[]>('working_hours'),
+  setWorkingHours: (week: WorkingDay[]) => invoke<WorkingDay[]>('set_working_hours', { week }),
+  dayOverrides: (from: string, to: string) => invoke<DayOverride[]>('day_overrides', { from, to }),
+  setDayOverride: (day: DayOverride) => invoke<void>('set_day_override', { day }),
+  clearDayOverride: (date: string) => invoke<void>('clear_day_override', { date }),
+  runningTimer: () => invoke<LoggedTime | null>('running_timer'),
+  logTime: (input: NewTimeEntry) => invoke<Id>('log_time', { input }),
+  stopTimer: () => invoke<boolean>('stop_timer'),
+  updateTimeEntry: (id: Id, patch: TimeEntryPatch) => invoke<void>('update_time_entry', { id, patch }),
+  deleteTimeEntry: (id: Id) => invoke<void>('delete_time_entry', { id }),
+  loggedTime: (from: number, to: number) => invoke<LoggedTime[]>('logged_time', { from, to }),
+  dayPlans: (from: string, to: string) => invoke<DayPlan[]>('day_plans', { from, to }),
+  hoursByClient: (from: number, to: number) => invoke<ClientHours[]>('hours_by_client', { from, to }),
+  findSlots: (query: FindSlots) => invoke<SlotResult>('find_slots', { query }),
 
   // window
   hasMica: () => invoke<boolean>('has_mica'),

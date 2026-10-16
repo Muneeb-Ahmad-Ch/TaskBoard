@@ -7,9 +7,11 @@
 use std::sync::{Arc, Mutex};
 
 use taskboard_core::{
-    Client, ClientPatch, Db, DbInfo, ErrorInfo, HistoryState, Id, MoveTask, NewClient, NewProject,
-    NewStatus, NewTask, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SidebarCounts,
-    Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary,
+    Client, ClientHours, ClientPatch, DayOverride, DayPlan, Db, DbInfo, ErrorInfo, Event,
+    EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask, NewClient, NewEvent, NewProject,
+    NewStatus, NewTask, NewTimeEntry, Occurrence, OccurrencePatch, Project, ProjectPatch,
+    ProjectSummary, QuickAddPreview, SidebarCounts, SlotResult, Status, StatusPatch, Task,
+    TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -352,6 +354,177 @@ async fn delete_status(
     write(app, state, move |db| db.delete_status(id, move_to)).await
 }
 
+// ---------- calendar: meetings & blocks ----------
+
+#[tauri::command]
+async fn occurrences(state: State<'_, AppState>, from: i64, to: i64) -> CmdResult<Vec<Occurrence>> {
+    read(state, move |db| db.occurrences(from, to)).await
+}
+
+#[tauri::command]
+async fn get_event(state: State<'_, AppState>, id: Id) -> CmdResult<Event> {
+    read(state, move |db| db.event(id)).await
+}
+
+#[tauri::command]
+async fn create_event(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: NewEvent,
+) -> CmdResult<Event> {
+    write(app, state, move |db| db.create_event(input)).await
+}
+
+#[tauri::command]
+async fn update_event(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    patch: EventPatch,
+) -> CmdResult<Event> {
+    write(app, state, move |db| db.update_event(id, patch)).await
+}
+
+#[tauri::command]
+async fn delete_event(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<()> {
+    write(app, state, move |db| db.delete_event(id)).await
+}
+
+#[tauri::command]
+async fn edit_occurrence(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    original_start: i64,
+    patch: OccurrencePatch,
+) -> CmdResult<()> {
+    write(app, state, move |db| {
+        db.edit_occurrence(id, original_start, patch)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn split_series(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    original_start: i64,
+    patch: EventPatch,
+) -> CmdResult<Event> {
+    write(app, state, move |db| {
+        db.split_series(id, original_start, patch)
+    })
+    .await
+}
+
+// ---------- working hours ----------
+
+#[tauri::command]
+async fn working_hours(state: State<'_, AppState>) -> CmdResult<Vec<WorkingDay>> {
+    read(state, Db::working_hours).await
+}
+
+#[tauri::command]
+async fn set_working_hours(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    week: Vec<WorkingDay>,
+) -> CmdResult<Vec<WorkingDay>> {
+    write(app, state, move |db| db.set_working_hours(week)).await
+}
+
+#[tauri::command]
+async fn day_overrides(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> CmdResult<Vec<DayOverride>> {
+    read(state, move |db| db.day_overrides(&from, &to)).await
+}
+
+#[tauri::command]
+async fn set_day_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    day: DayOverride,
+) -> CmdResult<()> {
+    write(app, state, move |db| db.set_day_override(day)).await
+}
+
+#[tauri::command]
+async fn clear_day_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    date: String,
+) -> CmdResult<()> {
+    write(app, state, move |db| db.clear_day_override(&date)).await
+}
+
+// ---------- time tracking & planning ----------
+
+#[tauri::command]
+async fn running_timer(state: State<'_, AppState>) -> CmdResult<Option<LoggedTime>> {
+    read(state, Db::running_timer).await
+}
+
+#[tauri::command]
+async fn log_time(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: NewTimeEntry,
+) -> CmdResult<Id> {
+    write(app, state, move |db| db.log_time(input)).await
+}
+
+#[tauri::command]
+async fn stop_timer(app: AppHandle, state: State<'_, AppState>) -> CmdResult<bool> {
+    write(app, state, Db::stop_timer).await
+}
+
+#[tauri::command]
+async fn update_time_entry(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    patch: TimeEntryPatch,
+) -> CmdResult<()> {
+    write(app, state, move |db| db.update_time_entry(id, patch)).await
+}
+
+#[tauri::command]
+async fn delete_time_entry(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<()> {
+    write(app, state, move |db| db.delete_time_entry(id)).await
+}
+
+#[tauri::command]
+async fn logged_time(state: State<'_, AppState>, from: i64, to: i64) -> CmdResult<Vec<LoggedTime>> {
+    read(state, move |db| db.logged_time(from, to)).await
+}
+
+#[tauri::command]
+async fn day_plans(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+) -> CmdResult<Vec<DayPlan>> {
+    read(state, move |db| db.day_plans(&from, &to)).await
+}
+
+#[tauri::command]
+async fn hours_by_client(
+    state: State<'_, AppState>,
+    from: i64,
+    to: i64,
+) -> CmdResult<Vec<ClientHours>> {
+    read(state, move |db| db.hours_by_client(from, to)).await
+}
+
+#[tauri::command]
+async fn find_slots(state: State<'_, AppState>, query: FindSlots) -> CmdResult<SlotResult> {
+    read(state, move |db| db.find_slots(&query)).await
+}
+
 // ---------- window ----------
 
 #[tauri::command]
@@ -477,6 +650,27 @@ pub fn run() {
             update_status,
             move_status,
             delete_status,
+            occurrences,
+            get_event,
+            create_event,
+            update_event,
+            delete_event,
+            edit_occurrence,
+            split_series,
+            working_hours,
+            set_working_hours,
+            day_overrides,
+            set_day_override,
+            clear_day_override,
+            running_timer,
+            log_time,
+            stop_timer,
+            update_time_entry,
+            delete_time_entry,
+            logged_time,
+            day_plans,
+            hours_by_client,
+            find_slots,
             has_mica,
             show_main_window,
         ])

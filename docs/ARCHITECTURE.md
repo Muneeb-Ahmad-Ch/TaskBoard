@@ -74,6 +74,26 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   whole UI ships in ~47 KB gzipped JS. Fixed-height row virtualization is
   ~30 lines, so TanStack Virtual was not needed.
 
+### As built in M3–M4
+
+- **Board columns** are statuses. One project → its own columns (editable);
+  several projects → columns merged by status name. Order keys are generated
+  after the last key of the whole merged column, so keys stay distinct across
+  projects; a drop between equal keys falls back to "just after the upper".
+- **Progress** (migration 4): manual 0–100 on tasks without subtasks; list
+  rows return effective progress (100 when closed, else the average of direct
+  subtasks, else manual).
+- **Calendar**: events are anchored instants + IANA zone; recurring series are
+  expanded per requested range (`core/src/rrule.rs`, DST-safe in the event's
+  zone) with `event_exception` rows for moved/cancelled occurrences; "this and
+  following" splits the series. Meetings that count as work time are *derived*
+  into logged time rather than copied into `time_entry`, so editing or
+  cancelling a meeting can never leave stale hours behind.
+- **Slot finder**: working hours (weekly template + day overrides) ∩ client
+  hours (converted from the client's zone) − busy (meetings, non-flexible
+  blocks, ± buffer), then suggestions at window edges (`core/src/slots.rs`,
+  property-tested interval arithmetic).
+
 ## 4. Storage
 
 - SQLite bundled via `rusqlite` (`bundled` feature) — currently **3.53.2** with

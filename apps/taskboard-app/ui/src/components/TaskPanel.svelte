@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CheckCircle2, Circle, Copy, Plus, Trash2, X } from '@lucide/svelte'
+  import { CheckCircle2, Circle, Copy, Plus, Timer, Trash2, X } from '@lucide/svelte'
   import type { Priority } from '../lib/bindings/Priority'
   import type { Status } from '../lib/bindings/Status'
   import type { Task } from '../lib/bindings/Task'
@@ -143,6 +143,12 @@
         {#if done}<CheckCircle2 size={14} /> Done{:else}<Circle size={14} /> Mark done{/if}
       </button>
       <div class="flex-1"></div>
+      <button
+        class="icon"
+        title="Start a timer for this task (stops any running timer)"
+        aria-label="Start timer"
+        onclick={() => task && void act(() => ipc.logTime({ task_id: task!.id, started_at: Date.now() }), 'Timer started — see Calendar')}
+      ><Timer size={15} /></button>
       <button class="icon" title="Duplicate" aria-label="Duplicate task" onclick={() => task && void act(() => ipc.duplicateTask(task!.id), 'Task duplicated')}><Copy size={15} /></button>
       <button class="icon hover:text-danger" title="Delete" aria-label="Delete task" onclick={() => task && void act(() => ipc.deleteTask(task!.id), 'Task deleted').then(close)}><Trash2 size={15} /></button>
       <button class="icon" title="Close (Esc)" aria-label="Close details" onclick={close}><X size={16} /></button>

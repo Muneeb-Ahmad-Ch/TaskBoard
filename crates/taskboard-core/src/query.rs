@@ -52,6 +52,9 @@ pub struct TaskQuery {
     pub due_from: Option<String>,
     #[ts(optional)]
     pub due_to: Option<String>,
+    /// Only tasks without a due date (the calendar's "unscheduled" list).
+    #[ts(as = "Option<bool>", optional)]
+    pub undated: bool,
     /// Only direct subtasks of this task.
     #[ts(optional)]
     pub parent_id: Option<Id>,
@@ -247,6 +250,9 @@ impl Db {
         if let Some(to) = &q.due_to {
             filters.push("t.due_date <= ?".into());
             args.push(text(clean_date(to)?));
+        }
+        if q.undated {
+            filters.push("t.due_date IS NULL".into());
         }
         if let Some(parent) = q.parent_id {
             filters.push("t.parent_id = ?".into());

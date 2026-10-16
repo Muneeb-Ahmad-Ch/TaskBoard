@@ -1,6 +1,7 @@
 <script lang="ts">
   import { CalendarRange, Eye, EyeOff, KanbanSquare, Rows3, Search, X } from '@lucide/svelte'
   import Board from './components/Board.svelte'
+  import Calendar from './components/Calendar.svelte'
   import CommandPalette from './components/CommandPalette.svelte'
   import QuickAdd from './components/QuickAdd.svelte'
   import Sidebar from './components/Sidebar.svelte'
@@ -142,6 +143,8 @@
           <TaskTable />
         {:else if app.view === 'board'}
           <Board />
+        {:else if app.view === 'calendar'}
+          <Calendar />
         {:else}
           <div class="grid flex-1 place-items-center rounded-[var(--radius)] border border-dashed border-border-strong">
             <div class="text-center">

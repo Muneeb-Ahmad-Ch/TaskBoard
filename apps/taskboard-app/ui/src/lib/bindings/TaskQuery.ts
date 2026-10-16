@@ -22,6 +22,10 @@ categories?: Array<Category>, search?: string, tag?: string,
  */
 status_name?: string, due_from?: string, due_to?: string, 
 /**
+ * Only tasks without a due date (the calendar's "unscheduled" list).
+ */
+undated?: boolean, 
+/**
  * Only direct subtasks of this task.
  */
 parent_id?: Id, 
