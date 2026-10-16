@@ -8,8 +8,8 @@ use ts_rs::TS;
 use crate::error::{Error, Result, invalid};
 use crate::id::Id;
 use crate::model::{
-    Category, NewTask, Priority, Task, TaskPatch, clean_date, clean_name, clean_time, int, opt_id,
-    opt_int, opt_text, text,
+    Category, NewTask, Priority, Task, TaskPatch, clean_date, clean_name, clean_progress,
+    clean_time, int, opt_id, opt_int, opt_text, text,
 };
 use crate::order::key_between;
 use crate::storage::Db;
@@ -17,7 +17,7 @@ use crate::tx::{Table, Tx};
 
 const COLS: &str = "id, project_id, parent_id, status_id, title, description_md, priority,
                     start_date, due_date, due_time, estimate_minutes, sort_key, recurrence_rule,
-                    completed_at, archived_at, deleted_at, created_at, updated_at";
+                    completed_at, archived_at, deleted_at, created_at, updated_at, progress";
 
 fn map(r: &Row<'_>) -> rusqlite::Result<Task> {
     Ok(Task {
@@ -39,6 +39,7 @@ fn map(r: &Row<'_>) -> rusqlite::Result<Task> {
         deleted_at: r.get(15)?,
         created_at: r.get(16)?,
         updated_at: r.get(17)?,
+        progress: r.get(18)?,
         tags: Vec::new(),
     })
 }
@@ -119,14 +120,55 @@ fn status_for_category(tx: &Tx<'_>, project: Id, category: Category) -> Result<I
     }
 }
 
-fn end_key(tx: &Tx<'_>, project: Id, status: Id) -> Result<String> {
-    let last: Option<String> = tx.conn().query_row(
-        "SELECT max(sort_key) FROM task WHERE project_id = ?1 AND status_id = ?2
-         AND deleted_at IS NULL",
-        params![project, status],
-        |r| r.get(0),
+/// Statuses sharing `status`'s name across projects: one merged board column.
+fn same_column(tx: &Tx<'_>, status: Id) -> Result<Vec<(Id, Id)>> {
+    let mut stmt = tx.conn().prepare(
+        "SELECT id, project_id FROM status
+         WHERE name = (SELECT name FROM status WHERE id = ?1) COLLATE NOCASE
+           AND deleted_at IS NULL",
     )?;
+    let rows = stmt
+        .query_map([status], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
+}
+
+/// A key after every task in the merged column, so keys stay distinct across
+/// projects and multi-project boards order cleanly. Each lookup is an index
+/// seek on (project_id, status_id, sort_key).
+fn end_key(tx: &Tx<'_>, _project: Id, status: Id) -> Result<String> {
+    let mut last: Option<String> = None;
+    for (status, project) in same_column(tx, status)? {
+        let max: Option<String> = tx.conn().query_row(
+            "SELECT max(sort_key) FROM task WHERE project_id = ?1 AND status_id = ?2
+             AND deleted_at IS NULL",
+            params![project, status],
+            |r| r.get(0),
+        )?;
+        if max > last {
+            last = max;
+        }
+    }
     key_between(last.as_deref(), None)
+}
+
+/// The smallest key in the merged column strictly after `key`.
+fn next_key_after(tx: &Tx<'_>, status: Id, key: &str) -> Result<Option<String>> {
+    let mut next: Option<String> = None;
+    for (status, project) in same_column(tx, status)? {
+        let min: Option<String> = tx.conn().query_row(
+            "SELECT min(sort_key) FROM task WHERE project_id = ?1 AND status_id = ?2
+             AND deleted_at IS NULL AND sort_key > ?3",
+            params![project, status, key],
+            |r| r.get(0),
+        )?;
+        if let Some(min) = min
+            && next.as_ref().is_none_or(|n| &min < n)
+        {
+            next = Some(min);
+        }
+    }
+    Ok(next)
 }
 
 fn require_live_project(tx: &Tx<'_>, project: Id) -> Result<()> {
@@ -357,6 +399,7 @@ impl Db {
                     ("due_date", opt_text(due.clone())),
                     ("due_time", opt_text(due_time.clone())),
                     ("estimate_minutes", opt_int(input.estimate_minutes)),
+                    ("progress", opt_int(clean_progress(input.progress)?)),
                     ("sort_key", text(sort_key)),
                     (
                         "completed_at",
@@ -421,6 +464,10 @@ impl Db {
                         return Err(invalid("estimate cannot be negative"));
                     }
                     changes.push(("estimate_minutes", opt_int(estimate)));
+                }
+
+                if let Some(progress) = patch.progress {
+                    changes.push(("progress", opt_int(clean_progress(progress)?)));
                 }
 
                 // Project move: map status by category; subtasks follow; detach from
@@ -514,6 +561,12 @@ impl Db {
                 let below = neighbour_key(to.below)?;
                 let key = match (&above, &below) {
                     (None, None) => end_key(tx, current.project_id, status)?,
+                    // Neighbours from different projects can share a key; then
+                    // place just after the upper one.
+                    (Some(a), Some(b)) if a >= b => {
+                        let next = next_key_after(tx, status, a)?;
+                        key_between(Some(a), next.as_deref())?
+                    }
                     _ => key_between(above.as_deref(), below.as_deref())?,
                 };
                 changes.push(("sort_key", text(key)));
@@ -601,6 +654,7 @@ impl Db {
                         ("due_date", opt_text(original.due_date.clone())),
                         ("due_time", opt_text(original.due_time.clone())),
                         ("estimate_minutes", opt_int(original.estimate_minutes)),
+                        ("progress", opt_int(original.progress)),
                         ("sort_key", text(key)),
                         (
                             "recurrence_rule",

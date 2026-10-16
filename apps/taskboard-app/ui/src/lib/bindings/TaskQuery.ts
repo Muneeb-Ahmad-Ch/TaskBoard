@@ -3,7 +3,11 @@ import type { Category } from "./Category";
 import type { Id } from "./Id";
 import type { TaskSort } from "./TaskSort";
 
-export type TaskQuery = { client_id?: Id, project_id?: Id, 
+export type TaskQuery = { 
+/**
+ * Just this task (e.g. to read its computed progress).
+ */
+id?: Id, client_id?: Id, project_id?: Id, 
 /**
  * Only projects without a client (Inbox excluded).
  */
@@ -11,7 +15,12 @@ personal?: boolean,
 /**
  * Empty = every category.
  */
-categories?: Array<Category>, search?: string, tag?: string, due_from?: string, due_to?: string, 
+categories?: Array<Category>, search?: string, tag?: string, 
+/**
+ * Only tasks whose status has this name (case-insensitive). Board columns
+ * merge same-named statuses across projects.
+ */
+status_name?: string, due_from?: string, due_to?: string, 
 /**
  * Only direct subtasks of this task.
  */

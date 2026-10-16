@@ -5,17 +5,21 @@
   import type { Task } from '../lib/bindings/Task'
   import type { TaskPatch } from '../lib/bindings/TaskPatch'
   import type { TaskRow } from '../lib/bindings/TaskRow'
-  import { minutes, parseMinutes, swatch } from '../lib/format'
+  import { isTyping, minutes, parseMinutes, swatch } from '../lib/format'
   import { errorMessage, ipc } from '../lib/ipc'
   import { act, app } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
+  import Progress from './Progress.svelte'
 
   let task = $state<Task | null>(null)
   let statuses = $state<Status[]>([])
   let subtasks = $state<TaskRow[]>([])
   let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
   let newSubtask = $state('')
+  /** Progress as the core computes it (derived from subtasks when present). */
+  let computed = $state(0)
+  let slider = $state(0)
 
   // Load (and reload on any data change) the open task.
   $effect(() => {
@@ -29,14 +33,17 @@
     ;(async () => {
       try {
         const t = await ipc.getTask(id)
-        const [st, subs] = await Promise.all([
+        const [st, subs, self] = await Promise.all([
           ipc.listStatuses(t.project_id),
           ipc.listTasks({ parent_id: id, sort: 'manual', limit: 500 }),
+          ipc.listTasks({ id, include_archived: true, limit: 1 }),
         ])
         if (cancelled) return
         task = t
         statuses = st
         subtasks = subs.rows
+        computed = self.rows[0]?.progress ?? 0
+        slider = computed
       } catch {
         // Deleted or moved out from under us.
         if (!cancelled) app.openTaskId = null
@@ -87,6 +94,18 @@
     if (tags.join(',') !== task.tags.join(',')) void save({ tags })
   }
 
+  /** Manual progress; 100% completes the task, dragging below 100 reopens it. */
+  async function commitProgress(value: number) {
+    if (!task) return
+    const id = task.id
+    if (value >= 100) {
+      if (!task.completed_at) await act(() => ipc.setTaskDone(id, true))
+      return
+    }
+    if (task.completed_at) await act(() => ipc.setTaskDone(id, false))
+    await save({ progress: value })
+  }
+
   function commitEstimate(value: string) {
     if (!task) return
     const m = parseMinutes(value)
@@ -110,7 +129,7 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Escape' && app.openTaskId && !menu && !(e.target as HTMLElement).closest('input, textarea')) close()
+    if (e.key === 'Escape' && app.openTaskId && !menu && !isTyping(e)) close()
   }}
 />
 
@@ -205,6 +224,30 @@
           {#key task.estimate_minutes}
             <input class="prop-input" placeholder="e.g. 1h30m" value={task.estimate_minutes ? minutes(task.estimate_minutes) : ''} onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} onblur={(e) => commitEstimate(e.currentTarget.value)} />
           {/key}
+        </dd>
+
+        <dt>Progress</dt>
+        <dd>
+          {#if subtasks.length}
+            <span class="flex min-h-[30px] items-center gap-2 px-2" title="Calculated from subtasks">
+              <Progress value={computed} width={120} label />
+              <span class="text-xs text-subtle">from {subtasks.filter((s) => s.completed_at).length}/{subtasks.length} subtasks</span>
+            </span>
+          {:else}
+            <span class="flex min-h-[30px] items-center gap-2 px-2">
+              <input
+                type="range"
+                class="slider flex-1"
+                min="0"
+                max="100"
+                step="5"
+                aria-label="Progress"
+                bind:value={slider}
+                onchange={() => void commitProgress(slider)}
+              />
+              <span class="tabular w-9 text-right text-xs text-muted">{slider}%</span>
+            </span>
+          {/if}
         </dd>
 
         <dt>Tags</dt>
@@ -320,6 +363,10 @@
   }
   .prop-input:disabled {
     opacity: 0.4;
+  }
+  .slider {
+    accent-color: var(--accent);
+    height: 18px;
   }
   .notes {
     user-select: text;

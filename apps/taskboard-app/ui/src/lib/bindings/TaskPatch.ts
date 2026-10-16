@@ -2,4 +2,8 @@
 import type { Id } from "./Id";
 import type { Priority } from "./Priority";
 
-export type TaskPatch = { title?: string, description_md?: string, priority?: Priority, project_id?: Id, parent_id?: string | null, status_id?: Id, start_date?: string | null, due_date?: string | null, due_time?: string | null, estimate_minutes?: number | null, tags?: Array<string>, };
+export type TaskPatch = { title?: string, description_md?: string, priority?: Priority, project_id?: Id, parent_id?: string | null, status_id?: Id, start_date?: string | null, due_date?: string | null, due_time?: string | null, estimate_minutes?: number | null, tags?: Array<string>, 
+/**
+ * Manual progress 0–100; `null` clears it.
+ */
+progress?: number | null, };

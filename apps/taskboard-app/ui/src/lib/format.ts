@@ -73,6 +73,12 @@ export function swatch(color: string, l = 0.65, c = 0.15): string {
   return color === 'gray' ? `oklch(${l} 0 0)` : `oklch(${l} ${c} ${color})`
 }
 
+/** True when a key event comes from a text field (shortcuts should not fire). */
+export function isTyping(e: Event): boolean {
+  const t = e.target
+  return t instanceof Element && !!t.closest('input, textarea, select, [contenteditable]')
+}
+
 export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`
 }

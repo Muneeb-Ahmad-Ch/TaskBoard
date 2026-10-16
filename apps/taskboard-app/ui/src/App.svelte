@@ -1,5 +1,6 @@
 <script lang="ts">
   import { CalendarRange, Eye, EyeOff, KanbanSquare, Rows3, Search, X } from '@lucide/svelte'
+  import Board from './components/Board.svelte'
   import CommandPalette from './components/CommandPalette.svelte'
   import QuickAdd from './components/QuickAdd.svelte'
   import Sidebar from './components/Sidebar.svelte'
@@ -7,8 +8,9 @@
   import TaskPanel from './components/TaskPanel.svelte'
   import TaskTable from './components/TaskTable.svelte'
   import ThemeControls from './components/ThemeControls.svelte'
+  import Progress from './components/Progress.svelte'
   import Toasts from './components/Toasts.svelte'
-  import { swatch } from './lib/format'
+  import { isTyping, swatch } from './lib/format'
   import { app, redo, scopeTitle, undo, type View } from './lib/store.svelte'
 
   const views: { id: View; label: string; key: string; icon: typeof Rows3; milestone: string }[] = [
@@ -27,12 +29,27 @@
     if (s.kind === 'client') return { text: 'Client', color: app.clients.find((c) => c.id === s.id)?.color ?? 'gray' }
     return null
   })
-  const canHideDone = $derived(app.scope.kind !== 'today' && app.scope.kind !== 'upcoming')
+  /** Done / total top-level tasks (cancelled excluded) for a project or client scope. */
+  const scopeProgress = $derived.by(() => {
+    const s = app.scope
+    const list =
+      s.kind === 'project'
+        ? app.projects.filter((p) => p.id === s.id)
+        : s.kind === 'client'
+          ? app.projects.filter((p) => p.client_id === s.id)
+          : []
+    const total = list.reduce((n, p) => n + p.total_tasks, 0)
+    const done = list.reduce((n, p) => n + p.done_tasks, 0)
+    return total ? { done, total, pct: (done / total) * 100 } : null
+  })
+  const canHideDone = $derived(
+    app.view === 'table' && app.scope.kind !== 'today' && app.scope.kind !== 'upcoming',
+  )
 
   let searchInput: HTMLInputElement | undefined = $state()
 
   function onKeydown(e: KeyboardEvent) {
-    const typing = (e.target as HTMLElement).closest('input, textarea, [contenteditable]')
+    const typing = isTyping(e)
     const ctrl = e.ctrlKey || e.metaKey
     if (ctrl && e.key.toLowerCase() === 'k') {
       e.preventDefault()
@@ -82,6 +99,12 @@
             <span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{subtitle.text}
           </span>
         {/if}
+        {#if scopeProgress}
+          <span class="flex shrink-0 items-center gap-2 self-center text-xs text-muted" title="{scopeProgress.done} of {scopeProgress.total} tasks done">
+            <Progress value={scopeProgress.pct} width={72} label />
+            <span class="tabular text-subtle">{scopeProgress.done}/{scopeProgress.total}</span>
+          </span>
+        {/if}
       </div>
 
       <label class="search flex h-7 w-56 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 text-muted focus-within:border-accent">
@@ -117,6 +140,8 @@
         {#if app.view === 'table'}
           <QuickAdd />
           <TaskTable />
+        {:else if app.view === 'board'}
+          <Board />
         {:else}
           <div class="grid flex-1 place-items-center rounded-[var(--radius)] border border-dashed border-border-strong">
             <div class="text-center">

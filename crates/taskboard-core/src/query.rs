@@ -27,6 +27,9 @@ pub enum TaskSort {
 #[serde(default)]
 #[ts(export)]
 pub struct TaskQuery {
+    /// Just this task (e.g. to read its computed progress).
+    #[ts(optional)]
+    pub id: Option<Id>,
     #[ts(optional)]
     pub client_id: Option<Id>,
     #[ts(optional)]
@@ -41,6 +44,10 @@ pub struct TaskQuery {
     pub search: Option<String>,
     #[ts(optional)]
     pub tag: Option<String>,
+    /// Only tasks whose status has this name (case-insensitive). Board columns
+    /// merge same-named statuses across projects.
+    #[ts(optional)]
+    pub status_name: Option<String>,
     #[ts(optional)]
     pub due_from: Option<String>,
     #[ts(optional)]
@@ -90,6 +97,9 @@ pub struct TaskRow {
     pub subtasks_total: i64,
     pub subtasks_done: i64,
     pub tags: Vec<String>,
+    /// 0–100: 100 when closed; else the average of direct subtasks (done = 100,
+    /// open = their manual progress); else the task's own manual progress.
+    pub progress: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -210,6 +220,18 @@ impl Db {
             filters.push("t.rid IN (SELECT rowid FROM task_fts WHERE task_fts MATCH ?)".into());
             args.push(text(search));
         }
+        if let Some(id) = q.id {
+            filters.push("t.id = ?".into());
+            args.push(id.into());
+        }
+        if let Some(name) = q.status_name.as_deref() {
+            filters.push(
+                "t.status_id IN (SELECT id FROM status WHERE name = ? COLLATE NOCASE
+                                 AND deleted_at IS NULL)"
+                    .into(),
+            );
+            args.push(text(name.trim()));
+        }
         if let Some(tag) = q.tag.as_deref().map(|t| t.trim().trim_start_matches('#')) {
             filters.push(
                 "t.id IN (SELECT tt.task_id FROM task_tag tt JOIN tag g ON g.id = tt.tag_id
@@ -263,7 +285,14 @@ impl Db {
                     (SELECT count(*) FROM task x WHERE x.parent_id = t.id AND x.deleted_at IS NULL
                        AND x.completed_at IS NOT NULL),
                     (SELECT group_concat(g.name, char(31)) FROM task_tag tt
-                       JOIN tag g ON g.id = tt.tag_id WHERE tt.task_id = t.id)
+                       JOIN tag g ON g.id = tt.tag_id WHERE tt.task_id = t.id),
+                    CASE WHEN t.completed_at IS NOT NULL THEN 100
+                         ELSE coalesce(
+                           (SELECT CAST(round(avg(CASE WHEN x.completed_at IS NOT NULL THEN 100
+                                                       ELSE coalesce(x.progress, 0) END)) AS INTEGER)
+                              FROM task x WHERE x.parent_id = t.id AND x.deleted_at IS NULL),
+                           t.progress, 0)
+                    END
              FROM page
              JOIN task t ON t.rid = page.rid
              JOIN project p ON p.id = t.project_id
@@ -304,6 +333,7 @@ impl Db {
                     tags: tags
                         .map(|t| t.split(TAG_SEP).map(str::to_owned).collect())
                         .unwrap_or_default(),
+                    progress: r.get(22)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

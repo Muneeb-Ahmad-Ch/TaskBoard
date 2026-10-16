@@ -10,6 +10,7 @@ import type { Id } from './bindings/Id'
 import type { MoveTask } from './bindings/MoveTask'
 import type { NewClient } from './bindings/NewClient'
 import type { NewProject } from './bindings/NewProject'
+import type { NewStatus } from './bindings/NewStatus'
 import type { NewTask } from './bindings/NewTask'
 import type { Project } from './bindings/Project'
 import type { ProjectPatch } from './bindings/ProjectPatch'
@@ -17,6 +18,7 @@ import type { ProjectSummary } from './bindings/ProjectSummary'
 import type { QuickAddPreview } from './bindings/QuickAddPreview'
 import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
+import type { StatusPatch } from './bindings/StatusPatch'
 import type { Task } from './bindings/Task'
 import type { TaskPage } from './bindings/TaskPage'
 import type { TaskPatch } from './bindings/TaskPatch'
@@ -63,6 +65,13 @@ export const ipc = {
   setProjectArchived: (id: Id, archived: boolean) =>
     invoke<Project>('set_project_archived', { id, archived }),
   deleteProject: (id: Id) => invoke<void>('delete_project', { id }),
+
+  // board columns
+  allStatuses: () => invoke<Status[]>('all_statuses'),
+  createStatus: (input: NewStatus) => invoke<Status>('create_status', { input }),
+  updateStatus: (id: Id, patch: StatusPatch) => invoke<Status>('update_status', { id, patch }),
+  moveStatus: (id: Id, after: Id | null) => invoke<Status>('move_status', { id, after }),
+  deleteStatus: (id: Id, moveTo: Id) => invoke<void>('delete_status', { id, moveTo }),
 
   // window
   hasMica: () => invoke<boolean>('has_mica'),

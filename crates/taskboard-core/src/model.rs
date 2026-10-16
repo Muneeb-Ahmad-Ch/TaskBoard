@@ -181,6 +181,8 @@ pub struct Task {
     pub deleted_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Manual progress 0–100 for tasks without subtasks (see `TaskRow::progress`).
+    pub progress: Option<i64>,
     pub tags: Vec<String>,
 }
 
@@ -305,6 +307,9 @@ pub struct NewTask {
     #[serde(default)]
     #[ts(as = "Option<Vec<String>>", optional)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub progress: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, TS)]
@@ -337,10 +342,14 @@ pub struct TaskPatch {
     pub estimate_minutes: Option<Option<i64>>,
     #[ts(optional)]
     pub tags: Option<Vec<String>>,
+    /// Manual progress 0–100; `null` clears it.
+    #[serde(default, deserialize_with = "nullable")]
+    #[ts(optional, type = "number | null")]
+    pub progress: Option<Option<i64>>,
 }
 
 /// `field: null` → `Some(None)` (clear); missing → `None` (leave unchanged).
-fn nullable<'de, D, T>(de: D) -> std::result::Result<Option<Option<T>>, D::Error>
+pub(crate) fn nullable<'de, D, T>(de: D) -> std::result::Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -389,6 +398,13 @@ pub(crate) fn clean_tz(s: &str) -> Result<String> {
 }
 
 /// Colors are an OKLCH hue (`"0"`–`"360"`) or `"gray"`.
+pub(crate) fn clean_progress(p: Option<i64>) -> Result<Option<i64>> {
+    match p {
+        Some(v) if !(0..=100).contains(&v) => Err(invalid("progress must be between 0 and 100")),
+        _ => Ok(p),
+    }
+}
+
 pub(crate) fn clean_color(s: &str) -> Result<String> {
     let s = s.trim();
     if s == "gray" || s.parse::<u16>().is_ok_and(|h| h <= 360) {

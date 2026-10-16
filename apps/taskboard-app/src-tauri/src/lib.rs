@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 
 use taskboard_core::{
     Client, ClientPatch, Db, DbInfo, ErrorInfo, HistoryState, Id, MoveTask, NewClient, NewProject,
-    NewTask, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SidebarCounts, Status, Task,
-    TaskPage, TaskPatch, TaskQuery, TaskSummary,
+    NewStatus, NewTask, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SidebarCounts,
+    Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -306,6 +306,52 @@ async fn delete_project(app: AppHandle, state: State<'_, AppState>, id: Id) -> C
     write(app, state, move |db| db.delete_project(id)).await
 }
 
+// ---------- board columns ----------
+
+#[tauri::command]
+async fn all_statuses(state: State<'_, AppState>) -> CmdResult<Vec<Status>> {
+    read(state, Db::all_statuses).await
+}
+
+#[tauri::command]
+async fn create_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: NewStatus,
+) -> CmdResult<Status> {
+    write(app, state, move |db| db.create_status(input)).await
+}
+
+#[tauri::command]
+async fn update_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    patch: StatusPatch,
+) -> CmdResult<Status> {
+    write(app, state, move |db| db.update_status(id, patch)).await
+}
+
+#[tauri::command]
+async fn move_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    after: Option<Id>,
+) -> CmdResult<Status> {
+    write(app, state, move |db| db.move_status(id, after)).await
+}
+
+#[tauri::command]
+async fn delete_status(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    move_to: Id,
+) -> CmdResult<()> {
+    write(app, state, move |db| db.delete_status(id, move_to)).await
+}
+
 // ---------- window ----------
 
 #[tauri::command]
@@ -426,6 +472,11 @@ pub fn run() {
             update_project,
             set_project_archived,
             delete_project,
+            all_statuses,
+            create_status,
+            update_status,
+            move_status,
+            delete_status,
             has_mica,
             show_main_window,
         ])

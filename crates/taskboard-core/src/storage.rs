@@ -23,6 +23,7 @@ const MIGRATIONS: &[M<'static>] = &[
     ),
     M::up(include_str!("migrations/0002_domain.sql")),
     M::up(include_str!("migrations/0003_query_indexes.sql")),
+    M::up(include_str!("migrations/0004_task_progress.sql")),
 ];
 
 /// Schema version this build writes (`PRAGMA user_version`).

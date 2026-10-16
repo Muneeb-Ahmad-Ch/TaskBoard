@@ -785,3 +785,268 @@ fn summary_counts_done_and_estimates_over_the_whole_query() {
     let s = db.summarize_tasks(&TaskQuery::default()).unwrap();
     assert_eq!((s.total, s.done, s.estimate_minutes), (3, 1, 90));
 }
+
+// ---------- board columns (statuses) ----------
+
+#[test]
+fn columns_can_be_added_renamed_moved_and_must_be_unique() {
+    let mut db = db();
+    let p = project(&mut db, "Site", None);
+    let cols = db.statuses(p.id).unwrap();
+    let review = cols.iter().find(|s| s.name == "Review").unwrap().id;
+    let qa = db
+        .create_status(NewStatus {
+            project_id: p.id,
+            name: "QA".into(),
+            category: Category::Active,
+            color: None,
+            after: Some(review),
+        })
+        .unwrap();
+    let names = |db: &Db| {
+        db.statuses(p.id)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.name)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        names(&db),
+        ["Backlog", "To Do", "In Progress", "Review", "QA", "Done"]
+    );
+
+    let dup = NewStatus {
+        project_id: p.id,
+        name: "qa".into(),
+        category: Category::Todo,
+        color: None,
+        after: None,
+    };
+    assert_eq!(db.create_status(dup).unwrap_err().code(), "invalid_input");
+
+    db.move_status(qa.id, None).unwrap();
+    assert_eq!(names(&db)[0], "QA");
+    db.update_status(
+        qa.id,
+        StatusPatch {
+            name: Some("Testing".into()),
+            wip_limit: Some(Some(3)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let testing = db.status(qa.id).unwrap();
+    assert_eq!(
+        (testing.name.as_str(), testing.wip_limit),
+        ("Testing", Some(3))
+    );
+    db.undo().unwrap();
+    assert_eq!(db.status(qa.id).unwrap().name, "QA");
+}
+
+#[test]
+fn changing_a_column_category_syncs_completion() {
+    let mut db = db();
+    let p = project(&mut db, "Site", None);
+    let t = task(&mut db, "t", Some(p.id));
+    let review = db
+        .statuses(p.id)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.name == "Review")
+        .unwrap();
+    db.update_task(
+        t.id,
+        TaskPatch {
+            status_id: Some(review.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    db.update_status(
+        review.id,
+        StatusPatch {
+            category: Some(Category::Done),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(db.task(t.id).unwrap().completed_at.is_some());
+    db.update_status(
+        review.id,
+        StatusPatch {
+            category: Some(Category::Active),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(db.task(t.id).unwrap().completed_at.is_none());
+}
+
+#[test]
+fn deleting_a_column_moves_its_tasks_and_keeps_required_columns() {
+    let mut db = db();
+    let p = project(&mut db, "Site", None);
+    let cols = db.statuses(p.id).unwrap();
+    let id = |name: &str| cols.iter().find(|s| s.name == name).unwrap().id;
+    let t = task(&mut db, "t", Some(p.id));
+    db.delete_status(id("To Do"), id("Done")).unwrap();
+    let moved = db.task(t.id).unwrap();
+    assert_eq!(moved.status_id, id("Done"));
+    assert!(moved.completed_at.is_some(), "moved into a closed column");
+    assert_eq!(
+        db.delete_status(id("Done"), id("Backlog"))
+            .unwrap_err()
+            .code(),
+        "invalid_input"
+    );
+    db.undo().unwrap();
+    assert_eq!(db.task(t.id).unwrap().status_id, id("To Do"));
+}
+
+#[test]
+fn status_name_filter_merges_columns_across_projects() {
+    let mut db = db();
+    let a = project(&mut db, "A", None);
+    let b = project(&mut db, "B", None);
+    let ta = task(&mut db, "a", Some(a.id));
+    task(&mut db, "b", Some(b.id));
+    let doing = db
+        .statuses(a.id)
+        .unwrap()
+        .into_iter()
+        .find(|s| s.name == "In Progress")
+        .unwrap();
+    db.update_task(
+        ta.id,
+        TaskPatch {
+            status_id: Some(doing.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let q = |name: &str| TaskQuery {
+        status_name: Some(name.into()),
+        ..Default::default()
+    };
+    assert_eq!(db.list_tasks(&q("to do")).unwrap().total, 2 - 1);
+    assert_eq!(titles(&db.list_tasks(&q("In Progress")).unwrap()), ["a"]);
+    assert!(db.all_statuses().unwrap().len() >= 15);
+}
+
+#[test]
+fn merged_columns_get_distinct_keys_and_survive_equal_neighbours() {
+    let mut db = db();
+    let a = project(&mut db, "A", None);
+    let b = project(&mut db, "B", None);
+    let ta = task(&mut db, "a", Some(a.id));
+    let tb = task(&mut db, "b", Some(b.id));
+    assert_ne!(
+        ta.sort_key, tb.sort_key,
+        "keys are distinct across a merged column"
+    );
+
+    // Force a tie (as older data could have) and drop a card between them.
+    let tc = task(&mut db, "c", Some(a.id));
+    db.move_task(
+        tb.id,
+        MoveTask {
+            above: Some(ta.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let tie = db.task(ta.id).unwrap().sort_key;
+    let q = TaskQuery {
+        status_name: Some("To Do".into()),
+        sort: TaskSort::Manual,
+        ..Default::default()
+    };
+    db.move_task(
+        tc.id,
+        MoveTask {
+            above: Some(ta.id),
+            below: Some(tb.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let order = db.list_tasks(&q).unwrap();
+    assert!(order.rows.iter().all(|r| !r.sort_key.is_empty()));
+    let c_key = db.task(tc.id).unwrap().sort_key;
+    assert!(c_key > tie);
+}
+
+// ---------- progress ----------
+
+#[test]
+fn progress_is_manual_without_subtasks_and_derived_with_them() {
+    let mut db = db();
+    let row = |db: &Db, id: Id| {
+        db.list_tasks(&TaskQuery {
+            include_archived: true,
+            ..Default::default()
+        })
+        .unwrap()
+        .rows
+        .into_iter()
+        .find(|r| r.id == id)
+        .unwrap()
+    };
+    let solo = task(&mut db, "solo", None);
+    assert_eq!(row(&db, solo.id).progress, 0);
+    db.update_task(
+        solo.id,
+        TaskPatch {
+            progress: Some(Some(40)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(row(&db, solo.id).progress, 40);
+    assert!(
+        db.update_task(
+            solo.id,
+            TaskPatch {
+                progress: Some(Some(140)),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+    db.set_task_done(solo.id, true).unwrap();
+    assert_eq!(row(&db, solo.id).progress, 100, "closed tasks are 100%");
+
+    let parent = task(&mut db, "parent", None);
+    db.update_task(
+        parent.id,
+        TaskPatch {
+            progress: Some(Some(90)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let sub = |db: &mut Db, title: &str| {
+        db.create_task(NewTask {
+            title: title.into(),
+            parent_id: Some(parent.id),
+            ..Default::default()
+        })
+        .unwrap()
+    };
+    let a = sub(&mut db, "a");
+    let b = sub(&mut db, "b");
+    sub(&mut db, "c");
+    sub(&mut db, "d");
+    db.set_task_done(a.id, true).unwrap();
+    db.update_task(
+        b.id,
+        TaskPatch {
+            progress: Some(Some(50)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    // (100 + 50 + 0 + 0) / 4, and the parent's own 90% is ignored once it has subtasks.
+    assert_eq!(row(&db, parent.id).progress, 38);
+}

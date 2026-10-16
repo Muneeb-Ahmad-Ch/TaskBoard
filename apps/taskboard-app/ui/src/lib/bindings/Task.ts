@@ -2,4 +2,8 @@
 import type { Id } from "./Id";
 import type { Priority } from "./Priority";
 
-export type Task = { id: Id, project_id: Id, parent_id: Id | null, status_id: Id, title: string, description_md: string, priority: Priority, start_date: string | null, due_date: string | null, due_time: string | null, estimate_minutes: number | null, sort_key: string, recurrence_rule: string | null, completed_at: number | null, archived_at: number | null, deleted_at: number | null, created_at: number, updated_at: number, tags: Array<string>, };
+export type Task = { id: Id, project_id: Id, parent_id: Id | null, status_id: Id, title: string, description_md: string, priority: Priority, start_date: string | null, due_date: string | null, due_time: string | null, estimate_minutes: number | null, sort_key: string, recurrence_rule: string | null, completed_at: number | null, archived_at: number | null, deleted_at: number | null, created_at: number, updated_at: number, 
+/**
+ * Manual progress 0–100 for tasks without subtasks (see `TaskRow::progress`).
+ */
+progress: number | null, tags: Array<string>, };

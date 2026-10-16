@@ -9,18 +9,19 @@
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import type { TaskSort } from '../lib/bindings/TaskSort'
   import type { TaskSummary } from '../lib/bindings/TaskSummary'
-  import { dueLabel, isOverdue, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
+  import { dueLabel, isOverdue, isTyping, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
   import { act, app, scopeQuery } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
+  import Progress from './Progress.svelte'
 
   const ROW = 36
   const PAGE = 200
   const OVERSCAN = 12
 
   // ---------- columns ----------
-  type ColId = 'title' | 'project' | 'status' | 'priority' | 'due' | 'estimate' | 'tags'
+  type ColId = 'title' | 'project' | 'status' | 'priority' | 'due' | 'progress' | 'estimate' | 'tags'
   interface Col {
     id: ColId
     label: string
@@ -34,6 +35,7 @@
     { id: 'status', label: 'Status', width: 130 },
     { id: 'priority', label: 'Priority', width: 104, sort: 'priority' },
     { id: 'due', label: 'Due', width: 136, sort: 'due' },
+    { id: 'progress', label: 'Progress', width: 118 },
     { id: 'estimate', label: 'Estimate', width: 88, align: 'right' },
     { id: 'tags', label: 'Tags', width: 150 },
   ]
@@ -55,7 +57,7 @@
   }
   /** Auto-hidden first when the table is too narrow (user-hidden ones stay hidden). */
   const TITLE_MIN = 180
-  const SQUEEZE_ORDER: ColId[] = ['tags', 'estimate', 'priority', 'status']
+  const SQUEEZE_ORDER: ColId[] = ['tags', 'estimate', 'progress', 'priority', 'status']
   let width = $state(1200)
   const cols = $derived.by(() => {
     let list = DEFAULT_COLS.filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map((c) => ({
@@ -236,7 +238,7 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
-    if (renaming || (e.target as HTMLElement).closest('input, textarea')) return
+    if (renaming || isTyping(e)) return
     const move = (d: number) => {
       e.preventDefault()
       const i = Math.max(0, Math.min(total - 1, (cursor < 0 ? -1 : cursor) + d))
@@ -438,6 +440,28 @@
     ])
   }
 
+  /** Manual progress for tasks without subtasks; 100% completes the task. */
+  function progressMenu(e: MouseEvent, row: TaskRow) {
+    if (row.subtasks_total) {
+      e.stopPropagation()
+      toast(`Progress comes from ${plural(row.subtasks_total, 'subtask')}`)
+      return
+    }
+    const ids = targets(row)
+    openMenu(e, [
+      ...[0, 25, 50, 75].map((p) => ({
+        label: `${p}%`,
+        checked: !row.completed_at && row.progress === p,
+        run: () => void patch(ids, { progress: p }),
+      })),
+      {
+        label: '100% — mark done',
+        checked: !!row.completed_at,
+        run: () => void act(() => ipc.bulkSetDone(ids, true)),
+      },
+    ])
+  }
+
   function projectMenu(e: MouseEvent, row: TaskRow) {
     const ids = targets(row)
     openMenu(
@@ -623,6 +647,10 @@
                 {:else if col.id === 'due'}
                   <button class="cell-btn tabular {isOverdue(row.due_date, !!row.completed_at) ? 'font-medium text-danger' : 'text-muted'}" onclick={(e) => dueMenu(e, row)}>
                     {#if row.due_date}{dueLabel(row.due_date)}{#if row.due_time}<span class="text-subtle">&nbsp;{row.due_time}</span>{/if}{:else}<span class="ghost">—</span>{/if}
+                  </button>
+                {:else if col.id === 'progress'}
+                  <button class="cell-btn w-full" title={row.subtasks_total ? `From ${row.subtasks_done}/${row.subtasks_total} subtasks` : 'Set progress'} onclick={(e) => progressMenu(e, row)}>
+                    <Progress value={row.progress} width={52} label />
                   </button>
                 {:else if col.id === 'estimate'}
                   {#if estimating === row.id}

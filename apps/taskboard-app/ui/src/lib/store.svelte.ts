@@ -6,6 +6,7 @@ import type { HistoryState } from './bindings/HistoryState'
 import type { Id } from './bindings/Id'
 import type { ProjectSummary } from './bindings/ProjectSummary'
 import type { SidebarCounts } from './bindings/SidebarCounts'
+import type { Status } from './bindings/Status'
 import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
 import { isoDate, todayIso } from './format'
@@ -17,6 +18,7 @@ export type Scope =
   | { kind: 'client' | 'project'; id: Id }
 
 export type View = 'table' | 'board' | 'calendar'
+export type Lanes = 'none' | 'client' | 'project' | 'priority'
 
 const OPEN: Category[] = ['todo', 'active']
 
@@ -25,6 +27,11 @@ export const app = $state({
   view: 'table' as View,
   clients: [] as Client[],
   projects: [] as ProjectSummary[],
+  /** Every live status, for building board columns. */
+  statuses: [] as Status[],
+  lanes: 'none' as Lanes,
+  /** Show subtasks as their own cards on the board (parents show their progress). */
+  boardSubtasks: false,
   counts: null as SidebarCounts | null,
   history: { undo: null, redo: null } as HistoryState,
   search: '',
@@ -114,6 +121,24 @@ export function scopeQuery(): TaskQuery {
   return q
 }
 
+/** Projects whose tasks the current scope can show. */
+export function scopeProjectIds(): Id[] {
+  const s = app.scope
+  const live = app.projects
+  switch (s.kind) {
+    case 'project':
+      return [s.id]
+    case 'client':
+      return live.filter((p) => p.client_id === s.id).map((p) => p.id)
+    case 'personal':
+      return live.filter((p) => !p.client_id && !p.is_inbox).map((p) => p.id)
+    case 'inbox':
+      return live.filter((p) => p.is_inbox).map((p) => p.id)
+    default:
+      return live.map((p) => p.id)
+  }
+}
+
 export function setScope(scope: Scope) {
   app.scope = scope
   app.openTaskId = null
@@ -122,14 +147,16 @@ export function setScope(scope: Scope) {
 export async function refreshMeta() {
   if (!inTauri) return
   try {
-    const [clients, projects, counts, history] = await Promise.all([
+    const [clients, projects, counts, history, statuses] = await Promise.all([
       ipc.listClients(),
       ipc.listProjects(),
       ipc.sidebarCounts(),
       ipc.historyState(),
+      ipc.allStatuses(),
     ])
     app.clients = clients
     app.projects = projects
+    app.statuses = statuses
     app.counts = counts
     app.history = history
     // The scoped client/project may have been deleted or archived.
