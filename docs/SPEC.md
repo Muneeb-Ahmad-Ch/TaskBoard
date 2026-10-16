@@ -179,7 +179,9 @@ All tables are `STRICT`, `foreign_keys=ON`, enums enforced with `CHECK`.
   `completed_at`, `archived_at`, `deleted_at` (soft delete / tombstone),
   `created_at`, `updated_at`, `hlc`, `device_id`.
 - **Client**: `id`, `name`, `color`, `icon`, `notes_md`, optional
-  `contact` (name / email / phone, free text), `sort_key`, `archived_at`.
+  `contact` (name / email / phone, free text), optional `time_zone` (IANA)
+  and working hours in that zone (for the slot finder), `sort_key`,
+  `archived_at`.
   A client groups the projects (jobs) done for one customer or employer.
 - **Project** (a job or engagement): `id`, `client_id` (nullable: projects
   without a client are shown under **Personal**), `name`, `color`, `icon`,
@@ -194,7 +196,20 @@ All tables are `STRICT`, `foreign_keys=ON`, enums enforced with `CHECK`.
   indexed.
 - **Reminder**: `task_id`, `kind` (relative offset / absolute), `offset_min`
   or `at`, `fired_at`, `snoozed_until`.
-- **TimeEntry**: `task_id`, `started_at`, `ended_at` (task timer).
+- **TimeEntry**: `task_id` or `event_id` or just `client_id`/`project_id`,
+  `started_at`, `ended_at` (timer, manual log, or a meeting that counts as
+  work time).
+- **Event**: meetings and time blocks (`kind` = `meeting` | `block`).
+  Instants plus an IANA time zone (a meeting with others is anchored to a real
+  moment, unlike floating task due dates), optional client / project / task
+  link, location, meeting URL, attendees, notes, status, recurrence, and
+  `source` (`local` or an ICS feed; feed events are read-only).
+- **EventException**: per-occurrence override or cancellation of a recurring
+  event.
+- **WorkingHours**: weekly template (weekday, start, end; several rows per day
+  for breaks). **DayOverride**: a date marked off or with custom hours.
+- **CalendarFeed**: subscribed ICS URL, name, color, optional client, last
+  fetch status.
 - **SavedView**: `name`, `spec_json` (versioned schema: filter AST, sort,
   grouping, layout, visible columns), validated by core.
 - **Attachment**: copied into `attachments/<sha256>` inside the app data dir
@@ -286,11 +301,88 @@ blocks); collapsible columns; inline quick-add per column; swimlanes by
 project, priority or tag (P1). Touch: long-press to drag, haptic feedback,
 plus a "Move to…" bottom sheet fallback.
 
-### Calendar view (P0, ICS overlay P2)
+### Calendar view (P0)
 Month, week, day, agenda. Tasks on their due date; multi-day bars when start
 and due are set; timed tasks in the time grid. Drag to reschedule, resize to
 change span, drag from the unscheduled sidebar. Configurable week start
-(default from locale). Optional read-only ICS feed overlay (P2, opt-in network).
+(default from locale).
+
+**Layers** (each can be toggled, and remembered per saved view): Tasks,
+Meetings, Time blocks, Logged time, External calendars. Every item carries its
+client/project color, and the scope switcher (All / client / project) applies.
+
+### Meetings (P0)
+- A **meeting** is a calendar event with a fixed start and end, linked
+  optionally to a client and project. Fields: title, start/end (or all-day),
+  location, meeting link (Teams / Zoom / Meet URL), attendees (free text),
+  agenda/notes (markdown), status (confirmed / tentative / cancelled).
+- **Recurring meetings** (weekly stand-up, fortnightly client sync) with the
+  same RRULE subset as tasks, plus per-occurrence changes: move, cancel, or
+  edit one occurrence, or "this and following".
+- **Reminders**: default 10 minutes before (configurable per meeting and
+  globally). The toast has a **Join** button when a meeting link exists.
+- **Notes → tasks**: checklist lines in meeting notes (`- [ ] Send quote`) can
+  be turned into tasks in the meeting's project with one click; the task links
+  back to the meeting.
+- **Counts as work time**: a meeting linked to a client can optionally log
+  its duration as tracked time (per meeting, with a per-client default), so
+  client hours include calls.
+- **Quick Add**: a time range creates a meeting instead of a task
+  (`Acme sync tomorrow 3-4pm @Website redesign`). `Tab` switches between Task
+  and Meeting before saving.
+- **Today / Agenda** show meetings and tasks interleaved by time, with the
+  next meeting pinned at the top of the Today view.
+- **External calendars (P1)**: subscribe to read-only ICS feeds (Outlook's or
+  Google Calendar's private "secret address") so meetings booked elsewhere
+  show in Taskboard and count against capacity. Opt-in network access,
+  refreshed every 15 minutes. Each feed can map to a client. Two-way sync with
+  Outlook/Google needs accounts and OAuth, so it is out of scope for v1.
+- Import/export meetings as ICS.
+
+### Working hours and time planning (P0)
+- **Working schedule**: a weekly template, one or more intervals per weekday
+  (e.g. Mon–Fri 09:00–13:00 and 14:00–18:00), plus **days off and
+  exceptions** (holidays, leave, a half day). Non-working time is shaded in
+  week/day views; days off are marked in month view.
+- **Time blocks**: drag on the week/day grid to block time for a client,
+  project or a specific task ("Acme: 2h deep work"). Dragging a task onto the
+  grid creates a block linked to that task without changing its due date.
+- **Logged time on the calendar**: the task timer and manual entries show as
+  a separate "Logged" layer. Drag on the grid to log time after the fact.
+  Meetings flagged "counts as work time" appear here too.
+- **Capacity per day**: available working hours − meetings − time blocks,
+  compared with estimates of tasks due that day. The day header shows a
+  small bar and turns amber/red when overbooked.
+- **Weekly hours summary** (sidebar of week view and on the Dashboard):
+  per client, planned (blocks + meetings) vs logged hours, and total against
+  the working schedule. Export as CSV per client and date range.
+- Meetings and blocks outside working hours are allowed but shown with a
+  warning stripe.
+
+### Find a meeting slot (P0)
+- **Find slot** (button in Calendar, command palette, and the new-meeting
+  dialog): pick a duration (15 / 30 / 45 / 60 / 90 min or custom) and a date
+  range (default: next 5 working days).
+- Core computes free slots = working hours − days off − meetings − time
+  blocks − external-calendar events, with options:
+  - buffer before/after meetings (default 10 min),
+  - earliest start / latest end per day (e.g. "only mornings"),
+  - keep time blocks free or allow overriding them ("blocks are flexible"),
+  - maximum meetings per day (default off),
+  - minimum notice (default: not within the next 2 hours).
+- Results are listed by day and highlighted on the week grid; clicking one
+  opens a prefilled meeting. Best slots first: earlier in the range, not
+  splitting a large free block, respecting the per-day meeting cap.
+- **Client time zones**: each client can have a time zone. Slots then show
+  both times (`10:00 PKT · 06:00 London`) and the search can also restrict
+  slots to the client's working hours (default 09:00–17:00 in their zone,
+  editable per client).
+- **Copy availability**: copies the found slots as plain text for email or
+  chat, in your zone, the client's zone, or both, e.g.
+  `Tue 21 Oct: 10:00–11:30, 15:00–17:00 (PKT, UTC+5)`.
+- The slot finder is a pure core function (`free_slots`), property-tested:
+  no slot overlaps a busy interval, every slot fits inside working hours, and
+  DST transitions are handled.
 
 ### Tracking (P1)
 Dashboard: completed this week, overdue, upcoming, per-project burndown,
@@ -510,7 +602,7 @@ review.
 | **M1** | Core | Schema + migrations, op log with undo/redo, CRUD, FTS search, query engine (filters, sort, grouping, windowing), quick-add parser, CLI, benches meeting §7 core budgets |
 | **M2** | Desktop shell + Table | App shell, Table view, quick add, global hotkey, command palette, search UI, theme and accent settings |
 | **M3** | Kanban | Drag and drop (mouse, touch, keyboard), custom statuses, WIP limits, swimlanes |
-| **M4** | Calendar | Month/week/day/agenda, drag to reschedule and resize, unscheduled sidebar |
+| **M4** | Calendar, meetings, working hours | Month/week/day/agenda; drag to reschedule and resize; unscheduled sidebar; meetings (incl. recurring, reminders with Join); working schedule + days off; time blocks; logged-time layer; daily capacity and weekly hours summary; slot finder with client time zones and copy-availability |
 | **M5** | Planning depth | Recurrence, reminders (tray scheduler), subtasks, progress, dashboard, timer |
 | **M6** | Data and polish | Import/export, backups and restore UI, settings, i18n + RTL, accessibility audit |
 | **M7** | *(Deferred)* Other platforms | macOS, Linux, iOS, Android: only when the user asks |
