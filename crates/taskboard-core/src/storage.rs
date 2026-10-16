@@ -51,6 +51,8 @@ pub struct Db {
     last_now: i64,
     /// Database file (None for in-memory databases).
     path: Option<PathBuf>,
+    /// History group of the open [`Db::batch`], if any.
+    batch: Option<Id>,
 }
 
 /// What the next undo / redo would do, for menus and tooltips.
@@ -146,6 +148,7 @@ impl Db {
             hlc,
             last_now,
             path: path.map(Path::to_path_buf),
+            batch: None,
         };
         db.ensure_inbox()?;
         Ok(db)
@@ -173,16 +176,28 @@ impl Db {
         self.last_now
     }
 
-    /// Runs `f` as one undoable user action named `label`.
+    /// Runs `f` as one undoable user action named `label`. Inside a
+    /// [`Db::batch`] it becomes part of the batch's single action instead.
     pub fn transact<T>(
         &mut self,
         label: &str,
         f: impl FnOnce(&mut Tx<'_>) -> Result<T>,
     ) -> Result<T> {
-        let mut tx = {
-            let now = self.next_now();
-            Tx::begin(&mut self.conn, &mut self.hlc, self.device, OpKind::Do, now)?
-        };
+        let now = self.next_now();
+        if let Some(group) = self.batch {
+            let mut tx = Tx::begin_in_batch(
+                &mut self.conn,
+                &mut self.hlc,
+                self.device,
+                group,
+                OpKind::Do,
+                now,
+            )?;
+            let out = f(&mut tx)?;
+            tx.commit()?;
+            return Ok(out);
+        }
+        let mut tx = Tx::begin(&mut self.conn, &mut self.hlc, self.device, OpKind::Do, now)?;
         let out = f(&mut tx)?;
         if tx.ops() > 0 {
             tx.conn()
@@ -196,11 +211,59 @@ impl Db {
         Ok(out)
     }
 
+    /// Runs several user actions as one: a single undo step, applied all or
+    /// nothing (bulk edits). Nested batches join the outer one.
+    pub fn batch<T>(&mut self, label: &str, f: impl FnOnce(&mut Self) -> Result<T>) -> Result<T> {
+        if self.batch.is_some() {
+            return f(self);
+        }
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        let group = Id::new();
+        self.batch = Some(group);
+        let result = f(self);
+        self.batch = None;
+        let finished = result.and_then(|out| {
+            let logged: bool = self.conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM op_log WHERE group_id = ?1)",
+                [group],
+                |r| r.get(0),
+            )?;
+            if logged {
+                self.conn
+                    .execute("DELETE FROM history WHERE undone = 1", [])?;
+                self.conn.execute(
+                    "INSERT INTO history (group_id, label, at) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![group, label, self.last_now],
+                )?;
+            }
+            self.conn.execute_batch("COMMIT")?;
+            Ok(out)
+        });
+        if finished.is_err() && !self.conn.is_autocommit() {
+            let _ = self.conn.execute_batch("ROLLBACK");
+        }
+        finished
+    }
+
     /// Runs `f` as a logged change that is not on the undo stack (seeding, maintenance).
     pub(crate) fn transact_system<T>(
         &mut self,
         f: impl FnOnce(&mut Tx<'_>) -> Result<T>,
     ) -> Result<T> {
+        if self.batch.is_some() {
+            let now = self.next_now();
+            let mut tx = Tx::begin_in_batch(
+                &mut self.conn,
+                &mut self.hlc,
+                self.device,
+                Id::new(),
+                OpKind::System,
+                now,
+            )?;
+            let out = f(&mut tx)?;
+            tx.commit()?;
+            return Ok(out);
+        }
         let mut tx = {
             let now = self.next_now();
             Tx::begin(

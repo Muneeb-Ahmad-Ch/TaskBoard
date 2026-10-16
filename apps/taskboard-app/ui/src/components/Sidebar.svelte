@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Plus, Search, Settings, Star, CalendarDays, User } from '@lucide/svelte'
+  import { Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Plus, Search, Settings, Star, CalendarDays, User } from '@lucide/svelte'
   import type { Client } from '../lib/bindings/Client'
   import type { Id } from '../lib/bindings/Id'
   import type { ProjectSummary } from '../lib/bindings/ProjectSummary'
+  import type { SavedView } from '../lib/bindings/SavedView'
   import { swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
-  import { act, app, projectsOf, setScope, type Scope } from '../lib/store.svelte'
+  import { act, activeViewChanged, app, applySavedView, projectsOf, saveCurrentView, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
 
   const COLLAPSE_KEY = 'taskboard.collapsedClients'
@@ -32,13 +33,15 @@
     | { kind: 'new-project'; clientId: Id | null }
     | { kind: 'rename-client'; id: Id; value: string }
     | { kind: 'rename-project'; id: Id; value: string }
+    | { kind: 'new-view' }
+    | { kind: 'rename-view'; id: Id; value: string }
   let editing = $state<Editing | null>(null)
   let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
 
   const personal = $derived(projectsOf(null))
 
   function isActive(scope: Scope): boolean {
-    if (app.view === 'dashboard') return false
+    if (app.view === 'dashboard' || app.activeViewId) return false
     const s = app.scope
     if (s.kind !== scope.kind) return false
     return !('id' in scope) || ('id' in s && s.id === scope.id)
@@ -62,6 +65,10 @@
       await act(() => ipc.updateClient(e.id, { name }))
     } else if (e.kind === 'rename-project' && name !== e.value) {
       await act(() => ipc.updateProject(e.id, { name }))
+    } else if (e.kind === 'new-view') {
+      await saveCurrentView(name)
+    } else if (e.kind === 'rename-view' && name !== e.value) {
+      await act(() => ipc.updateSavedView(e.id, { name }))
     }
   }
 
@@ -110,6 +117,27 @@
         'separator',
         { label: 'Archive project', run: () => void act(() => ipc.setProjectArchived(p.id, true), `Archived “${p.name}”`) },
         { label: 'Delete project and its tasks', danger: true, run: () => void act(() => ipc.deleteProject(p.id), `Deleted “${p.name}”`) },
+      ],
+    }
+  }
+
+  function viewMenu(e: MouseEvent, v: SavedView) {
+    e.preventDefault()
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: 'Update with current filters',
+          run: () => {
+            // Saves what is on screen into this view, which then becomes the open one.
+            app.activeViewId = v.id
+            void updateActiveView()
+          },
+        },
+        { label: 'Rename', run: () => (editing = { kind: 'rename-view', id: v.id, value: v.name }) },
+        'separator',
+        { label: 'Delete view', danger: true, run: () => void act(() => ipc.deleteSavedView(v.id), `Deleted view “${v.name}”`) },
       ],
     }
   }
@@ -254,6 +282,34 @@
       {@render projectRow(p, false)}
     {/each}
     {#if editing?.kind === 'new-project' && editing.clientId === null}{@render editor('Project name')}{/if}
+
+    <div class="section mt-4">
+      <span>Saved views</span>
+      <button class="icon-btn" aria-label="Save current view" title="Save current filters as a view" onclick={() => (editing = { kind: 'new-view' })}><Plus size={14} /></button>
+    </div>
+    {#each app.views as v (v.id)}
+      {#if editing?.kind === 'rename-view' && editing.id === v.id}
+        {@render editor('View name', editing.value)}
+      {:else}
+        <button
+          class="nav-item"
+          class:active={app.activeViewId === v.id && app.view !== 'dashboard'}
+          onclick={() => applySavedView(v)}
+          oncontextmenu={(e) => viewMenu(e, v)}
+          ondblclick={() => (editing = { kind: 'rename-view', id: v.id, value: v.name })}
+        >
+          <Bookmark size={14} class="shrink-0 text-subtle" />
+          <span class="flex-1 truncate text-left">{v.name}</span>
+          {#if app.activeViewId === v.id && activeViewChanged()}
+            <span class="text-xs text-subtle" title="Filters changed since the view was opened">edited</span>
+          {/if}
+        </button>
+      {/if}
+    {/each}
+    {#if editing?.kind === 'new-view'}{@render editor('Name this view')}{/if}
+    {#if !app.views.length && editing?.kind !== 'new-view'}
+      <p class="px-2 py-1 text-xs text-subtle">Set filters, then + to save them.</p>
+    {/if}
   </div>
 
   <div class="flex items-center gap-2 border-t border-border px-2 pt-2 text-muted">

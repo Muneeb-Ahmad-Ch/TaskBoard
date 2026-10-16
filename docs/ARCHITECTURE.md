@@ -120,6 +120,20 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   Migration 6 adds the indexes the pre-paint queries need (per-project counts,
   `max(hlc)`). `main.ts` reveals the window even if boot fails, with the error
   in the page, so a failure is never an invisible app.
+- **Batches**: `Db::batch(label, f)` runs several actions in one SQLite
+  transaction (each inner `transact` is a savepoint logged under the batch's
+  history group). Bulk edit / complete / delete are one undo step and apply
+  all or nothing.
+- **Saved views**: `saved_view.spec_json` is a JSON object owned by the UI
+  (scope, search, sort, view, lanes); core validates it is an object ≤ 16 KB.
+- **Markdown** (task, meeting and client notes): `pulldown-cmark` renders in
+  core, raw HTML is shown as text, task lists become ☐/☑, then `ammonia`
+  sanitizes (links limited to http/https/mailto with `noopener noreferrer`,
+  no images). The UI intercepts link clicks and opens them in the browser.
+- **Crash test** (`core/tests/crash.rs`): re-runs its own test binary as a
+  writer, kills it 100 times at varying points, and checks `quick_check` plus
+  every acknowledged write after each kill. It covers process kills; power
+  loss relies on `synchronous=FULL`.
 
 ## 4. Storage
 
@@ -263,7 +277,7 @@ start to the first themed frame with sidebar data loaded.
 | Cold start to first paint | < 400 ms | 357–371 ms | 358–386 ms |
 | First launch after a rebuild (exe not cached) | — | ≈ 790 ms | — |
 | Idle memory, all 7 processes, private working set (Task Manager) | < 150 MB | 112 MB | 125 MB |
-| Installer size | < 25 MB | NSIS 4.3 MB, MSI 7.3 MB | |
+| Installer size | < 25 MB | NSIS 4.6 MB, MSI 7.8 MB | |
 
 Of the ~360 ms, about 215 ms is Tauri and WebView2 starting before setup runs.
 Before the M8 fixes the 50k database took ~965 ms: the background integrity

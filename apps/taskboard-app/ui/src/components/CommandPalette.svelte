@@ -3,7 +3,7 @@
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { swatch } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
-  import { app, redo, setScope, undo } from '../lib/store.svelte'
+  import { activeViewChanged, app, applySavedView, redo, setScope, undo, updateActiveView } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
   import { cal } from '../lib/cal.svelte'
 
@@ -44,6 +44,10 @@
       { id: 'g-all', group: 'Go to', label: 'All work', run: () => setScope({ kind: 'all' }) },
       { id: 'g-personal', group: 'Go to', label: 'Personal projects', run: () => setScope({ kind: 'personal' }) },
     ]
+    for (const v of app.views) list.push({ id: `sv-${v.id}`, group: 'Saved views', label: v.name, run: () => applySavedView(v) })
+    const active = app.views.find((v) => v.id === app.activeViewId)
+    if (active && activeViewChanged())
+      list.push({ id: 'sv-update', group: 'Actions', label: `Update view “${active.name}” with current filters`, run: () => void updateActiveView() })
     for (const c of app.clients)
       list.push({ id: `c-${c.id}`, group: 'Clients', label: c.name, color: c.color, run: () => setScope({ kind: 'client', id: c.id }) })
     for (const p of app.projects)

@@ -132,7 +132,7 @@
     {/if}
     <header class="flex h-14 shrink-0 items-center gap-3 px-6">
       <div class="flex min-w-0 flex-1 items-baseline gap-2.5">
-        <h1 class="font-display truncate text-lg font-semibold tracking-tight">{app.view === 'dashboard' ? 'Dashboard' : scopeTitle()}</h1>
+        <h1 class="font-display truncate text-lg font-semibold tracking-tight">{app.view === 'dashboard' ? 'Dashboard' : (app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle())}</h1>
         {#if subtitle}
           <span class="flex shrink-0 items-center gap-1.5 text-xs text-muted">
             <span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{subtitle.text}

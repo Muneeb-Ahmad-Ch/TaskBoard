@@ -37,6 +37,8 @@ import type { Project } from './bindings/Project'
 import type { ProjectPatch } from './bindings/ProjectPatch'
 import type { ProjectSummary } from './bindings/ProjectSummary'
 import type { QuickAddPreview } from './bindings/QuickAddPreview'
+import type { SavedView } from './bindings/SavedView'
+import type { SavedViewPatch } from './bindings/SavedViewPatch'
 import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
 import type { StatusPatch } from './bindings/StatusPatch'
@@ -81,6 +83,12 @@ export const ipc = {
   setClientArchived: (id: Id, archived: boolean) =>
     invoke<Client>('set_client_archived', { id, archived }),
   deleteClient: (id: Id) => invoke<void>('delete_client', { id }),
+  renderMarkdown: (source: string) => invoke<string>('render_markdown', { source }),
+  savedViews: () => invoke<SavedView[]>('saved_views'),
+  createSavedView: (name: string, specJson: string) =>
+    invoke<SavedView>('create_saved_view', { name, specJson }),
+  updateSavedView: (id: Id, patch: SavedViewPatch) => invoke<SavedView>('update_saved_view', { id, patch }),
+  deleteSavedView: (id: Id) => invoke<void>('delete_saved_view', { id }),
   createProject: (input: NewProject) => invoke<Project>('create_project', { input }),
   updateProject: (id: Id, patch: ProjectPatch) => invoke<Project>('update_project', { id, patch }),
   setProjectArchived: (id: Id, archived: boolean) =>
@@ -161,7 +169,7 @@ export function onReminders(handler: (list: Notification[]) => void): Promise<Un
 
 /** Opens http(s) links in the default browser (the webview can't navigate away). */
 export async function openLink(url: string) {
-  if (!/^https?:\/\//i.test(url)) return
+  if (!/^(https?:\/\/|mailto:)/i.test(url)) return
   if (inTauri) await openUrl(url)
   else window.open(url, '_blank', 'noopener')
 }

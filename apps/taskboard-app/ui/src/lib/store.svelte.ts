@@ -5,6 +5,7 @@ import type { Client } from './bindings/Client'
 import type { HistoryState } from './bindings/HistoryState'
 import type { Id } from './bindings/Id'
 import type { ProjectSummary } from './bindings/ProjectSummary'
+import type { SavedView } from './bindings/SavedView'
 import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
 import type { TaskQuery } from './bindings/TaskQuery'
@@ -51,7 +52,80 @@ export const app = $state({
   projectDialog: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
   quickAddFocus: 0,
+  views: [] as SavedView[],
+  /** The saved view last opened; cleared when the scope changes. */
+  activeViewId: null as Id | null,
 })
+
+/** What a saved view remembers (stored as JSON in `saved_view.spec_json`). */
+export type ViewSpec = {
+  scope: Scope
+  view: Exclude<View, 'dashboard'>
+  search: string
+  showDone: boolean
+  sort: TaskSort
+  descending: boolean
+  lanes: Lanes
+}
+
+export function currentSpec(): ViewSpec {
+  return {
+    scope: app.scope,
+    view: app.view === 'dashboard' ? 'table' : app.view,
+    search: app.search,
+    showDone: app.showDone,
+    sort: app.sort,
+    descending: app.descending,
+    lanes: app.lanes,
+  }
+}
+
+function parseSpec(json: string): Partial<ViewSpec> {
+  try {
+    const value: unknown = JSON.parse(json)
+    return value && typeof value === 'object' ? (value as Partial<ViewSpec>) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function applySavedView(v: SavedView) {
+  const spec = parseSpec(v.spec_json)
+  setScope(spec.scope ?? { kind: 'all' })
+  app.view = spec.view ?? 'table'
+  app.search = spec.search ?? ''
+  app.showDone = spec.showDone ?? false
+  app.sort = spec.sort ?? 'due'
+  app.descending = spec.descending ?? false
+  app.lanes = spec.lanes ?? 'none'
+  app.activeViewId = v.id
+}
+
+/** JSON with object keys sorted (core stores specs with sorted keys). */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
+}
+
+/** True when the open saved view's filters were changed since it was opened. */
+export function activeViewChanged(): boolean {
+  const v = app.views.find((x) => x.id === app.activeViewId)
+  return !!v && canonical(parseSpec(v.spec_json)) !== canonical(currentSpec())
+}
+
+export async function saveCurrentView(name: string) {
+  const v = await act(() => ipc.createSavedView(name, JSON.stringify(currentSpec())), `Saved view “${name.trim()}”`)
+  if (v) app.activeViewId = v.id
+}
+
+export async function updateActiveView() {
+  const id = app.activeViewId
+  if (!id) return
+  await act(() => ipc.updateSavedView(id, { spec_json: JSON.stringify(currentSpec()) }), 'View updated')
+}
 
 export function inboxId(): Id | null {
   return app.projects.find((p) => p.is_inbox)?.id ?? null
@@ -148,6 +222,7 @@ export function scopeProjectIds(): Id[] {
 export function setScope(scope: Scope) {
   app.scope = scope
   app.openTaskId = null
+  app.activeViewId = null
   // Picking a list leaves the dashboard.
   if (app.view === 'dashboard') app.view = 'table'
 }
@@ -155,13 +230,16 @@ export function setScope(scope: Scope) {
 export async function refreshMeta() {
   if (!inTauri) return
   try {
-    const [clients, projects, counts, history, statuses] = await Promise.all([
+    const [clients, projects, counts, history, statuses, views] = await Promise.all([
       ipc.listClients(),
       ipc.listProjects(),
       ipc.sidebarCounts(),
       ipc.historyState(),
       ipc.allStatuses(),
+      ipc.savedViews(),
     ])
+    app.views = views
+    if (app.activeViewId && !views.some((v) => v.id === app.activeViewId)) app.activeViewId = null
     app.clients = clients
     app.projects = projects
     app.statuses = statuses

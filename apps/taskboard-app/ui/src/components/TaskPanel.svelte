@@ -10,6 +10,7 @@
   import { act, app } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
+  import Notes from './Notes.svelte'
   import Progress from './Progress.svelte'
   import { fromIso, repeatOptions } from '../lib/cal.svelte'
 
@@ -288,13 +289,7 @@
 
       <h3 class="mt-5 mb-1.5 text-xs font-semibold tracking-wide text-subtle uppercase">Notes</h3>
       {#key task.id}
-        <textarea
-          class="notes w-full rounded-md border border-border bg-surface-2 p-2.5 outline-none focus:border-accent"
-          rows="5"
-          placeholder="Add notes (Markdown)…"
-          value={task.description_md}
-          onblur={(e) => e.currentTarget.value !== task?.description_md && void save({ description_md: e.currentTarget.value })}
-        ></textarea>
+        <Notes value={task.description_md} onsave={(description_md) => void save({ description_md })} />
       {/key}
 
       <h3 class="mt-5 mb-1.5 flex items-center justify-between text-xs font-semibold tracking-wide text-subtle uppercase">
@@ -395,10 +390,5 @@
   .slider {
     accent-color: var(--accent);
     height: 18px;
-  }
-  .notes {
-    user-select: text;
-    resize: vertical;
-    min-height: 90px;
   }
 </style>

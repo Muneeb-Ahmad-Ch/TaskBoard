@@ -7,6 +7,7 @@
   import { act, app } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
+  import Notes from './Notes.svelte'
 
   let { id, onclose }: { id: Id; onclose: () => void } = $props()
 
@@ -88,7 +89,7 @@
       {/if}
 
       <label><span class="field-label">Contact</span><input class="field" placeholder="Name, email, phone" bind:value={f.contact} /></label>
-      <label><span class="field-label">Notes</span><textarea class="field" rows="4" placeholder="Rates, preferences, access details… (Markdown)" bind:value={f.notes}></textarea></label>
+      <div><span class="field-label">Notes</span><Notes value={f.notes} rows={4} placeholder="Preferences, contacts, access details… (Markdown)" onsave={(v) => (f.notes = v)} /></div>
       <label class="flex items-center gap-1.5 text-[13px]">
         <input type="checkbox" class="accent-[var(--accent)]" bind:checked={f.counts} />
         Meetings with this client count as work time

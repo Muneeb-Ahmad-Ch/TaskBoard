@@ -29,6 +29,7 @@
   import { app, projectsOf } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
+  import Notes from './Notes.svelte'
 
   let { draft, onclose }: { draft: EventDraft; onclose: () => void } = $props()
   // The calendar remounts this dialog per draft, so read it once.
@@ -308,10 +309,16 @@
       </label>
     {/if}
 
-    <label>
+    <div>
       <span class="field-label">{f.kind === 'meeting' ? 'Agenda & notes' : 'Notes'}</span>
-      <textarea class="field" rows="3" placeholder={f.kind === 'meeting' ? '- [ ] action items become tasks later' : ''} bind:value={f.notes}></textarea>
-    </label>
+      <Notes
+        value={f.notes}
+        rows={3}
+        label={f.kind === 'meeting' ? 'Agenda and notes' : 'Notes'}
+        placeholder={f.kind === 'meeting' ? 'Agenda, decisions, - [ ] action items (Markdown)' : 'Notes (Markdown)'}
+        onsave={(v) => (f.notes = v)}
+      />
+    </div>
 
     <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
       {#if f.kind === 'meeting'}

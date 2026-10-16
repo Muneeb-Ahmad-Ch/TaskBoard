@@ -26,13 +26,17 @@ your computer.
 - **Find a slot**: free time inside your working hours *and* the client's
   hours in their time zone, with buffers, meeting caps and "copy
   availability" text.
+- **Saved views**: keep any combination of scope, filter, sort and view in
+  the sidebar and command palette.
+- **Markdown notes** on tasks, meetings and clients (rendered safely, links
+  open in your browser).
 - **Time and progress**: task timer, logged hours per client, task progress
   from subtasks, dashboard with streaks and project burndown.
 - **Repeating tasks**: fixed schedules (every Friday) or after completion
   (every! 3 days).
-- **Safe by design**: every change can be undone, crash-safe storage, daily
-  backups with retention, restore, and export/import (JSON, CSV, ICS;
-  imports from Todoist, Trello, Notion CSV).
+- **Safe by design**: every change can be undone (bulk edits as one step),
+  crash-tested storage, daily backups with retention, restore, and
+  export/import (JSON, CSV, ICS; imports from Todoist, Trello, Notion CSV).
 - **Modern Windows UI**: light and dark themes, accent colors, Mica, tray icon,
   start with Windows, Windows notifications; keyboard-first and checked with
   axe-core against WCAG 2.2 AA.

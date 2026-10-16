@@ -15,9 +15,9 @@ use taskboard_core::{
     AppSettings, Client, ClientHours, ClientPatch, Dashboard, DayOverride, DayPlan, Db, DbInfo,
     ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask, NewClient,
     NewEvent, NewProject, NewStatus, NewTask, NewTimeEntry, NotifySettings, Occurrence,
-    OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SidebarCounts,
-    SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary,
-    TimeEntryPatch, WorkingDay,
+    OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SavedView,
+    SavedViewPatch, SidebarCounts, SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch,
+    TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -207,6 +207,15 @@ async fn duplicate_task(app: AppHandle, state: State<'_, AppState>, id: Id) -> C
 
 /// Applies one patch to many tasks as a single undoable action per task.
 /// (A combined undo group for bulk edits is a core follow-up.)
+/// Undo label for a bulk action, e.g. "Delete 3 tasks".
+fn tasks_label(verb: &str, n: usize) -> String {
+    if n == 1 {
+        format!("{verb} 1 task")
+    } else {
+        format!("{verb} {n} tasks")
+    }
+}
+
 #[tauri::command]
 async fn bulk_update_tasks(
     app: AppHandle,
@@ -215,10 +224,12 @@ async fn bulk_update_tasks(
     patch: TaskPatch,
 ) -> CmdResult<usize> {
     write(app, state, move |db| {
-        for id in &ids {
-            db.update_task(*id, patch.clone())?;
-        }
-        Ok(ids.len())
+        db.batch(&tasks_label("Edit", ids.len()), |db| {
+            for id in &ids {
+                db.update_task(*id, patch.clone())?;
+            }
+            Ok(ids.len())
+        })
     })
     .await
 }
@@ -230,11 +241,14 @@ async fn bulk_set_done(
     ids: Vec<Id>,
     done: bool,
 ) -> CmdResult<usize> {
+    let verb = if done { "Complete" } else { "Reopen" };
     write(app, state, move |db| {
-        for id in &ids {
-            db.set_task_done(*id, done)?;
-        }
-        Ok(ids.len())
+        db.batch(&tasks_label(verb, ids.len()), |db| {
+            for id in &ids {
+                db.set_task_done(*id, done)?;
+            }
+            Ok(ids.len())
+        })
     })
     .await
 }
@@ -242,10 +256,12 @@ async fn bulk_set_done(
 #[tauri::command]
 async fn bulk_delete(app: AppHandle, state: State<'_, AppState>, ids: Vec<Id>) -> CmdResult<usize> {
     write(app, state, move |db| {
-        for id in &ids {
-            db.delete_task(*id)?;
-        }
-        Ok(ids.len())
+        db.batch(&tasks_label("Delete", ids.len()), |db| {
+            for id in &ids {
+                db.delete_task(*id)?;
+            }
+            Ok(ids.len())
+        })
     })
     .await
 }
@@ -282,6 +298,45 @@ async fn set_client_archived(
 #[tauri::command]
 async fn delete_client(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<()> {
     write(app, state, move |db| db.delete_client(id)).await
+}
+
+/// Sanitized HTML for notes (task, meeting and client Markdown).
+#[tauri::command]
+async fn render_markdown(source: String) -> String {
+    taskboard_core::markdown::render_markdown(&source)
+}
+
+#[tauri::command]
+async fn saved_views(state: State<'_, AppState>) -> CmdResult<Vec<SavedView>> {
+    read(state, |db| db.saved_views()).await
+}
+
+#[tauri::command]
+async fn create_saved_view(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    spec_json: String,
+) -> CmdResult<SavedView> {
+    write(app, state, move |db| {
+        db.create_saved_view(&name, &spec_json)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn update_saved_view(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    patch: SavedViewPatch,
+) -> CmdResult<SavedView> {
+    write(app, state, move |db| db.update_saved_view(id, patch)).await
+}
+
+#[tauri::command]
+async fn delete_saved_view(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<()> {
+    write(app, state, move |db| db.delete_saved_view(id)).await
 }
 
 #[tauri::command]
@@ -778,6 +833,11 @@ pub fn run() {
             update_client,
             set_client_archived,
             delete_client,
+            render_markdown,
+            saved_views,
+            create_saved_view,
+            update_saved_view,
+            delete_saved_view,
             create_project,
             update_project,
             set_project_archived,

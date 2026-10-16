@@ -1227,3 +1227,152 @@ fn quick_add_every_sets_rule_and_first_date() {
         .is_err()
     );
 }
+
+// ---------- saved views ----------
+
+#[test]
+fn saved_views_round_trip_and_undo() {
+    let mut db = db();
+    let a = db
+        .create_saved_view(
+            "  Acme this week ",
+            r#"{ "scope": "client", "search": "invoice" }"#,
+        )
+        .unwrap();
+    assert_eq!(a.name, "Acme this week");
+    assert_eq!(a.spec_json, r#"{"scope":"client","search":"invoice"}"#);
+    let b = db
+        .create_saved_view("Urgent", r#"{"sort":"priority"}"#)
+        .unwrap();
+    let names: Vec<String> = db
+        .saved_views()
+        .unwrap()
+        .into_iter()
+        .map(|v| v.name)
+        .collect();
+    assert_eq!(names, ["Acme this week", "Urgent"]);
+
+    let renamed = db
+        .update_saved_view(
+            b.id,
+            SavedViewPatch {
+                name: Some("Urgent work".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(renamed.name, "Urgent work");
+    assert_eq!(renamed.spec_json, b.spec_json);
+
+    db.delete_saved_view(a.id).unwrap();
+    assert_eq!(db.saved_views().unwrap().len(), 1);
+    db.undo().unwrap();
+    assert_eq!(db.saved_view(a.id).unwrap().name, "Acme this week");
+    db.undo().unwrap();
+    assert_eq!(db.saved_view(b.id).unwrap().name, "Urgent");
+}
+
+#[test]
+fn saved_view_specs_must_be_json_objects() {
+    let mut db = db();
+    for bad in ["", "not json", "[1, 2]", "\"text\""] {
+        assert!(db.create_saved_view("x", bad).is_err(), "{bad:?}");
+    }
+    assert!(db.create_saved_view("  ", "{}").is_err());
+    let huge = format!(r#"{{"search":"{}"}}"#, "a".repeat(20_000));
+    assert!(db.create_saved_view("big", &huge).is_err());
+    let v = db.create_saved_view("ok", "{}").unwrap();
+    let bad_patch = SavedViewPatch {
+        spec_json: Some("[]".into()),
+        ..Default::default()
+    };
+    assert!(db.update_saved_view(v.id, bad_patch).is_err());
+}
+
+// ---------- batches (bulk edits) ----------
+
+fn live_titles(db: &Db) -> Vec<String> {
+    let mut titles: Vec<String> = db
+        .list_tasks(&TaskQuery::default())
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|r| r.title)
+        .collect();
+    titles.sort();
+    titles
+}
+
+#[test]
+fn a_batch_is_one_undo_step() {
+    let mut db = db();
+    let ids: Vec<Id> = ["a", "b", "c"]
+        .iter()
+        .map(|t| task(&mut db, t, None).id)
+        .collect();
+    db.batch("Delete 2 tasks", |db| {
+        db.delete_task(ids[0])?;
+        db.delete_task(ids[1])
+    })
+    .unwrap();
+    assert_eq!(live_titles(&db), ["c"]);
+    assert_eq!(
+        db.history_state().unwrap().undo.as_deref(),
+        Some("Delete 2 tasks")
+    );
+
+    assert_eq!(db.undo().unwrap(), "Delete 2 tasks");
+    assert_eq!(live_titles(&db), ["a", "b", "c"]);
+    db.redo().unwrap();
+    assert_eq!(live_titles(&db), ["c"]);
+    db.undo().unwrap();
+    // The step before the batch is untouched.
+    assert_eq!(
+        db.history_state().unwrap().undo.as_deref(),
+        Some("Create task “c”")
+    );
+}
+
+#[test]
+fn a_failing_batch_changes_nothing() {
+    let mut db = db();
+    let a = task(&mut db, "a", None);
+    let before = db.history_state().unwrap();
+    let missing = Id::new();
+    let result = db.batch("Complete 2 tasks", |db| {
+        db.set_task_done(a.id, true)?;
+        db.set_task_done(missing, true)
+    });
+    assert!(result.is_err());
+    assert!(db.task(a.id).unwrap().completed_at.is_none());
+    assert_eq!(db.history_state().unwrap().undo, before.undo);
+    // The connection is usable again afterwards.
+    db.set_task_done(a.id, true).unwrap();
+    assert!(db.task(a.id).unwrap().completed_at.is_some());
+}
+
+#[test]
+fn repeating_tasks_repeat_inside_a_batch() {
+    let mut db = db();
+    let t = db
+        .create_task(NewTask {
+            title: "Weekly report".into(),
+            due_date: Some("2030-01-07".into()),
+            recurrence_rule: Some("FREQ=WEEKLY".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    let plain = task(&mut db, "plain", None);
+    db.batch("Complete 2 tasks", |db| {
+        db.set_task_done(t.id, true)?;
+        db.set_task_done(plain.id, true)
+    })
+    .unwrap();
+    let open = TaskQuery {
+        categories: vec![Category::Todo, Category::Active],
+        ..Default::default()
+    };
+    assert_eq!(db.list_tasks(&open).unwrap().total, 1);
+    db.undo().unwrap();
+    assert_eq!(db.list_tasks(&open).unwrap().total, 2);
+}

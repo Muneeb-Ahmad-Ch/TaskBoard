@@ -8,6 +8,7 @@ pub mod error;
 pub mod events;
 pub mod exchange;
 pub mod id;
+pub mod markdown;
 pub mod model;
 pub mod notify;
 pub mod order;
@@ -18,6 +19,7 @@ pub mod quickadd;
 pub mod recur;
 pub mod rrule;
 mod sample;
+pub mod saved_views;
 pub mod slots;
 mod statuses;
 pub mod storage;
@@ -40,6 +42,7 @@ pub use planning::{
     Slot, SlotDay, SlotResult, TimeEntryPatch, WorkingDay,
 };
 pub use query::{TaskPage, TaskQuery, TaskRow, TaskSort};
+pub use saved_views::{SavedView, SavedViewPatch};
 pub use statuses::{NewStatus, StatusPatch};
 pub use storage::{Db, DbInfo, HistoryState};
 pub use tasks::MoveTask;

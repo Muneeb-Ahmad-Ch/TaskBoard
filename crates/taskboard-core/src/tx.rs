@@ -6,7 +6,7 @@
 //! code. The log is append-only: undo writes new records rather than deleting.
 
 use rusqlite::types::Value;
-use rusqlite::{Connection, OptionalExtension, Transaction, params, params_from_iter};
+use rusqlite::{Connection, OptionalExtension, Savepoint, Transaction, params, params_from_iter};
 use serde_json::{Map, Value as Json, json};
 
 use crate::clock::Hlc;
@@ -123,8 +123,34 @@ impl OpKind {
 type Row = Vec<(String, Value)>;
 
 /// A write transaction that records everything it changes.
+/// The SQLite transaction behind a [`Tx`]: its own transaction, or a savepoint
+/// inside a [`crate::Db::batch`] that commits everything at once.
+enum Handle<'c> {
+    Top(Transaction<'c>),
+    Nested(Savepoint<'c>),
+}
+
+impl std::ops::Deref for Handle<'_> {
+    type Target = Connection;
+    fn deref(&self) -> &Connection {
+        match self {
+            Self::Top(tx) => tx,
+            Self::Nested(sp) => sp,
+        }
+    }
+}
+
+impl Handle<'_> {
+    fn commit(self) -> rusqlite::Result<()> {
+        match self {
+            Self::Top(tx) => tx.commit(),
+            Self::Nested(sp) => sp.commit(),
+        }
+    }
+}
+
 pub struct Tx<'c> {
-    tx: Transaction<'c>,
+    tx: Handle<'c>,
     hlc: &'c mut Hlc,
     device: Id,
     group: Id,
@@ -152,10 +178,31 @@ impl<'c> Tx<'c> {
     ) -> Result<Self> {
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         Ok(Self {
-            tx,
+            tx: Handle::Top(tx),
             hlc,
             device,
             group: Id::new(),
+            kind,
+            now,
+            ops: 0,
+        })
+    }
+
+    /// A change inside an open batch: a savepoint, logged under `group` (the
+    /// batch's group for user changes, so the whole batch undoes as one step).
+    pub(crate) fn begin_in_batch(
+        conn: &'c mut Connection,
+        hlc: &'c mut Hlc,
+        device: Id,
+        group: Id,
+        kind: OpKind,
+        now: i64,
+    ) -> Result<Self> {
+        Ok(Self {
+            tx: Handle::Nested(conn.savepoint()?),
+            hlc,
+            device,
+            group,
             kind,
             now,
             ops: 0,
@@ -191,6 +238,9 @@ impl<'c> Tx<'c> {
             row.push(("updated_at".into(), Value::Integer(self.now)));
             row.push(("hlc".into(), Value::Text(hlc)));
             row.push(("device_id".into(), self.device.into()));
+        } else if table == Table::SavedView {
+            // Local-only, but the UI shows when a view last changed.
+            row.push(("updated_at".into(), Value::Integer(self.now)));
         }
     }
 
