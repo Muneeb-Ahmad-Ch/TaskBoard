@@ -1,6 +1,6 @@
 # Taskboard — Data Model
 
-Status: **approved 2026-10-16**. The SQL below becomes migration 2 (M1).
+Status: open questions resolved 2026-10-16. The SQL below becomes migration 2 (M1).
 Conventions: all tables `STRICT`; ids are UUIDv7 stored as 16-byte `BLOB`;
 instants are UTC milliseconds (`INTEGER`); plan dates are civil `TEXT`
 (`YYYY-MM-DD`, no time zone); every syncable row has `hlc` + `device_id`.
