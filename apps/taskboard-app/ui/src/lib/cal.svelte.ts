@@ -20,8 +20,15 @@ export const cal = $state({
   /** Any date inside the visible period. */
   anchor: startOfDay(new Date()),
   layers: loadLayers() as { tasks: boolean; meetings: boolean; blocks: boolean; logged: boolean },
-  /** First day of the week: 1 = Monday, 0 = Sunday. */
-  weekStart: 1,
+  /** First day of the week: 1 = Monday, 0 = Sunday, 6 = Saturday. */
+  weekStart: (() => {
+    try {
+      const v = Number(localStorage.getItem('taskboard.weekStart') ?? 1)
+      return [0, 1, 6].includes(v) ? v : 1
+    } catch {
+      return 1
+    }
+  })(),
   /** Open dialogs. */
   draft: null as EventDraft | null,
   workingHoursOpen: false,

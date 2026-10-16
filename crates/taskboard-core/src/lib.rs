@@ -29,7 +29,7 @@ pub use events::{
 };
 pub use id::Id;
 pub use model::*;
-pub use notify::{Notification, NotificationKind, NotifySettings};
+pub use notify::{AppSettings, Notification, NotificationKind, NotifySettings};
 pub use planning::{
     ClientHours, DayOverride, DayPlan, FindSlots, Interval, LoggedTime, NewTimeEntry, OverrideKind,
     Slot, SlotDay, SlotResult, TimeEntryPatch, WorkingDay,

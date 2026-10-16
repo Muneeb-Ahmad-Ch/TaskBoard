@@ -9,4 +9,8 @@ export type QuickAddPreview = { parsed: ParsedQuickAdd, project: ProjectRef | nu
 /**
  * An `@hint` was typed but matches no project.
  */
-project_missing: boolean, };
+project_missing: boolean, 
+/**
+ * Words for a typed repeat rule, e.g. "Every week on Fri".
+ */
+recurrence_text: string | null, };

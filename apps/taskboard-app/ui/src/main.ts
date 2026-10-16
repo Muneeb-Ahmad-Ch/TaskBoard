@@ -20,7 +20,8 @@ async function boot() {
   mount(App, { target })
 
   // Show the hidden window only after the first themed frame has painted.
-  if (inTauri) {
+  // Started by Windows login with --minimized: stay in the tray.
+  if (inTauri && !(await ipc.startHidden().catch(() => false))) {
     requestAnimationFrame(() => requestAnimationFrame(() => void ipc.showMainWindow()))
   }
 }

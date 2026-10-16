@@ -47,6 +47,28 @@ impl Default for NotifySettings {
     }
 }
 
+/// Desktop behaviour (SPEC §14 decisions: tray-resident and autostart by default).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default)]
+#[ts(export)]
+pub struct AppSettings {
+    /// Closing the window keeps Taskboard running in the tray (so reminders fire).
+    pub close_to_tray: bool,
+    /// Start with Windows, minimized to the tray.
+    pub autostart: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            close_to_tray: true,
+            autostart: true,
+        }
+    }
+}
+
+const APP_KEY: &str = "app";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export)]
@@ -127,6 +149,15 @@ impl Db {
             }
             Ok(())
         })
+    }
+
+    pub fn app_settings(&self) -> Result<AppSettings> {
+        self.setting(APP_KEY)
+    }
+
+    pub fn set_app_settings(&mut self, s: AppSettings) -> Result<AppSettings> {
+        self.set_setting(APP_KEY, &s)?;
+        Ok(s)
     }
 
     pub fn notify_settings(&self) -> Result<NotifySettings> {

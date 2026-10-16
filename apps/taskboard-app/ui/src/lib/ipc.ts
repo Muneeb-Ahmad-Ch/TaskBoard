@@ -1,6 +1,11 @@
 // The only place the UI talks to Rust. Types come from generated bindings.
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import type { AppSettings } from './bindings/AppSettings'
+import type { Dashboard } from './bindings/Dashboard'
+import type { Notification } from './bindings/Notification'
+import type { NotifySettings } from './bindings/NotifySettings'
 import type { Client } from './bindings/Client'
 import type { ClientHours } from './bindings/ClientHours'
 import type { DayOverride } from './bindings/DayOverride'
@@ -112,6 +117,15 @@ export const ipc = {
   hoursByClient: (from: number, to: number) => invoke<ClientHours[]>('hours_by_client', { from, to }),
   findSlots: (query: FindSlots) => invoke<SlotResult>('find_slots', { query }),
 
+  // settings, reminders, dashboard
+  dashboard: () => invoke<Dashboard>('dashboard'),
+  notifySettings: () => invoke<NotifySettings>('notify_settings'),
+  setNotifySettings: (settings: NotifySettings) => invoke<NotifySettings>('set_notify_settings', { settings }),
+  appSettings: () => invoke<AppSettings>('app_settings'),
+  setAppSettings: (settings: AppSettings) => invoke<AppSettings>('set_app_settings', { settings }),
+  testNotification: () => invoke<void>('test_notification'),
+  startHidden: () => invoke<boolean>('start_hidden'),
+
   // window
   hasMica: () => invoke<boolean>('has_mica'),
   showMainWindow: () => invoke<void>('show_main_window'),
@@ -120,6 +134,18 @@ export const ipc = {
 export function onEvent(name: 'data-changed' | 'quick-add', handler: () => void): Promise<UnlistenFn> {
   if (!inTauri) return Promise.resolve(() => {})
   return listen(name, handler)
+}
+
+export function onReminders(handler: (list: Notification[]) => void): Promise<UnlistenFn> {
+  if (!inTauri) return Promise.resolve(() => {})
+  return listen<Notification[]>('reminders', (e) => handler(e.payload))
+}
+
+/** Opens http(s) links in the default browser (the webview can't navigate away). */
+export async function openLink(url: string) {
+  if (!/^https?:\/\//i.test(url)) return
+  if (inTauri) await openUrl(url)
+  else window.open(url, '_blank', 'noopener')
 }
 
 export function isErrorInfo(value: unknown): value is ErrorInfo {

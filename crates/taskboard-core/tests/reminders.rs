@@ -202,6 +202,30 @@ fn dashboard_counts_streaks_and_burndown() {
         (acme_row.open, acme_row.overdue, acme_row.done_this_week),
         (3, 1, 2)
     );
+    // A client with only open work (no completions) must not break the summary.
+    let quiet = db
+        .create_client(NewClient {
+            name: "Quiet".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let q = db
+        .create_project(NewProject {
+            name: "Q".into(),
+            client_id: Some(quiet.id),
+            ..Default::default()
+        })
+        .unwrap();
+    db.create_task(NewTask {
+        title: "open only".into(),
+        project_id: Some(q.id),
+        ..Default::default()
+    })
+    .unwrap();
+    let d2 = db.dashboard(today).unwrap();
+    let quiet_row = d2.clients.iter().find(|c| c.name == "Quiet").unwrap();
+    assert_eq!((quiet_row.open, quiet_row.done_this_week), (1, 0));
+
     let p = &d.projects[0];
     assert_eq!((p.done, p.total, p.open), (2, 5, 3));
     assert_eq!(*p.burndown.last().unwrap(), 3);

@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@lucide/svelte": "^1.57.0",
-    "@tauri-apps/api": "^2.12.4"
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-opener": "^2.7.2"
   }
 }

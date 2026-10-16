@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { AlertTriangle, CalendarDays, Clock, Flag, Folder, Hash, Plus, Timer } from '@lucide/svelte'
+  import { AlertTriangle, CalendarDays, Clock, Flag, Folder, Hash, Plus, Repeat, Timer } from '@lucide/svelte'
   import type { QuickAddPreview } from '../lib/bindings/QuickAddPreview'
   import type { TokenKind } from '../lib/bindings/TokenKind'
   import { dueLabel, minutes, swatch, todayIso } from '../lib/format'
@@ -93,6 +93,7 @@
         due_time: parsed.due_time ?? undefined,
         estimate_minutes: parsed.estimate_minutes ?? undefined,
         tags: parsed.tags,
+        recurrence_rule: parsed.recurrence_rule ?? undefined,
       })
       line = ''
       preview = null
@@ -154,6 +155,7 @@
         <span class="chip"><Flag size={12} style="color: var(--priority-{preview.parsed.priority})" /> {priorityNames[preview.parsed.priority]}</span>
       {/if}
       {#each preview.parsed.tags as tag (tag)}<span class="chip tag"><Hash size={12} />{tag}</span>{/each}
+      {#if preview.recurrence_text}<span class="chip date"><Repeat size={12} /> {preview.recurrence_text}</span>{/if}
       {#if preview.parsed.estimate_minutes}<span class="chip"><Timer size={12} /> {minutes(preview.parsed.estimate_minutes)}</span>{/if}
     </div>
   {/if}
@@ -199,6 +201,10 @@
   }
   .seg.project {
     background: color-mix(in oklch, var(--warn) 26%, transparent);
+  }
+  .seg.recurrence {
+    background: color-mix(in oklch, var(--accent) 14%, transparent);
+    text-decoration: underline dotted var(--accent);
   }
   .seg.estimate {
     background: color-mix(in oklch, var(--text-muted) 22%, transparent);

@@ -13,6 +13,9 @@
   import ThemeControls from './components/ThemeControls.svelte'
   import Progress from './components/Progress.svelte'
   import Toasts from './components/Toasts.svelte'
+  import DashboardView from './components/DashboardView.svelte'
+  import ReminderBanner from './components/ReminderBanner.svelte'
+  import SettingsDialog from './components/SettingsDialog.svelte'
   import { isTyping, swatch } from './lib/format'
   import { app, redo, scopeTitle, undo, type View } from './lib/store.svelte'
 
@@ -96,7 +99,7 @@
   <main class="panel flex min-w-0 flex-1 flex-col bg-surface-1">
     <header class="flex h-14 shrink-0 items-center gap-3 px-6">
       <div class="flex min-w-0 flex-1 items-baseline gap-2.5">
-        <h1 class="font-display truncate text-lg font-semibold tracking-tight">{scopeTitle()}</h1>
+        <h1 class="font-display truncate text-lg font-semibold tracking-tight">{app.view === 'dashboard' ? 'Dashboard' : scopeTitle()}</h1>
         {#if subtitle}
           <span class="flex shrink-0 items-center gap-1.5 text-xs text-muted">
             <span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{subtitle.text}
@@ -147,6 +150,8 @@
           <Board />
         {:else if app.view === 'calendar'}
           <Calendar />
+        {:else if app.view === 'dashboard'}
+          <DashboardView />
         {:else}
           <div class="grid flex-1 place-items-center rounded-[var(--radius)] border border-dashed border-border-strong">
             <div class="text-center">
@@ -165,6 +170,8 @@
 </div>
 
 {#if app.paletteOpen}<CommandPalette />{/if}
+{#if app.settingsOpen}<SettingsDialog onclose={() => (app.settingsOpen = false)} />{/if}
+<ReminderBanner />
 {#if app.clientDialog}
   {#key app.clientDialog}<ClientDialog id={app.clientDialog} onclose={() => (app.clientDialog = null)} />{/key}
 {/if}

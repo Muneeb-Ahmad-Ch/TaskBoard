@@ -11,6 +11,7 @@
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import Progress from './Progress.svelte'
+  import { fromIso, repeatOptions } from '../lib/cal.svelte'
 
   let task = $state<Task | null>(null)
   let statuses = $state<Status[]>([])
@@ -55,6 +56,12 @@
   })
 
   const project = $derived(app.projects.find((p) => p.id === task?.project_id))
+  const repeatChoices = $derived([
+    ...repeatOptions(task?.due_date ? fromIso(task.due_date) : new Date()),
+    { label: '1 day after done', rule: 'AFTER:1D' },
+    { label: '1 week after done', rule: 'AFTER:1W' },
+    { label: '1 month after done', rule: 'AFTER:1M' },
+  ])
   const status = $derived(statuses.find((s) => s.id === task?.status_id))
   const done = $derived(!!task?.completed_at)
 
@@ -223,6 +230,21 @@
         <dd class="flex gap-1.5">
           <input type="date" class="prop-input" value={task.due_date ?? ''} onchange={(e) => void save({ due_date: e.currentTarget.value || null })} />
           <input type="time" class="prop-input w-[104px]" value={task.due_time ?? ''} disabled={!task.due_date} onchange={(e) => void save({ due_time: e.currentTarget.value || null })} />
+        </dd>
+
+        <dt>Repeat</dt>
+        <dd>
+          <select
+            class="prop-input"
+            value={task.recurrence_rule ?? ''}
+            aria-label="Repeat"
+            onchange={(e) => void save({ recurrence_rule: e.currentTarget.value || null })}
+          >
+            {#each repeatChoices as o (o.label)}<option value={o.rule ?? ''}>{o.label}</option>{/each}
+            {#if task.recurrence_rule && !repeatChoices.some((o) => o.rule === task?.recurrence_rule)}
+              <option value={task.recurrence_rule}>Custom: {task.recurrence_rule}</option>
+            {/if}
+          </select>
         </dd>
 
         <dt>Estimate</dt>

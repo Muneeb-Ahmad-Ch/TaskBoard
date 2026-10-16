@@ -29,6 +29,8 @@ pub struct QuickAddPreview {
     pub project: Option<ProjectRef>,
     /// An `@hint` was typed but matches no project.
     pub project_missing: bool,
+    /// Words for a typed repeat rule, e.g. "Every week on Fri".
+    pub recurrence_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
@@ -73,10 +75,16 @@ impl Db {
             },
             None => (None, false),
         };
+        let recurrence_text = parsed
+            .recurrence_rule
+            .as_deref()
+            .and_then(|r| crate::recur::TaskRule::parse(r).ok())
+            .map(|r| r.describe());
         Ok(QuickAddPreview {
             parsed,
             project,
             project_missing,
+            recurrence_text,
         })
     }
 

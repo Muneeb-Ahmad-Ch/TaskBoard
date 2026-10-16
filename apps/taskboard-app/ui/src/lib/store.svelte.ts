@@ -17,7 +17,7 @@ export type Scope =
   | { kind: 'inbox' | 'today' | 'upcoming' | 'all' | 'personal' }
   | { kind: 'client' | 'project'; id: Id }
 
-export type View = 'table' | 'board' | 'calendar'
+export type View = 'table' | 'board' | 'calendar' | 'dashboard'
 export type Lanes = 'none' | 'client' | 'project' | 'priority'
 
 const OPEN: Category[] = ['todo', 'active']
@@ -44,6 +44,7 @@ export const app = $state({
   dataVersion: 0,
   paletteOpen: false,
   /** Client / project whose settings dialog is open. */
+  settingsOpen: false,
   clientDialog: null as Id | null,
   projectDialog: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
@@ -145,6 +146,8 @@ export function scopeProjectIds(): Id[] {
 export function setScope(scope: Scope) {
   app.scope = scope
   app.openTaskId = null
+  // Picking a list leaves the dashboard.
+  if (app.view === 'dashboard') app.view = 'table'
 }
 
 export async function refreshMeta() {

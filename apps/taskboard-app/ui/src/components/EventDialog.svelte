@@ -25,7 +25,7 @@
   import type { EventStatus } from '../lib/bindings/EventStatus'
   import { fromIso, HOUR, MINUTE, repeatOptions } from '../lib/cal.svelte'
   import { isoDate } from '../lib/format'
-  import { errorMessage, ipc } from '../lib/ipc'
+  import { errorMessage, ipc, openLink } from '../lib/ipc'
   import { app, projectsOf } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
@@ -293,7 +293,7 @@
           <div class="flex gap-1">
             <input class="field" placeholder="https://…" bind:value={f.url} />
             {#if /^https?:\/\//.test(f.url)}
-              <a class="btn !px-2" href={f.url} target="_blank" rel="noreferrer" title="Join" aria-label="Open meeting link"><ExternalLink size={14} /></a>
+              <button class="btn !px-2" title="Join" aria-label="Open meeting link" onclick={() => void openLink(f.url)}><ExternalLink size={14} /></button>
             {/if}
           </div>
         </label>

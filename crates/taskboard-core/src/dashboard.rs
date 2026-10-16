@@ -173,9 +173,9 @@ impl Db {
         {
             let mut stmt = self.conn().prepare(
                 "SELECT p.client_id, coalesce(c.name, 'Personal'), coalesce(c.color, 'gray'),
-                        sum(t.completed_at IS NULL),
-                        sum(t.completed_at IS NULL AND t.due_date < ?1),
-                        sum(t.completed_at >= ?2)
+                        count(CASE WHEN t.completed_at IS NULL THEN 1 END),
+                        count(CASE WHEN t.completed_at IS NULL AND t.due_date < ?1 THEN 1 END),
+                        count(CASE WHEN t.completed_at >= ?2 THEN 1 END)
                  FROM task t JOIN project p ON p.id = t.project_id
                  LEFT JOIN client c ON c.id = p.client_id
                  WHERE t.deleted_at IS NULL AND t.archived_at IS NULL AND t.parent_id IS NULL

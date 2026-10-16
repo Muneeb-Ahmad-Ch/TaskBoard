@@ -4,14 +4,19 @@
 //! thread (Tauri runs non-async commands on the main thread, which would stall
 //! the window). Mutations emit `data-changed` so every view re-queries.
 
+mod desktop;
+
 use std::sync::{Arc, Mutex};
 
+use desktop::focus_main;
+
 use taskboard_core::{
-    Client, ClientHours, ClientPatch, DayOverride, DayPlan, Db, DbInfo, ErrorInfo, Event,
-    EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask, NewClient, NewEvent, NewProject,
-    NewStatus, NewTask, NewTimeEntry, Occurrence, OccurrencePatch, Project, ProjectPatch,
-    ProjectSummary, QuickAddPreview, SidebarCounts, SlotResult, Status, StatusPatch, Task,
-    TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
+    AppSettings, Client, ClientHours, ClientPatch, Dashboard, DayOverride, DayPlan, Db, DbInfo,
+    ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask, NewClient,
+    NewEvent, NewProject, NewStatus, NewTask, NewTimeEntry, NotifySettings, Occurrence,
+    OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SidebarCounts,
+    SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary,
+    TimeEntryPatch, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -20,6 +25,8 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 /// A dedicated writer thread + read pool can replace this if profiling asks.
 struct AppState {
     db: Arc<Mutex<Db>>,
+    /// Launched by autostart with `--minimized`: stay in the tray.
+    start_hidden: bool,
     /// True when the Mica backdrop applied; the UI uses solid surfaces otherwise.
     mica: bool,
 }
@@ -525,6 +532,61 @@ async fn find_slots(state: State<'_, AppState>, query: FindSlots) -> CmdResult<S
     read(state, move |db| db.find_slots(&query)).await
 }
 
+// ---------- settings, reminders & dashboard ----------
+
+#[tauri::command]
+async fn dashboard(state: State<'_, AppState>) -> CmdResult<Dashboard> {
+    read(state, |db| db.dashboard(today())).await
+}
+
+#[tauri::command]
+async fn notify_settings(state: State<'_, AppState>) -> CmdResult<NotifySettings> {
+    read(state, Db::notify_settings).await
+}
+
+#[tauri::command]
+async fn set_notify_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: NotifySettings,
+) -> CmdResult<NotifySettings> {
+    write(app, state, move |db| db.set_notify_settings(settings)).await
+}
+
+#[tauri::command]
+async fn app_settings(state: State<'_, AppState>) -> CmdResult<AppSettings> {
+    read(state, Db::app_settings).await
+}
+
+#[tauri::command]
+async fn set_app_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: AppSettings,
+) -> CmdResult<AppSettings> {
+    let autostart = settings.autostart;
+    let saved = write(app.clone(), state, move |db| db.set_app_settings(settings)).await?;
+    desktop::sync_autostart(&app, autostart);
+    Ok(saved)
+}
+
+/// Shows a sample reminder so the user can check Windows notifications work.
+#[tauri::command]
+fn test_notification(app: AppHandle) -> CmdResult<()> {
+    use tauri_plugin_notification::NotificationExt;
+    app.notification()
+        .builder()
+        .title("Taskboard reminders are on")
+        .body("You'll see meetings and timed tasks here.")
+        .show()
+        .map_err(internal)
+}
+
+#[tauri::command]
+fn start_hidden(state: State<'_, AppState>) -> bool {
+    state.start_hidden
+}
+
 // ---------- window ----------
 
 #[tauri::command]
@@ -538,14 +600,6 @@ fn has_mica(state: State<'_, AppState>) -> bool {
 fn show_main_window(window: WebviewWindow) -> CmdResult<()> {
     window.show().map_err(internal)?;
     window.set_focus().map_err(internal)
-}
-
-fn focus_main(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
 }
 
 #[cfg(target_os = "windows")]
@@ -582,6 +636,26 @@ pub fn run() {
             focus_main(app);
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![desktop::MINIMIZED_FLAG]),
+        ))
+        .on_window_event(|window, event| {
+            // Closing hides to the tray (so reminders keep firing) unless turned off.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let to_tray = window
+                    .app_handle()
+                    .try_state::<AppState>()
+                    .and_then(|s| s.db.lock().ok().and_then(|db| db.app_settings().ok()))
+                    .is_none_or(|s| s.close_to_tray);
+                if to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -604,10 +678,19 @@ pub fn run() {
             let mica = app
                 .get_webview_window("main")
                 .is_some_and(|window| apply_backdrop(&window));
+            let settings = db.app_settings().unwrap_or_default();
+            let db = Arc::new(Mutex::new(db));
+            let start_hidden = std::env::args().any(|a| a == desktop::MINIMIZED_FLAG);
             app.manage(AppState {
-                db: Arc::new(Mutex::new(db)),
+                db: Arc::clone(&db),
+                start_hidden,
                 mica,
             });
+            if let Err(err) = desktop::build_tray(app.handle()) {
+                tracing::warn!(%err, "tray icon unavailable");
+            }
+            desktop::sync_autostart(app.handle(), settings.autostart);
+            desktop::spawn_reminders(app.handle().clone(), db);
             // Another app may own the shortcut; Taskboard still works without it.
             if let Err(err) = app.global_shortcut().register(quick_add_shortcut()) {
                 tracing::warn!(%err, "quick-add shortcut unavailable");
@@ -672,6 +755,13 @@ pub fn run() {
             hours_by_client,
             find_slots,
             has_mica,
+            dashboard,
+            notify_settings,
+            set_notify_settings,
+            app_settings,
+            set_app_settings,
+            test_notification,
+            start_hidden,
             show_main_window,
         ])
         .run(tauri::generate_context!());

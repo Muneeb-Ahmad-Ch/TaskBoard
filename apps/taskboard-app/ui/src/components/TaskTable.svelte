@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowDown, ArrowUp, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Trash2, X } from '@lucide/svelte'
+  import { ArrowDown, ArrowUp, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Repeat, Trash2, X } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Id } from '../lib/bindings/Id'
@@ -623,6 +623,7 @@
                   {:else}
                     <span class="title flex items-center gap-2">
                       <span class="truncate" role="textbox" tabindex="-1" ondblclick={() => (renaming = row.id)}>{row.title}</span>
+                      {#if row.recurring}<Repeat size={12} class="shrink-0 text-subtle" aria-label="Repeats" />{/if}
                       {#if row.subtasks_total}<span class="tabular shrink-0 text-xs text-subtle">{row.subtasks_done}/{row.subtasks_total}</span>{/if}
                     </span>
                   {/if}

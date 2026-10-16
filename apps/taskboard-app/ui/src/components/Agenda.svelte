@@ -4,6 +4,7 @@
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { cal, fmtRange, sameDay } from '../lib/cal.svelte'
   import { isoDate, isOverdue, swatch } from '../lib/format'
+  import { openLink } from '../lib/ipc'
   import { app } from '../lib/store.svelte'
 
   let { days, occ, tasks }: { days: Date[]; occ: Occurrence[]; tasks: TaskRow[] } = $props()
@@ -51,7 +52,7 @@
                   {#if o.client_name}<span class="truncate text-xs text-muted">{o.client_name}{o.project_name ? ` / ${o.project_name}` : ''}</span>{/if}
                 </button>
                 {#if o.meeting_url}
-                  <a class="join" href={o.meeting_url} target="_blank" rel="noreferrer"><ExternalLink size={12} /> Join</a>
+                  <button class="join" onclick={() => void openLink(o.meeting_url)}><ExternalLink size={12} /> Join</button>
                 {/if}
               </div>
             {:else if entry.t}

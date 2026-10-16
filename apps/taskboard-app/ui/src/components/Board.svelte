@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import { ChevronDown, ChevronRight, ChevronsLeftRight, CheckCircle2, Circle, MoreHorizontal, Plus } from '@lucide/svelte'
+  import { ChevronDown, ChevronRight, ChevronsLeftRight, CheckCircle2, Circle, MoreHorizontal, Plus, Repeat } from '@lucide/svelte'
   import type { Category } from '../lib/bindings/Category'
   import type { Id } from '../lib/bindings/Id'
   import type { Priority } from '../lib/bindings/Priority'
@@ -548,6 +548,7 @@
           <span class="size-1.5 rounded-full" style="background: var(--priority-{row.priority})"></span>{priorityName[row.priority]}
         </span>
       {/if}
+      {#if row.recurring}<Repeat size={11} class="text-subtle" aria-label="Repeats" />{/if}
       {#if row.subtasks_total}<span class="tabular text-subtle">{row.subtasks_done}/{row.subtasks_total}</span>{/if}
       {#if row.estimate_minutes}<span class="tabular text-subtle">{minutes(row.estimate_minutes)}</span>{/if}
       {#each row.tags.slice(0, 2) as tag (tag)}<span class="tag">#{tag}</span>{/each}

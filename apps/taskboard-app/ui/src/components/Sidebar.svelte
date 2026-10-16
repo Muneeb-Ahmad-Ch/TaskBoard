@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronRight, Inbox, Layers, MoreHorizontal, Plus, Search, Star, CalendarDays, User } from '@lucide/svelte'
+  import { ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Plus, Search, Settings, Star, CalendarDays, User } from '@lucide/svelte'
   import type { Client } from '../lib/bindings/Client'
   import type { Id } from '../lib/bindings/Id'
   import type { ProjectSummary } from '../lib/bindings/ProjectSummary'
@@ -38,6 +38,7 @@
   const personal = $derived(projectsOf(null))
 
   function isActive(scope: Scope): boolean {
+    if (app.view === 'dashboard') return false
     const s = app.scope
     if (s.kind !== scope.kind) return false
     return !('id' in scope) || ('id' in s && s.id === scope.id)
@@ -186,6 +187,10 @@
       <Layers size={15} />
       <span class="flex-1 text-left">All work</span>
     </button>
+    <button class="nav-item" class:active={app.view === 'dashboard'} onclick={() => (app.view = 'dashboard')}>
+      <LayoutDashboard size={15} />
+      <span class="flex-1 text-left">Dashboard</span>
+    </button>
   </nav>
 
   <div class="-mx-1 mt-4 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1 pb-2">
@@ -257,7 +262,8 @@
 
   <div class="flex items-center gap-2 border-t border-border px-2 pt-2 text-muted">
     <User size={14} />
-    <span class="text-xs">Local workspace · no account</span>
+    <span class="flex-1 text-xs">Local workspace · no account</span>
+    <button class="icon-btn" aria-label="Settings" title="Settings" onclick={() => (app.settingsOpen = true)}><Settings size={14} /></button>
   </div>
 </aside>
 

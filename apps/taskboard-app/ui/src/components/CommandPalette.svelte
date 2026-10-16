@@ -5,6 +5,7 @@
   import { inTauri, ipc } from '../lib/ipc'
   import { app, redo, setScope, undo } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
+  import { cal } from '../lib/cal.svelte'
 
   interface Command {
     id: string
@@ -29,6 +30,11 @@
       { id: 'v-table', group: 'View', label: 'Table view', hint: '1', run: () => (app.view = 'table') },
       { id: 'v-board', group: 'View', label: 'Board view', hint: '2', run: () => (app.view = 'board') },
       { id: 'v-cal', group: 'View', label: 'Calendar view', hint: '3', run: () => (app.view = 'calendar') },
+      { id: 'v-dash', group: 'View', label: 'Dashboard', run: () => (app.view = 'dashboard') },
+      { id: 'settings', group: 'Actions', label: 'Settings…', run: () => (app.settingsOpen = true) },
+      { id: 'find-slot', group: 'Actions', label: 'Find a meeting slot…', run: () => { app.view = 'calendar'; cal.findSlotOpen = true } },
+      { id: 'new-meeting', group: 'Actions', label: 'New meeting…', run: () => { app.view = 'calendar'; const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); cal.draft = { kind: 'meeting', start: s.getTime(), end: s.getTime() + 3_600_000 } } },
+      { id: 'hours', group: 'Actions', label: 'Working hours…', run: () => { app.view = 'calendar'; cal.workingHoursOpen = true } },
       { id: 't-sys', group: 'Theme', label: 'Theme: System', run: () => setThemePref('system') },
       { id: 't-light', group: 'Theme', label: 'Theme: Light', run: () => setThemePref('light') },
       { id: 't-dark', group: 'Theme', label: 'Theme: Dark', run: () => setThemePref('dark') },

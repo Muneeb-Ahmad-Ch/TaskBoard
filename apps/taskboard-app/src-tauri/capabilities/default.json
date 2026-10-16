@@ -6,6 +6,10 @@
   "permissions": [
     "core:default",
     "core:window:allow-set-theme",
-    "window-state:default"
+    "window-state:default",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }, { "url": "http://*" }]
+    }
   ]
 }
