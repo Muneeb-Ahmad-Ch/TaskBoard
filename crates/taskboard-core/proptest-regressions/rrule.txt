@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a52a04292f6fd19a4f685f5aeef46b967bb8959bdabc5d54b7647be22fe56d7e # shrinks to freq = "WEEKLY", interval = 1, count = 2, day = 1, days = ["TU", "TU"]

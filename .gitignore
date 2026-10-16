@@ -1,15 +1,39 @@
+# Build output
 /target/
 node_modules/
 dist/
-*.db
-*.db-wal
-*.db-shm
-!fixtures/**/*.db
 .vite/
 coverage/
 playwright-report/
 test-results/
 apps/taskboard-app/src-tauri/gen/
+
+# User data — never commit databases, backups or exports
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+backups/
+!fixtures/**/*.db
+
+# Secrets: env files, keys, certificates, signing material (incl. Tauri updater keys)
 .env
-.DS_Store
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.cer
+*.crt
+*.jks
+*.keystore
+*.signing
+secrets/
+
+# Local tooling output
+*.log
 .playwright-mcp/
+.DS_Store
+Thumbs.db
