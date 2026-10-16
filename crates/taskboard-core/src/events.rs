@@ -388,6 +388,80 @@ fn date_start_ms(d: Date, tz: &TimeZone) -> Option<i64> {
         .map(|z| z.timestamp().as_millisecond())
 }
 
+/// Creates a meeting or time block inside an existing transaction.
+pub(crate) fn insert_event(tx: &mut Tx<'_>, input: &NewEvent) -> Result<Id> {
+    let title = clean_name(&input.title, "event title")?;
+    let day_start = input.all_day_start.as_deref().map(clean_date).transpose()?;
+    let day_end = match (&input.all_day_end, &day_start) {
+        (Some(e), _) => Some(clean_date(e)?),
+        (None, Some(s)) => Some(s.clone()),
+        (None, None) => None,
+    };
+    check_times(
+        input.start_at,
+        input.end_at,
+        day_start.as_deref(),
+        day_end.as_deref(),
+    )?;
+    let rule = clean_rule(input.recurrence_rule.as_deref())?;
+    let tz_name = match &input.time_zone {
+        Some(tz) => clean_tz(tz)?,
+        None => local_zone().1,
+    };
+    let id = Id::new();
+
+    let client = resolve_owner(tx, input.client_id, input.project_id)?;
+    let default_counts = match (input.kind, client) {
+        (EventKind::Meeting, Some(c)) => tx.conn().query_row(
+            "SELECT meetings_count_as_time FROM client WHERE id = ?1",
+            [c],
+            |r| r.get::<_, bool>(0),
+        )?,
+        _ => false,
+    };
+    tx.insert(
+        Table::Event,
+        &[
+            ("id", id.into()),
+            ("kind", text(input.kind.as_str())),
+            ("title", text(title.clone())),
+            ("client_id", opt_id(client)),
+            ("project_id", opt_id(input.project_id)),
+            ("task_id", opt_id(input.task_id)),
+            ("start_at", opt_int(input.start_at)),
+            ("end_at", opt_int(input.end_at)),
+            ("time_zone", text(tz_name.clone())),
+            ("all_day_start", opt_text(day_start.clone())),
+            ("all_day_end", opt_text(day_end.clone())),
+            ("location", text(input.location.clone().unwrap_or_default())),
+            (
+                "meeting_url",
+                text(input.meeting_url.clone().unwrap_or_default().trim()),
+            ),
+            (
+                "attendees",
+                text(input.attendees.clone().unwrap_or_default()),
+            ),
+            ("notes_md", text(input.notes_md.clone().unwrap_or_default())),
+            (
+                "status",
+                text(input.status.unwrap_or(EventStatus::Confirmed).as_str()),
+            ),
+            (
+                "counts_as_time",
+                boolean(input.counts_as_time.unwrap_or(default_counts)),
+            ),
+            (
+                "flexible",
+                boolean(input.flexible.unwrap_or(input.kind == EventKind::Block)),
+            ),
+            ("recurrence_rule", opt_text(rule.clone())),
+            ("created_at", int(tx.now())),
+        ],
+    )?;
+    Ok(id)
+}
+
 impl Db {
     pub fn event(&self, id: Id) -> Result<Event> {
         self.conn()
@@ -402,78 +476,12 @@ impl Db {
 
     pub fn create_event(&mut self, input: NewEvent) -> Result<Event> {
         let title = clean_name(&input.title, "event title")?;
-        let day_start = input.all_day_start.as_deref().map(clean_date).transpose()?;
-        let day_end = match (&input.all_day_end, &day_start) {
-            (Some(e), _) => Some(clean_date(e)?),
-            (None, Some(s)) => Some(s.clone()),
-            (None, None) => None,
-        };
-        check_times(
-            input.start_at,
-            input.end_at,
-            day_start.as_deref(),
-            day_end.as_deref(),
-        )?;
-        let rule = clean_rule(input.recurrence_rule.as_deref())?;
-        let tz_name = match &input.time_zone {
-            Some(tz) => clean_tz(tz)?,
-            None => local_zone().1,
-        };
-        let id = Id::new();
         let label = match input.kind {
             EventKind::Meeting => "Add meeting",
             EventKind::Block => "Add time block",
         };
-        self.transact(&format!("{label} “{title}”"), |tx| {
-            let client = resolve_owner(tx, input.client_id, input.project_id)?;
-            let default_counts = match (input.kind, client) {
-                (EventKind::Meeting, Some(c)) => tx.conn().query_row(
-                    "SELECT meetings_count_as_time FROM client WHERE id = ?1",
-                    [c],
-                    |r| r.get::<_, bool>(0),
-                )?,
-                _ => false,
-            };
-            tx.insert(
-                Table::Event,
-                &[
-                    ("id", id.into()),
-                    ("kind", text(input.kind.as_str())),
-                    ("title", text(title.clone())),
-                    ("client_id", opt_id(client)),
-                    ("project_id", opt_id(input.project_id)),
-                    ("task_id", opt_id(input.task_id)),
-                    ("start_at", opt_int(input.start_at)),
-                    ("end_at", opt_int(input.end_at)),
-                    ("time_zone", text(tz_name.clone())),
-                    ("all_day_start", opt_text(day_start.clone())),
-                    ("all_day_end", opt_text(day_end.clone())),
-                    ("location", text(input.location.clone().unwrap_or_default())),
-                    (
-                        "meeting_url",
-                        text(input.meeting_url.clone().unwrap_or_default().trim()),
-                    ),
-                    (
-                        "attendees",
-                        text(input.attendees.clone().unwrap_or_default()),
-                    ),
-                    ("notes_md", text(input.notes_md.clone().unwrap_or_default())),
-                    (
-                        "status",
-                        text(input.status.unwrap_or(EventStatus::Confirmed).as_str()),
-                    ),
-                    (
-                        "counts_as_time",
-                        boolean(input.counts_as_time.unwrap_or(default_counts)),
-                    ),
-                    (
-                        "flexible",
-                        boolean(input.flexible.unwrap_or(input.kind == EventKind::Block)),
-                    ),
-                    ("recurrence_rule", opt_text(rule.clone())),
-                    ("created_at", int(tx.now())),
-                ],
-            )
+        let id = self.transact(&format!("{label} “{title}”"), |tx| {
+            insert_event(tx, &input)
         })?;
         self.event(id)
     }

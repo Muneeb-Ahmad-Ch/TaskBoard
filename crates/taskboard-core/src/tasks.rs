@@ -310,6 +310,98 @@ fn status_changes(tx: &Tx<'_>, task: &Task, status: Id) -> Result<Vec<(&'static 
     ])
 }
 
+/// Creates a task inside an existing transaction (validates like `create_task`).
+pub(crate) fn insert_task(tx: &mut Tx<'_>, input: &NewTask, inbox: Id) -> Result<Id> {
+    let title = clean_name(&input.title, "task title")?;
+    let start = input.start_date.as_deref().map(clean_date).transpose()?;
+    let rule = input
+        .recurrence_rule
+        .as_deref()
+        .map(TaskRule::parse)
+        .transpose()?;
+    let mut due = input.due_date.as_deref().map(clean_date).transpose()?;
+    // A fixed schedule needs an anchor: default to its first date from today.
+    if due.is_none()
+        && let Some(r) = &rule
+    {
+        due = r.first_on_or_after(local_today()).map(|d| d.to_string());
+    }
+    let due_time = input.due_time.as_deref().map(clean_time).transpose()?;
+    if due_time.is_some() && due.is_none() {
+        return Err(invalid("a due time needs a due date"));
+    }
+    if let (Some(s), Some(d)) = (&start, &due)
+        && s > d
+    {
+        return Err(invalid("start date is after the due date"));
+    }
+    if input.estimate_minutes.is_some_and(|m| m < 0) {
+        return Err(invalid("estimate cannot be negative"));
+    }
+    let id = Id::new();
+
+    let project = match (input.parent_id, input.project_id) {
+        (Some(parent), _) => load(tx, parent)?.project_id,
+        (None, Some(project)) => project,
+        (None, None) => inbox,
+    };
+    require_live_project(tx, project)?;
+    if let Some(parent) = input.parent_id {
+        check_parent(tx, None, parent, project)?;
+    }
+    let status = match input.status_id {
+        Some(status) => {
+            let (status_project, _) = status_info(tx, status)?;
+            if status_project != project {
+                return Err(invalid("status belongs to a different project"));
+            }
+            status
+        }
+        None => default_status(tx, project)?,
+    };
+    let (_, category) = status_info(tx, status)?;
+    let sort_key = end_key(tx, project, status)?;
+    tx.insert(
+        Table::Task,
+        &[
+            ("id", id.into()),
+            ("project_id", project.into()),
+            ("parent_id", opt_id(input.parent_id)),
+            ("status_id", status.into()),
+            ("title", text(title.clone())),
+            (
+                "description_md",
+                text(input.description_md.clone().unwrap_or_default()),
+            ),
+            (
+                "priority",
+                int(input.priority.unwrap_or(Priority::None).as_i64()),
+            ),
+            ("start_date", opt_text(start.clone())),
+            ("due_date", opt_text(due.clone())),
+            ("due_time", opt_text(due_time.clone())),
+            ("estimate_minutes", opt_int(input.estimate_minutes)),
+            ("progress", opt_int(clean_progress(input.progress)?)),
+            (
+                "recurrence_rule",
+                opt_text(rule.as_ref().map(TaskRule::to_rule_string)),
+            ),
+            ("sort_key", text(sort_key)),
+            (
+                "completed_at",
+                if category.is_closed() {
+                    int(tx.now())
+                } else {
+                    Value::Null
+                },
+            ),
+            ("created_at", int(tx.now())),
+        ],
+    )?;
+    set_tags(tx, id, &input.tags)?;
+    Ok(id)
+}
+
 /// Local calendar date for "today".
 fn local_today() -> jiff::civil::Date {
     jiff::Zoned::now().date()
@@ -421,93 +513,9 @@ impl Db {
 
     pub fn create_task(&mut self, input: NewTask) -> Result<Task> {
         let title = clean_name(&input.title, "task title")?;
-        let start = input.start_date.as_deref().map(clean_date).transpose()?;
-        let rule = input
-            .recurrence_rule
-            .as_deref()
-            .map(TaskRule::parse)
-            .transpose()?;
-        let mut due = input.due_date.as_deref().map(clean_date).transpose()?;
-        // A fixed schedule needs an anchor: default to its first date from today.
-        if due.is_none()
-            && let Some(r) = &rule
-        {
-            due = r.first_on_or_after(local_today()).map(|d| d.to_string());
-        }
-        let due_time = input.due_time.as_deref().map(clean_time).transpose()?;
-        if due_time.is_some() && due.is_none() {
-            return Err(invalid("a due time needs a due date"));
-        }
-        if let (Some(s), Some(d)) = (&start, &due)
-            && s > d
-        {
-            return Err(invalid("start date is after the due date"));
-        }
-        if input.estimate_minutes.is_some_and(|m| m < 0) {
-            return Err(invalid("estimate cannot be negative"));
-        }
         let inbox = self.inbox_id()?;
-        let id = Id::new();
-        self.transact(&format!("Create task “{}”", label_title(&title)), |tx| {
-            let project = match (input.parent_id, input.project_id) {
-                (Some(parent), _) => load(tx, parent)?.project_id,
-                (None, Some(project)) => project,
-                (None, None) => inbox,
-            };
-            require_live_project(tx, project)?;
-            if let Some(parent) = input.parent_id {
-                check_parent(tx, None, parent, project)?;
-            }
-            let status = match input.status_id {
-                Some(status) => {
-                    let (status_project, _) = status_info(tx, status)?;
-                    if status_project != project {
-                        return Err(invalid("status belongs to a different project"));
-                    }
-                    status
-                }
-                None => default_status(tx, project)?,
-            };
-            let (_, category) = status_info(tx, status)?;
-            let sort_key = end_key(tx, project, status)?;
-            tx.insert(
-                Table::Task,
-                &[
-                    ("id", id.into()),
-                    ("project_id", project.into()),
-                    ("parent_id", opt_id(input.parent_id)),
-                    ("status_id", status.into()),
-                    ("title", text(title.clone())),
-                    (
-                        "description_md",
-                        text(input.description_md.clone().unwrap_or_default()),
-                    ),
-                    (
-                        "priority",
-                        int(input.priority.unwrap_or(Priority::None).as_i64()),
-                    ),
-                    ("start_date", opt_text(start.clone())),
-                    ("due_date", opt_text(due.clone())),
-                    ("due_time", opt_text(due_time.clone())),
-                    ("estimate_minutes", opt_int(input.estimate_minutes)),
-                    ("progress", opt_int(clean_progress(input.progress)?)),
-                    (
-                        "recurrence_rule",
-                        opt_text(rule.as_ref().map(TaskRule::to_rule_string)),
-                    ),
-                    ("sort_key", text(sort_key)),
-                    (
-                        "completed_at",
-                        if category.is_closed() {
-                            int(tx.now())
-                        } else {
-                            Value::Null
-                        },
-                    ),
-                    ("created_at", int(tx.now())),
-                ],
-            )?;
-            set_tags(tx, id, &input.tags)
+        let id = self.transact(&format!("Create task “{}”", label_title(&title)), |tx| {
+            insert_task(tx, &input, inbox)
         })?;
         self.task(id)
     }

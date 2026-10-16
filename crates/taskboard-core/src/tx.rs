@@ -78,11 +78,11 @@ impl Table {
         }
     }
 
-    fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         ALL_TABLES.into_iter().find(|t| t.name() == name)
     }
 
-    fn key_cols(self) -> &'static [&'static str] {
+    pub(crate) fn key_cols(self) -> &'static [&'static str] {
         match self {
             Self::TaskTag => &["task_id", "tag_id"],
             Self::EventException => &["event_id", "original_start"],

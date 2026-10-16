@@ -93,6 +93,44 @@ fn require_client(tx: &Tx<'_>, client: Id) -> Result<()> {
     }
 }
 
+/// Creates a project (with the default workflow) inside an existing transaction.
+pub(crate) fn insert_project(tx: &mut Tx<'_>, input: &NewProject) -> Result<Id> {
+    let name = clean_name(&input.name, "project name")?;
+    let deadline = input.deadline.as_deref().map(clean_date).transpose()?;
+    let id = Id::new();
+    if let Some(client) = input.client_id {
+        require_client(tx, client)?;
+    }
+    let (count, last): (i64, Option<String>) = tx.conn().query_row(
+        "SELECT count(*), max(sort_key) FROM project
+         WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1",
+        [opt_id(input.client_id)],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )?;
+    let color = match &input.color {
+        Some(c) => clean_color(c)?,
+        None => palette_color(count + 1),
+    };
+    tx.insert(
+        Table::Project,
+        &[
+            ("id", id.into()),
+            ("client_id", opt_id(input.client_id)),
+            ("name", text(name)),
+            (
+                "code",
+                opt_text(input.code.clone().filter(|c| !c.trim().is_empty())),
+            ),
+            ("color", text(color)),
+            ("deadline", opt_text(deadline)),
+            ("sort_key", text(key_between(last.as_deref(), None)?)),
+            ("created_at", int(tx.now())),
+        ],
+    )?;
+    insert_default_statuses(tx, id)?;
+    Ok(id)
+}
+
 impl Db {
     pub(crate) fn ensure_inbox(&mut self) -> Result<()> {
         let exists: bool = self.conn().query_row(
@@ -130,39 +168,8 @@ impl Db {
 
     pub fn create_project(&mut self, input: NewProject) -> Result<Project> {
         let name = clean_name(&input.name, "project name")?;
-        let deadline = input.deadline.as_deref().map(clean_date).transpose()?;
-        let id = Id::new();
-        self.transact(&format!("Create project “{name}”"), |tx| {
-            if let Some(client) = input.client_id {
-                require_client(tx, client)?;
-            }
-            let (count, last): (i64, Option<String>) = tx.conn().query_row(
-                "SELECT count(*), max(sort_key) FROM project
-                 WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1",
-                [opt_id(input.client_id)],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )?;
-            let color = match &input.color {
-                Some(c) => clean_color(c)?,
-                None => palette_color(count + 1),
-            };
-            tx.insert(
-                Table::Project,
-                &[
-                    ("id", id.into()),
-                    ("client_id", opt_id(input.client_id)),
-                    ("name", text(name.clone())),
-                    (
-                        "code",
-                        opt_text(input.code.clone().filter(|c| !c.trim().is_empty())),
-                    ),
-                    ("color", text(color)),
-                    ("deadline", opt_text(deadline.clone())),
-                    ("sort_key", text(key_between(last.as_deref(), None)?)),
-                    ("created_at", int(tx.now())),
-                ],
-            )?;
-            insert_default_statuses(tx, id)
+        let id = self.transact(&format!("Create project “{name}”"), |tx| {
+            insert_project(tx, &input)
         })?;
         self.project(id)
     }

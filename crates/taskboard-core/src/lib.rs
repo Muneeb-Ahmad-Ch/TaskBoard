@@ -1,10 +1,12 @@
 //! Taskboard core: domain model, storage, queries. No UI code.
 
+pub mod backup;
 mod clients;
 pub mod clock;
 pub mod dashboard;
 pub mod error;
 pub mod events;
+pub mod exchange;
 pub mod id;
 pub mod model;
 pub mod notify;
@@ -22,11 +24,13 @@ mod tasks;
 pub mod tx;
 pub mod views;
 
+pub use backup::BackupInfo;
 pub use dashboard::{ClientSummary, Dashboard, DayCount, ProjectProgress};
 pub use error::{Error, ErrorInfo, Result};
 pub use events::{
     Event, EventKind, EventPatch, EventStatus, NewEvent, Occurrence, OccurrencePatch,
 };
+pub use exchange::ImportReport;
 pub use id::Id;
 pub use model::*;
 pub use notify::{AppSettings, Notification, NotificationKind, NotifySettings};

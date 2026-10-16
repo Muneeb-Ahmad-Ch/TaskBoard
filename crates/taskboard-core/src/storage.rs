@@ -48,6 +48,8 @@ pub struct Db {
     hlc: Hlc,
     /// Last transaction time; each transaction gets a strictly later one.
     last_now: i64,
+    /// Database file (None for in-memory databases).
+    path: Option<PathBuf>,
 }
 
 /// What the next undo / redo would do, for menus and tooltips.
@@ -113,9 +115,15 @@ impl Db {
             device,
             hlc,
             last_now,
+            path: path.map(Path::to_path_buf),
         };
         db.ensure_inbox()?;
         Ok(db)
+    }
+
+    /// The database file, if this isn't an in-memory database.
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
     }
 
     pub(crate) fn conn(&self) -> &Connection {
