@@ -2,7 +2,9 @@
   import { CalendarRange, Eye, EyeOff, KanbanSquare, Rows3, Search, X } from '@lucide/svelte'
   import Board from './components/Board.svelte'
   import Calendar from './components/Calendar.svelte'
+  import ClientDialog from './components/ClientDialog.svelte'
   import CommandPalette from './components/CommandPalette.svelte'
+  import ProjectDialog from './components/ProjectDialog.svelte'
   import QuickAdd from './components/QuickAdd.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import StatusBar from './components/StatusBar.svelte'
@@ -163,6 +165,12 @@
 </div>
 
 {#if app.paletteOpen}<CommandPalette />{/if}
+{#if app.clientDialog}
+  {#key app.clientDialog}<ClientDialog id={app.clientDialog} onclose={() => (app.clientDialog = null)} />{/key}
+{/if}
+{#if app.projectDialog}
+  {#key app.projectDialog}<ProjectDialog id={app.projectDialog} onclose={() => (app.projectDialog = null)} />{/key}
+{/if}
 <Toasts />
 
 <style>

@@ -79,6 +79,9 @@ export function isTyping(e: Event): boolean {
   return t instanceof Element && !!t.closest('input, textarea, select, [contenteditable]')
 }
 
+/** Selectable colors for clients, projects and columns (OKLCH hues + gray). */
+export const PALETTE = ['gray', '230', '262', '300', '330', '10', '45', '70', '100', '150', '190', '210']
+
 export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`
 }

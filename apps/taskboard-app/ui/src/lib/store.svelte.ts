@@ -43,6 +43,9 @@ export const app = $state({
   /** Bumped on every data change; views re-query when it changes. */
   dataVersion: 0,
   paletteOpen: false,
+  /** Client / project whose settings dialog is open. */
+  clientDialog: null as Id | null,
+  projectDialog: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
   quickAddFocus: 0,
 })

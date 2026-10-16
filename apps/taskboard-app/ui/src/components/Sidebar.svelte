@@ -76,6 +76,7 @@
       y: e.clientY,
       items: [
         { label: 'New project', run: () => (editing = { kind: 'new-project', clientId: c.id }) },
+        { label: 'Settings…', hint: 'time zone, hours', run: () => (app.clientDialog = c.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-client', id: c.id, value: c.name }) },
         'separator',
         { label: 'Archive client', run: () => void act(() => ipc.setClientArchived(c.id, true), `Archived “${c.name}”`) },
@@ -102,6 +103,7 @@
       x: e.clientX,
       y: e.clientY,
       items: [
+        { label: 'Settings…', run: () => (app.projectDialog = p.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-project', id: p.id, value: p.name }) },
         ...(moveTargets.length ? (['separator', ...moveTargets] as MenuEntry[]) : []),
         'separator',

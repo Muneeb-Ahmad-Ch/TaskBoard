@@ -121,7 +121,10 @@
         </label>
       </div>
       {#if client && !client.time_zone}
-        <p class="text-xs text-warn">{client.name} has no time zone set, so only your hours are used. Set one in the client's settings.</p>
+        <p class="text-xs text-warn">
+          {client.name} has no time zone set, so only your hours are used.
+          <button class="underline" onclick={() => (app.clientDialog = client.id)}>Set it now</button>
+        </p>
       {/if}
     </div>
 

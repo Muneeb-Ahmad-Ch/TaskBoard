@@ -7,7 +7,7 @@
   import type { Priority } from '../lib/bindings/Priority'
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { buildColumns, buildLanes, laneKey, type Column } from '../lib/board'
-  import { dueLabel, isOverdue, minutes, swatch } from '../lib/format'
+  import { dueLabel, isOverdue, minutes, PALETTE, swatch } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
   import { act, app, inboxId, scopeProjectId, scopeProjectIds, scopeQuery, type Lanes } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
@@ -403,7 +403,6 @@
     { value: 'done', label: 'Done' },
     { value: 'cancelled', label: 'Cancelled' },
   ]
-  const PALETTE = ['gray', '230', '262', '300', '330', '10', '45', '70', '100', '150', '190', '210']
 
   function columnMenu(e: MouseEvent, col: Column) {
     const st = col.status
