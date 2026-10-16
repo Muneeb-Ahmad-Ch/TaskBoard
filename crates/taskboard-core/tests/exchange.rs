@@ -303,3 +303,40 @@ fn backups_make_list_verify_and_restore() {
     assert_eq!(all, ["Keep me"]);
     assert!(Db::open_in_memory().unwrap().backup_now("manual").is_err());
 }
+
+#[test]
+fn sample_workspace_adds_and_removes_cleanly() {
+    let mut db = Db::open_in_memory().unwrap();
+    let today = jiff::Zoned::now().date();
+    let mine = db
+        .create_task(NewTask {
+            title: "My own task".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    db.create_sample_workspace(today).unwrap();
+    assert!(db.has_sample_workspace().unwrap());
+    assert!(db.create_sample_workspace(today).is_err(), "only once");
+    assert_eq!(db.clients(false).unwrap()[0].name, "Sample Co. (example)");
+    assert!(db.list_tasks(&TaskQuery::default()).unwrap().total >= 10);
+    let week = (
+        taskboard_core::clock::now_ms(),
+        taskboard_core::clock::now_ms() + 8 * 86_400_000,
+    );
+    assert!(db.occurrences(week.0, week.1).unwrap().len() >= 2);
+
+    db.remove_sample_workspace().unwrap();
+    assert!(!db.has_sample_workspace().unwrap());
+    assert!(db.clients(false).unwrap().is_empty());
+    let left: Vec<String> = db
+        .list_tasks(&TaskQuery::default())
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|r| r.title)
+        .collect();
+    assert_eq!(left, ["My own task"], "only sample data was removed");
+    assert!(db.task(mine.id).is_ok());
+    db.undo().unwrap();
+    assert!(db.has_sample_workspace().unwrap(), "removal is undoable");
+}

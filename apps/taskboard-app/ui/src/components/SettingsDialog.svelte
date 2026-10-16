@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { Bell, Clock, Monitor, Palette } from '@lucide/svelte'
+  import { Archive, Bell, Clock, Database, Download, FolderOpen, Monitor, Palette, RotateCcw, Upload } from '@lucide/svelte'
+  import type { BackupInfo } from '../lib/bindings/BackupInfo'
+  import { exportTo, importFrom } from '../lib/data'
   import type { AppSettings } from '../lib/bindings/AppSettings'
   import type { NotifySettings } from '../lib/bindings/NotifySettings'
   import { cal } from '../lib/cal.svelte'
@@ -14,6 +16,60 @@
   let appSettings = $state<AppSettings | null>(null)
   let saving = $state(false)
   let weekStart = $state(cal.weekStart)
+  let backups = $state<BackupInfo[]>([])
+  let hasSample = $state(false)
+  let confirmRestore = $state<string | null>(null)
+
+  async function loadData() {
+    try {
+      ;[backups, hasSample] = await Promise.all([ipc.listBackups(), ipc.hasSample()])
+    } catch {
+      backups = []
+    }
+  }
+  $effect(() => {
+    if (inTauri) void loadData()
+  })
+
+  async function backupNow() {
+    try {
+      await ipc.backupNow()
+      toast('Backup saved')
+      await loadData()
+    } catch (err) {
+      toast(errorMessage(err), { kind: 'error' })
+    }
+  }
+
+  async function restore(b: BackupInfo) {
+    if (confirmRestore !== b.path) {
+      confirmRestore = b.path
+      return
+    }
+    confirmRestore = null
+    try {
+      await ipc.restoreBackup(b.path)
+      toast('Restored. Your previous data was saved as a before-restore backup.')
+      onclose()
+    } catch (err) {
+      toast(errorMessage(err), { kind: 'error' })
+    }
+  }
+
+  async function toggleSample() {
+    try {
+      if (hasSample) await ipc.removeSample()
+      else await ipc.createSample()
+      toast(hasSample ? 'Sample workspace removed' : 'Sample workspace added', { action: { label: 'Undo', run: () => void ipc.undo() } })
+      hasSample = !hasSample
+    } catch (err) {
+      toast(errorMessage(err), { kind: 'error' })
+    }
+  }
+
+  const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  const size = (b: number) => (b > 1_048_576 ? `${(b / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`)
+  const KIND: Record<string, string> = { daily: 'Daily', manual: 'Manual', 'pre-migrate': 'Before upgrade', 'pre-import': 'Before import', 'pre-restore': 'Before restore' }
 
   $effect(() => {
     if (!inTauri) return
@@ -87,7 +143,7 @@
           </div>
           <div class="flex items-center gap-2" class:opacity-50={!notify.enabled}>
             <label class="row"><input type="checkbox" class="accent-[var(--accent)]" bind:checked={notify.digest} disabled={!notify.enabled} /> Morning summary at</label>
-            <input type="time" class="field !h-7 !w-[110px]" bind:value={notify.digest_time} disabled={!notify.enabled || !notify.digest} />
+            <input type="time" class="field !h-7 !w-[110px]" aria-label="Morning summary time" bind:value={notify.digest_time} disabled={!notify.enabled || !notify.digest} />
           </div>
           <div>
             <button class="btn !h-7 text-xs" onclick={() => void ipc.testNotification().catch((err) => toast(errorMessage(err), { kind: 'error' }))}>Send a test notification</button>
@@ -106,6 +162,50 @@
         </div>
       </section>
     {/if}
+
+    <section>
+      <h3 class="sec"><Database size={14} /> Data</h3>
+      <p class="mb-2 text-xs text-muted">Everything stays on this computer. A backup is made automatically every day, and before every upgrade, import and restore.</p>
+      <div class="flex flex-wrap gap-1.5">
+        <button class="btn !h-7 text-xs" onclick={() => void backupNow()}><Archive size={13} /> Back up now</button>
+        <button class="btn !h-7 text-xs" onclick={() => void ipc.openBackupsFolder().catch((err) => toast(errorMessage(err), { kind: 'error' }))}><FolderOpen size={13} /> Open backups folder</button>
+      </div>
+      {#if backups.length}
+        <ul class="mt-2 flex max-h-40 flex-col overflow-y-auto rounded-md border border-border">
+          {#each backups.slice(0, 12) as b (b.path)}
+            <li class="flex h-8 items-center gap-2 border-b border-border px-2 text-xs last:border-0">
+              <span class="tabular w-36">{when.format(b.created_at)}</span>
+              <span class="flex-1 text-muted">{KIND[b.kind] ?? b.kind}</span>
+              <span class="tabular text-subtle">{size(b.size_bytes)}</span>
+              <button class="btn !h-6 !px-2 text-xs {confirmRestore === b.path ? 'btn-danger' : ''}" onclick={() => void restore(b)}>
+                <RotateCcw size={12} /> {confirmRestore === b.path ? 'Click to confirm' : 'Restore'}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <span class="field-label">Export</span>
+          <div class="flex flex-wrap gap-1.5">
+            <button class="btn !h-7 text-xs" onclick={() => void exportTo('json')}><Download size={13} /> Everything (JSON)</button>
+            <button class="btn !h-7 text-xs" onclick={() => void exportTo('csv')}>Tasks (CSV)</button>
+            <button class="btn !h-7 text-xs" onclick={() => void exportTo('ics')}>Calendar (ICS)</button>
+          </div>
+        </div>
+        <div>
+          <span class="field-label">Import</span>
+          <div class="flex flex-wrap gap-1.5">
+            <button class="btn !h-7 text-xs" onclick={() => void importFrom('json')}><Upload size={13} /> Taskboard JSON</button>
+            <button class="btn !h-7 text-xs" title="Todoist, Trello, Notion or any CSV with a title column" onclick={() => void importFrom('csv')}>CSV (Todoist, Trello, Notion…)</button>
+            <button class="btn !h-7 text-xs" title="Calendar export from Outlook, Google Calendar…" onclick={() => void importFrom('ics')}>Calendar (ICS)</button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-3">
+        <button class="btn !h-7 text-xs" onclick={() => void toggleSample()}>{hasSample ? 'Remove sample workspace' : 'Add sample workspace'}</button>
+      </div>
+    </section>
 
     <section>
       <h3 class="sec"><Clock size={14} /> Calendar</h3>

@@ -5,12 +5,13 @@
     width = 56,
     height = 5,
     label = false,
-  }: { value: number; width?: number; height?: number; label?: boolean } = $props()
+    name = 'Progress',
+  }: { value: number; width?: number; height?: number; label?: boolean; name?: string } = $props()
 
   const pct = $derived(Math.max(0, Math.min(100, Math.round(value))))
 </script>
 
-<span class="inline-flex items-center gap-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+<span class="inline-flex items-center gap-2" role="progressbar" aria-label={name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
   <span class="track" style="width: {width}px; height: {height}px">
     <span class="fill" class:complete={pct === 100} style="width: {pct}%"></span>
   </span>

@@ -17,6 +17,7 @@ pub mod query;
 pub mod quickadd;
 pub mod recur;
 pub mod rrule;
+mod sample;
 pub mod slots;
 mod statuses;
 pub mod storage;

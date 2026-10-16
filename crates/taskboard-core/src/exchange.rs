@@ -467,7 +467,6 @@ impl Db {
             "Tags",
             "Completed",
             "Repeats",
-            "Created",
         ])
         .map_err(csv_err)?;
         let fmt_ms = |ms: Option<i64>| -> String {
@@ -508,7 +507,6 @@ impl Db {
                     &r.tags.join(", "),
                     &fmt_ms(r.completed_at),
                     if r.recurring { "yes" } else { "" },
-                    "",
                 ])
                 .map_err(csv_err)?;
             }

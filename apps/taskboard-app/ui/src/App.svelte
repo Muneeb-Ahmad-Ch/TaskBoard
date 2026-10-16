@@ -15,6 +15,7 @@
   import Toasts from './components/Toasts.svelte'
   import DashboardView from './components/DashboardView.svelte'
   import ReminderBanner from './components/ReminderBanner.svelte'
+  import Welcome from './components/Welcome.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
   import { isTyping, swatch } from './lib/format'
   import { app, redo, scopeTitle, undo, type View } from './lib/store.svelte'
@@ -53,6 +54,31 @@
   )
 
   let searchInput: HTMLInputElement | undefined = $state()
+
+  // First run: no clients, no projects with tasks, nothing in the Inbox.
+  let welcomeDismissed = $state(
+    (() => {
+      try {
+        return localStorage.getItem('taskboard.welcomeDismissed') === '1'
+      } catch {
+        return false
+      }
+    })(),
+  )
+  const isEmpty = $derived(
+    app.counts !== null &&
+      app.clients.length === 0 &&
+      app.projects.every((p) => p.total_tasks === 0) &&
+      (app.counts?.inbox ?? 0) === 0,
+  )
+  function dismissWelcome() {
+    welcomeDismissed = true
+    try {
+      localStorage.setItem('taskboard.welcomeDismissed', '1')
+    } catch {
+      // per-device convenience only
+    }
+  }
 
   function onKeydown(e: KeyboardEvent) {
     const typing = isTyping(e)
@@ -145,7 +171,11 @@
       <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5" role="tabpanel" aria-label={current.label}>
         {#if app.view === 'table'}
           <QuickAdd />
-          <TaskTable />
+          {#if isEmpty && !welcomeDismissed}
+            <Welcome ondismiss={dismissWelcome} />
+          {:else}
+            <TaskTable />
+          {/if}
         {:else if app.view === 'board'}
           <Board />
         {:else if app.view === 'calendar'}

@@ -209,25 +209,21 @@
       {:else}
         <div class="group relative">
           <button
-            class="nav-item w-full"
+            class="chevron absolute top-[3px] left-0.5 z-[1] grid size-6 place-items-center rounded text-subtle hover:bg-hover"
+            aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
+            aria-expanded={!collapsed[client.id]}
+            onclick={() => toggle(client.id)}
+          >
+            <ChevronRight size={13} class="transition-transform {collapsed[client.id] ? '' : 'rotate-90'}" />
+          </button>
+          <button
+            class="nav-item w-full pl-6"
             class:active={isActive({ kind: 'client', id: client.id })}
             onclick={() => setScope({ kind: 'client', id: client.id })}
             oncontextmenu={(e) => clientMenu(e, client)}
             ondblclick={() => (editing = { kind: 'rename-client', id: client.id, value: client.name })}
           >
-            <span
-              class="chevron grid size-4 place-items-center rounded text-subtle hover:bg-hover"
-              role="button"
-              tabindex="-1"
-              aria-label={collapsed[client.id] ? 'Expand' : 'Collapse'}
-              onclick={(e) => {
-                e.stopPropagation()
-                toggle(client.id)
-              }}
-              onkeydown={() => {}}
-            >
-              <ChevronRight size={13} class="transition-transform {collapsed[client.id] ? '' : 'rotate-90'}" />
-            </span>
+
             <span class="grid size-[16px] shrink-0 place-items-center rounded text-[9.5px] font-bold text-white" style="background: {swatch(client.color, 0.6)}">
               {client.name.charAt(0).toUpperCase()}
             </span>

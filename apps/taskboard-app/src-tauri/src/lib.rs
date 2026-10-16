@@ -4,6 +4,7 @@
 //! thread (Tauri runs non-async commands on the main thread, which would stall
 //! the window). Mutations emit `data-changed` so every view re-queries.
 
+mod data;
 mod desktop;
 
 use std::sync::{Arc, Mutex};
@@ -23,28 +24,28 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut,
 
 /// One connection behind a mutex, only ever locked from worker threads.
 /// A dedicated writer thread + read pool can replace this if profiling asks.
-struct AppState {
-    db: Arc<Mutex<Db>>,
+pub(crate) struct AppState {
+    pub(crate) db: Arc<Mutex<Db>>,
     /// Launched by autostart with `--minimized`: stay in the tray.
     start_hidden: bool,
     /// True when the Mica backdrop applied; the UI uses solid surfaces otherwise.
     mica: bool,
 }
 
-type CmdResult<T> = Result<T, ErrorInfo>;
+pub(crate) type CmdResult<T> = Result<T, ErrorInfo>;
 
-fn internal(message: impl ToString) -> ErrorInfo {
+pub(crate) fn internal(message: impl ToString) -> ErrorInfo {
     ErrorInfo {
         code: "internal".into(),
         message: message.to_string(),
     }
 }
 
-fn today() -> jiff::civil::Date {
+pub(crate) fn today() -> jiff::civil::Date {
     jiff::Zoned::now().date()
 }
 
-async fn read<T, F>(state: State<'_, AppState>, f: F) -> CmdResult<T>
+pub(crate) async fn read<T, F>(state: State<'_, AppState>, f: F) -> CmdResult<T>
 where
     T: Send + 'static,
     F: FnOnce(&Db) -> taskboard_core::Result<T> + Send + 'static,
@@ -58,7 +59,7 @@ where
     .map_err(internal)?
 }
 
-async fn write<T, F>(app: AppHandle, state: State<'_, AppState>, f: F) -> CmdResult<T>
+pub(crate) async fn write<T, F>(app: AppHandle, state: State<'_, AppState>, f: F) -> CmdResult<T>
 where
     T: Send + 'static,
     F: FnOnce(&mut Db) -> taskboard_core::Result<T> + Send + 'static,
@@ -638,6 +639,7 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![desktop::MINIMIZED_FLAG]),
@@ -755,6 +757,15 @@ pub fn run() {
             hours_by_client,
             find_slots,
             has_mica,
+            data::list_backups,
+            data::backup_now,
+            data::open_backups_folder,
+            data::restore_backup,
+            data::export_data,
+            data::import_data,
+            data::has_sample,
+            data::create_sample,
+            data::remove_sample,
             dashboard,
             notify_settings,
             set_notify_settings,

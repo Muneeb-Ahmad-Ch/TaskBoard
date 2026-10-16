@@ -86,8 +86,18 @@ pub fn spawn_reminders(app: AppHandle, db: Arc<Mutex<Db>>) {
     std::thread::Builder::new()
         .name("reminders".into())
         .spawn(move || {
+            let mut last_backup_check = 0i64;
             loop {
                 let now = taskboard_core::clock::now_ms();
+                // Automatic daily backup (checked hourly; cheap when already done).
+                if now - last_backup_check > 3_600_000 {
+                    last_backup_check = now;
+                    if let Ok(db) = db.lock()
+                        && let Err(err) = db.ensure_daily_backup()
+                    {
+                        tracing::warn!(%err, "daily backup failed");
+                    }
+                }
                 let due = match db.lock() {
                     Ok(mut db) => match db.pending_notifications(now) {
                         Ok(list) => {

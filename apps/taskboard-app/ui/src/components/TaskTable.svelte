@@ -546,7 +546,7 @@
   >
     <!-- header (sticky, scrolls sideways with the rows) -->
     <div class="sticky top-0 z-10 grid h-9 items-center border-b border-border bg-surface-2 text-xs text-muted select-none" style="grid-template-columns: {gridTemplate}; min-width: {minWidth}px" role="row" tabindex="-1" oncontextmenu={columnsMenu}>
-      <button class="grid h-full place-items-center text-subtle hover:text-text" title="Columns" aria-label="Choose columns" onclick={columnsMenu}><Columns3 size={14} /></button>
+      <div role="columnheader" class="h-full"><button class="grid h-full w-full place-items-center text-subtle hover:text-text" title="Columns" aria-label="Choose columns" onclick={columnsMenu}><Columns3 size={14} /></button></div>
       {#each cols as col (col.id)}
         <div class="relative flex h-full items-center px-2 {col.align === 'right' ? 'justify-end' : ''}" role="columnheader" aria-sort={app.sort === col.sort ? (app.descending ? 'descending' : 'ascending') : 'none'}>
           <button class="flex items-center gap-1 font-medium {col.sort ? 'hover:text-text' : 'cursor-default'}" onclick={() => sortBy(col)}>
@@ -592,8 +592,9 @@
           onkeydown={() => {}}
         >
           {#if row}
+            <div role="gridcell" class="h-full">
             <button
-              class="grid h-full place-items-center {row.category === 'done' ? 'text-success' : row.category === 'active' ? 'text-accent' : 'text-subtle'} hover:text-accent"
+              class="grid h-full w-full place-items-center {row.category === 'done' ? 'text-success' : row.category === 'active' ? 'text-accent' : 'text-subtle'} hover:text-accent"
               aria-label={row.completed_at ? 'Mark not done' : 'Mark done'}
               onclick={(e) => {
                 e.stopPropagation()
@@ -605,6 +606,7 @@
               {:else if row.status_name === 'Backlog'}<CircleDashed size={17} />
               {:else}<Circle size={17} />{/if}
             </button>
+            </div>
             {#each cols as col (col.id)}
               <div class="cell min-w-0 px-2 {col.align === 'right' ? 'text-right' : ''}" role="gridcell">
                 {#if col.id === 'title'}
@@ -622,7 +624,9 @@
                     />
                   {:else}
                     <span class="title flex items-center gap-2">
-                      <span class="truncate" role="textbox" tabindex="-1" ondblclick={() => (renaming = row.id)}>{row.title}</span>
+                      <!-- Mouse shortcut; keyboard users rename with F2 / E. -->
+                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                      <span class="truncate" ondblclick={() => (renaming = row.id)}>{row.title}</span>
                       {#if row.recurring}<Repeat size={12} class="shrink-0 text-subtle" aria-label="Repeats" />{/if}
                       {#if row.subtasks_total}<span class="tabular shrink-0 text-xs text-subtle">{row.subtasks_done}/{row.subtasks_total}</span>{/if}
                     </span>

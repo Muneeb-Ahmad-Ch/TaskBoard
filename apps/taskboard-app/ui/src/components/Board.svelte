@@ -504,13 +504,16 @@
 <svelte:window onkeydown={onWindowKeydown} />
 
 {#snippet card(row: TaskRow, colKey: string, lane: string)}
+  <!-- A card is a focusable composite: it contains buttons (so it can't be a button)
+       and must take keyboard focus for Space-to-move. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
   <div
     data-card={row.id}
     class="card"
     class:ghosted={drag?.row.id === row.id}
     class:lifted={kbd?.row.id === row.id}
     class:done={!!row.completed_at}
-    role="button"
+    role="group"
     tabindex="0"
     aria-roledescription="Draggable task"
     aria-label={row.title}
@@ -519,7 +522,7 @@
   >
     <div class="flex items-start gap-2">
       <button
-        class="mt-px shrink-0 {row.completed_at ? 'text-success' : 'text-subtle hover:text-accent'}"
+        class="-m-1 grid size-6 shrink-0 place-items-center rounded {row.completed_at ? 'text-success' : 'text-subtle hover:text-accent'}"
         aria-label={row.completed_at ? 'Mark not done' : 'Mark done'}
         onpointerdown={(e) => e.stopPropagation()}
         onclick={(e) => {

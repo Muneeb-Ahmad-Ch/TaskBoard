@@ -3,6 +3,8 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { AppSettings } from './bindings/AppSettings'
+import type { BackupInfo } from './bindings/BackupInfo'
+import type { ImportReport } from './bindings/ImportReport'
 import type { Dashboard } from './bindings/Dashboard'
 import type { Notification } from './bindings/Notification'
 import type { NotifySettings } from './bindings/NotifySettings'
@@ -125,6 +127,17 @@ export const ipc = {
   setAppSettings: (settings: AppSettings) => invoke<AppSettings>('set_app_settings', { settings }),
   testNotification: () => invoke<void>('test_notification'),
   startHidden: () => invoke<boolean>('start_hidden'),
+
+  // data
+  listBackups: () => invoke<BackupInfo[]>('list_backups'),
+  backupNow: () => invoke<BackupInfo>('backup_now'),
+  openBackupsFolder: () => invoke<void>('open_backups_folder'),
+  restoreBackup: (path: string) => invoke<void>('restore_backup', { path }),
+  exportData: (kind: 'json' | 'csv' | 'ics', path: string) => invoke<void>('export_data', { kind, path }),
+  importData: (kind: 'json' | 'csv' | 'ics', path: string) => invoke<ImportReport>('import_data', { kind, path }),
+  hasSample: () => invoke<boolean>('has_sample'),
+  createSample: () => invoke<void>('create_sample'),
+  removeSample: () => invoke<void>('remove_sample'),
 
   // window
   hasMica: () => invoke<boolean>('has_mica'),

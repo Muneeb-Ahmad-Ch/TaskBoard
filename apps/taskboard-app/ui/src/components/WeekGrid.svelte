@@ -311,7 +311,7 @@
     {/each}
     <div class="pr-2 text-right text-[10.5px] leading-[24px] text-subtle">all day</div>
     {#each days as day (isoDate(day))}
-      <div class="allday" role="list" ondragover={onDragOver} ondrop={(e) => dropOnDay(e, day)}>
+      <div class="allday" role="group" aria-label="All day" ondragover={onDragOver} ondrop={(e) => dropOnDay(e, day)}>
         {#each allDayItems(day) as item (item.key)}
           {#if item.o}
             <button class="chip event" style="--c: {swatch(item.o.color, 0.6, 0.14)}" onclick={() => item.o && openEvent(item.o)}>{item.o.title}</button>
@@ -340,8 +340,8 @@
         <div
           class="daycol"
           data-daycol={di}
-          role="gridcell"
-          tabindex="-1"
+          role="region"
+          aria-label="{weekdayFmt.format(day)} {day.getDate()}"
           onpointerdown={(e) => begin(e, 'create', di)}
           ondragover={onDragOver}
           ondrop={(e) => void dropOnGrid(e, di)}
@@ -374,7 +374,6 @@
               style="top: {top(item.start, day)}px; height: {h}px; left: calc({((pos?.col ?? 0) / (pos?.cols ?? 1)) * 100}% + 2px); width: calc({100 / (pos?.cols ?? 1)}% - 6px); --c: {swatch(item.o?.color ?? item.t?.project_color ?? 'gray', 0.6, 0.14)}"
               role="button"
               tabindex="0"
-              aria-label={item.o ? `${item.o.title}, ${fmtRange(item.o.start_at, item.o.end_at)}` : item.t?.title}
               onpointerdown={(e) => begin(e, 'move', di, item)}
               onkeydown={(e) => {
                 if (e.key === 'Enter') {
@@ -495,7 +494,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    height: 20px;
+    height: 24px;
     padding-inline: 5px;
     border-radius: 4px;
     font-size: 11.5px;
