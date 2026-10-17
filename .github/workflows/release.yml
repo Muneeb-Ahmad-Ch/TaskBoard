@@ -47,6 +47,9 @@ jobs:
           tauriScript: pnpm -C ui tauri
           tagName: ${{ github.ref_name }}
           releaseName: Taskboard ${{ github.ref_name }}
-          releaseBody: See the commit history for changes. Installers are not code-signed yet.
+          releaseBody: |
+            What's new: see the [changelog](https://github.com/Muneeb-Ahmad-Ch/TaskBoard/blob/main/CHANGELOG.md).
+
+            Download `Taskboard_*_x64-setup.exe` below. Installers are not code-signed yet, so Windows may show "Windows protected your PC": click More info → Run anyway.
           releaseDraft: true
           prerelease: false

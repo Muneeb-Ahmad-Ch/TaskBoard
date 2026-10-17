@@ -5,6 +5,7 @@
   import { inTauri, ipc } from '../lib/ipc'
   import { activeViewChanged, app, applySavedView, redo, setScope, undo, updateActiveView } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
+  import { openChangelog } from '../lib/about'
   import { cal } from '../lib/cal.svelte'
 
   interface Command {
@@ -34,6 +35,8 @@
       { id: 'v-meet', group: 'View', label: 'Meetings', run: () => (app.view = 'meetings') },
       { id: 'layout', group: 'Actions', label: 'Customize sidebar and views…', run: () => { app.settingsSection = 'layout'; app.settingsOpen = true } },
       { id: 'settings', group: 'Actions', label: 'Settings…', run: () => (app.settingsOpen = true) },
+      { id: 'changelog', group: 'Actions', label: "What's new (changelog)", run: openChangelog },
+      { id: 'about', group: 'Actions', label: 'About Taskboard', run: () => { app.settingsSection = 'about'; app.settingsOpen = true } },
       { id: 'find-slot', group: 'Actions', label: 'Find a meeting slot…', run: () => (cal.findSlotOpen = true) },
       { id: 'new-meeting', group: 'Actions', label: 'New meeting…', run: () => { const s = new Date(); s.setMinutes(0, 0, 0); s.setHours(s.getHours() + 1); cal.draft = { kind: 'meeting', start: s.getTime(), end: s.getTime() + 3_600_000 } } },
       { id: 'hours', group: 'Actions', label: 'Working hours…', run: () => (cal.workingHoursOpen = true) },

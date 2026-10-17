@@ -1,0 +1,55 @@
+# Changelog
+
+All notable changes to Taskboard are listed here, newest first.
+Versions follow [semantic versioning](https://semver.org/); the format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+Download any version from the
+[Releases page](https://github.com/Muneeb-Ahmad-Ch/TaskBoard/releases).
+
+## [Unreleased]
+
+### Added
+- The app shows its version in the status bar and in **Settings → About**;
+  clicking it opens this changelog. **What's new** and **About Taskboard**
+  are also in the command palette (Ctrl+K).
+
+## [0.1.0] - 2026-10-17
+
+First release, for Windows 10 (1809+) and Windows 11.
+
+### Added
+- **Clients → projects → tasks → subtasks.** Sidebar grouped by client,
+  progress per client and project, archive, and move projects between
+  clients. Reorder clients and projects (right-click or Alt+↑/↓).
+- **Three views of the same tasks:** a virtualized Table (50,000 tasks scroll
+  smoothly), a Kanban Board (drag and drop by mouse or keyboard, custom
+  columns, WIP limits, swimlanes) and a Calendar (month, week, day, agenda).
+- **Quick Add from anywhere** (Ctrl+Shift+Space) with dates, times, tags,
+  priority, project, estimates and repeats in plain text, e.g.
+  `Send invoice fri 3pm #admin !high @website ~30m`.
+- **Meetings:** links with a Join button, attendees, Markdown notes,
+  reminders, repeating series, and a Meetings page listing what's coming up.
+- **Working hours and a meeting-slot finder** that respects your hours and
+  your client's hours in their time zone.
+- **Time tracking:** a timer on any task and logged hours per client.
+- **Repeating tasks** on a schedule or after completion.
+- **Saved views**, a Dashboard (streaks, trends, burndown) and a command
+  palette (Ctrl+K).
+- **Safety:** undo for everything (bulk edits as one step), crash-tested
+  storage, daily backups with restore, and export/import as JSON, CSV and
+  calendar (.ics) files, including imports from Todoist, Trello and Notion.
+- **Windows integration:** tray icon, start with Windows, Windows
+  notifications, Mica, light and dark themes with accent colors.
+- **Customizable layout:** show, hide and reorder sidebar items and view tabs.
+  Works down to 720×480 (the sidebar becomes a drawer).
+- Keyboard shortcuts throughout; accessibility checked with axe-core against
+  WCAG 2.2 AA.
+
+### Known limitations
+- Installers are not code-signed yet, so Windows SmartScreen may warn on
+  first install ("More info" → "Run anyway").
+- No automatic updates yet: download new versions from the Releases page.
+
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/releases/tag/v0.1.0

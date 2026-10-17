@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, Bell, Clock, Database, Download, FolderOpen, Monitor, Palette, PanelLeft, RotateCcw, Upload } from '@lucide/svelte'
+  import { Archive, Bell, Clock, Database, Download, FolderOpen, Info, Monitor, Palette, PanelLeft, RotateCcw, Upload } from '@lucide/svelte'
   import type { BackupInfo } from '../lib/bindings/BackupInfo'
   import { exportTo, importFrom } from '../lib/data'
   import type { AppSettings } from '../lib/bindings/AppSettings'
@@ -10,15 +10,22 @@
   import { toast } from '../lib/toast.svelte'
   import { app } from '../lib/store.svelte'
   import LayoutSettings from './LayoutSettings.svelte'
+  import { appVersion, CHANGELOG_URL, LICENSE_URL, RELEASES_URL, REPO_URL } from '../lib/about'
+  import { openLink } from '../lib/ipc'
   import Modal from './Modal.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
 
+  let version = $state('')
+  void appVersion().then((v) => (version = v))
+
   // Opened from "Customize sidebar…": jump to that section.
   let layoutSection = $state<HTMLElement | null>(null)
+  let aboutSection = $state<HTMLElement | null>(null)
   $effect(() => {
-    if (app.settingsSection === 'layout' && layoutSection) {
-      layoutSection.scrollIntoView({ block: 'start' })
+    const target = app.settingsSection === 'layout' ? layoutSection : app.settingsSection === 'about' ? aboutSection : null
+    if (target) {
+      target.scrollIntoView({ block: 'start' })
       app.settingsSection = null
     }
   })
@@ -235,6 +242,18 @@
           </select>
         </label>
         <button class="btn !h-7 text-xs" onclick={() => { onclose(); cal.workingHoursOpen = true }}>Working hours &amp; days off…</button>
+      </div>
+    </section>
+
+    <section bind:this={aboutSection}>
+      <h3 class="sec"><Info size={14} /> About</h3>
+      <p class="text-[13px]"><strong>Taskboard {version ? `v${version}` : ''}</strong> <span class="text-muted">· © 2026 Muneeb Ahmad</span></p>
+      <p class="mt-0.5 text-xs text-muted">Free for personal use; commercial use needs permission.</p>
+      <div class="mt-2 flex flex-wrap gap-2">
+        <button class="btn !h-7 text-xs" onclick={() => void openLink(CHANGELOG_URL)}>What's new</button>
+        <button class="btn !h-7 text-xs" onclick={() => void openLink(RELEASES_URL)}>All releases</button>
+        <button class="btn !h-7 text-xs" onclick={() => void openLink(REPO_URL)}>Source on GitHub</button>
+        <button class="btn !h-7 text-xs" onclick={() => void openLink(LICENSE_URL)}>License</button>
       </div>
     </section>
   </div>

@@ -20,6 +20,7 @@
   <a href="#install">Download</a> ·
   <a href="#features">Features</a> ·
   <a href="docs/SHORTCUTS.md">Shortcuts</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="#build-from-source">Build</a> ·
   <a href="#license">License</a>
 </p>
