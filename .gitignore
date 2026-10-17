@@ -37,3 +37,6 @@ secrets/
 .playwright-mcp/
 .DS_Store
 Thumbs.db
+
+# Brainstorming mockups (local only)
+.superpowers/
