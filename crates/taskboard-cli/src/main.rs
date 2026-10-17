@@ -8,7 +8,8 @@ use std::time::Instant;
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use taskboard_core::{
-    Category, Db, Id, NewClient, NewProject, NewTask, Priority, TaskQuery, TaskRow, TaskSort,
+    Category, Db, Id, NewClient, NewProject, NewSection, NewTask, Priority, TaskQuery, TaskRow,
+    TaskSort,
 };
 
 #[derive(Debug, Parser)]
@@ -65,6 +66,9 @@ enum Command {
     /// Manage clients.
     #[command(subcommand)]
     Client(ClientCmd),
+    /// Manage sidebar sections ("Clients", "Teams", "Family"…).
+    #[command(subcommand)]
+    Section(SectionCmd),
     /// Manage projects.
     #[command(subcommand)]
     Project(ProjectCmd),
@@ -84,6 +88,20 @@ enum ClientCmd {
         /// IANA time zone, e.g. Europe/London.
         #[arg(long)]
         tz: Option<String>,
+        /// Section name (prefix match); default: the first section.
+        #[arg(long)]
+        section: Option<String>,
+    },
+    Ls,
+}
+
+#[derive(Debug, Subcommand)]
+enum SectionCmd {
+    Add {
+        name: String,
+        /// What one group in it is called, e.g. "team".
+        #[arg(long)]
+        item: Option<String>,
     },
     Ls,
 }
@@ -265,13 +283,44 @@ fn main() -> Result<()> {
         }
         Command::Undo => println!("undid: {}", db.undo()?),
         Command::Redo => println!("redid: {}", db.redo()?),
-        Command::Client(ClientCmd::Add { name, tz }) => {
+        Command::Client(ClientCmd::Add { name, tz, section }) => {
+            let section_id = match section {
+                Some(prefix) => {
+                    let lower = prefix.to_lowercase();
+                    let found = db
+                        .sections()?
+                        .into_iter()
+                        .find(|s| s.name.to_lowercase().starts_with(&lower))
+                        .with_context(|| format!("no section matches “{prefix}”"))?;
+                    Some(found.id)
+                }
+                None => None,
+            };
             let c = db.create_client(NewClient {
                 name,
                 time_zone: tz,
+                section_id,
                 ..Default::default()
             })?;
             println!("added client {}", c.name);
+        }
+        Command::Section(SectionCmd::Add { name, item }) => {
+            let s = db.create_section(NewSection {
+                name,
+                item_name: item,
+                ..Default::default()
+            })?;
+            println!("added section {}", s.name);
+        }
+        Command::Section(SectionCmd::Ls) => {
+            for s in db.sections()? {
+                let item = if s.item_name.is_empty() {
+                    "group".into()
+                } else {
+                    s.item_name
+                };
+                println!("{}  (items: {item})", s.name);
+            }
         }
         Command::Client(ClientCmd::Ls) => {
             for c in db.clients(false)? {

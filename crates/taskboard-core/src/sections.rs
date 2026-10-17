@@ -346,6 +346,97 @@ pub(crate) fn require_section(tx: &Tx<'_>, id: Id) -> Result<()> {
     }
 }
 
+/// A live section with this name (case-insensitive), or a new one at the
+/// end. Returns whether it was created.
+pub(crate) fn find_or_create_section(
+    tx: &mut Tx<'_>,
+    name: &str,
+    item: &str,
+    color: &str,
+) -> Result<(Id, bool)> {
+    let existing: Option<Id> = tx
+        .conn()
+        .query_row(
+            "SELECT id FROM section WHERE deleted_at IS NULL AND name = ?1 COLLATE NOCASE
+             ORDER BY sort_key LIMIT 1",
+            [name],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(id) = existing {
+        return Ok((id, false));
+    }
+    let last: Option<String> = tx.conn().query_row(
+        "SELECT max(sort_key) FROM section WHERE deleted_at IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    let id = Id::new();
+    tx.insert(
+        Table::Section,
+        &[
+            ("id", id.into()),
+            ("name", text(name)),
+            ("item_name", text(item)),
+            ("color", text(color)),
+            ("sort_key", text(key_between(last.as_deref(), None)?)),
+            ("created_at", int(tx.now())),
+        ],
+    )?;
+    Ok((id, true))
+}
+
+/// After importing an export made before sections existed: groups go to a
+/// "Clients" section and projects without a group to "Personal" (reusing
+/// sections with those names), exactly like the migration did.
+pub(crate) fn assign_unsectioned(tx: &mut Tx<'_>) -> Result<()> {
+    let clients: Vec<Id> = {
+        let mut stmt = tx
+            .conn()
+            .prepare("SELECT id FROM client WHERE section_id IS NULL")?;
+        stmt.query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    if !clients.is_empty() {
+        let (section, _) = find_or_create_section(tx, "Clients", "client", &palette_color(2))?;
+        for c in clients {
+            tx.update(
+                Table::Client,
+                &[c.into()],
+                &[("section_id", section.into())],
+            )?;
+        }
+    }
+    let projects: Vec<(Id, Option<Id>)> = {
+        let mut stmt = tx.conn().prepare(
+            "SELECT p.id, c.section_id FROM project p LEFT JOIN client c ON c.id = p.client_id
+             WHERE p.section_id IS NULL AND p.is_inbox = 0",
+        )?;
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    let mut personal: Option<Id> = None;
+    for (p, group_section) in projects {
+        let section = match group_section {
+            Some(s) => s,
+            None => match personal {
+                Some(s) => s,
+                None => {
+                    let (s, _) = find_or_create_section(tx, "Personal", "", &palette_color(9))?;
+                    personal = Some(s);
+                    s
+                }
+            },
+        };
+        tx.update(
+            Table::Project,
+            &[p.into()],
+            &[("section_id", section.into())],
+        )?;
+    }
+    Ok(())
+}
+
 fn ids(tx: &Tx<'_>, sql: &str, section: Id) -> Result<Vec<Id>> {
     let mut stmt = tx.conn().prepare(sql)?;
     let rows = stmt

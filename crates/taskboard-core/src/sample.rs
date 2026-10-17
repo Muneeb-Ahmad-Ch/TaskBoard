@@ -3,7 +3,6 @@
 
 use jiff::ToSpan;
 use jiff::civil::{Date, Time};
-use rusqlite::OptionalExtension;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +12,7 @@ use crate::id::Id;
 use crate::model::{NewClient, NewProject, NewTask, Priority, clean_tz, int, text};
 use crate::order::key_between;
 use crate::projects::insert_project;
+use crate::sections::find_or_create_section;
 use crate::storage::Db;
 use crate::tasks::insert_task;
 use crate::tx::{Table, Tx};
@@ -29,8 +29,8 @@ struct SampleIds {
     sections: Vec<Id>,
 }
 
-/// A live section with this name (case-insensitive), or a new one recorded
-/// in `created` so removing the sample can take it away again.
+/// A section with this name, recorded in `created` when the sample made it
+/// (removing the sample takes it away again if it's empty by then).
 fn sample_section(
     tx: &mut Tx<'_>,
     name: &str,
@@ -38,36 +38,10 @@ fn sample_section(
     color: &str,
     created: &mut Vec<Id>,
 ) -> Result<Id> {
-    let existing: Option<Id> = tx
-        .conn()
-        .query_row(
-            "SELECT id FROM section WHERE deleted_at IS NULL AND name = ?1 COLLATE NOCASE
-             ORDER BY sort_key LIMIT 1",
-            [name],
-            |r| r.get(0),
-        )
-        .optional()?;
-    if let Some(id) = existing {
-        return Ok(id);
+    let (id, new) = find_or_create_section(tx, name, item, color)?;
+    if new {
+        created.push(id);
     }
-    let last: Option<String> = tx.conn().query_row(
-        "SELECT max(sort_key) FROM section WHERE deleted_at IS NULL",
-        [],
-        |r| r.get(0),
-    )?;
-    let id = Id::new();
-    tx.insert(
-        Table::Section,
-        &[
-            ("id", id.into()),
-            ("name", text(name)),
-            ("item_name", text(item)),
-            ("color", text(color)),
-            ("sort_key", text(key_between(last.as_deref(), None)?)),
-            ("created_at", int(tx.now())),
-        ],
-    )?;
-    created.push(id);
     Ok(id)
 }
 

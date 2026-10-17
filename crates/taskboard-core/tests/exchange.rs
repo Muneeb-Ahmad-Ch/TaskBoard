@@ -362,3 +362,107 @@ fn ics_import_skips_events_that_already_exist_here() {
         before
     );
 }
+
+// ---------- sections in exports ----------
+
+/// The shared workspace plus a project without a group, as an old export.
+fn old_workspace_export() -> String {
+    let mut src = workspace();
+    src.create_project(NewProject {
+        name: "Loose".into(),
+        ..Default::default()
+    })
+    .unwrap();
+    as_old_export(&src.export_json().unwrap())
+}
+
+/// Today's export with the section data removed: what a 0.1/0.2 export looks like.
+fn as_old_export(json: &str) -> String {
+    let mut doc: serde_json::Value = serde_json::from_str(json).unwrap();
+    let tables = doc["tables"].as_object_mut().unwrap();
+    tables.remove("section");
+    for t in ["client", "project"] {
+        if let Some(rows) = tables.get_mut(t).and_then(|v| v.as_array_mut()) {
+            for row in rows {
+                row.as_object_mut().unwrap().remove("section_id");
+            }
+        }
+    }
+    doc.to_string()
+}
+
+#[test]
+fn json_round_trip_keeps_sections() {
+    let mut src = Db::open_in_memory().unwrap();
+    let family = src
+        .create_section(NewSection {
+            name: "Family".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    src.create_project(NewProject {
+        name: "Home".into(),
+        section_id: Some(family.id),
+        ..Default::default()
+    })
+    .unwrap();
+    let json = src.export_json().unwrap();
+    let mut dst = Db::open_in_memory().unwrap();
+    dst.import_json(&json).unwrap();
+    let names: Vec<String> = dst
+        .sections()
+        .unwrap()
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(names, ["Family"]);
+    let home = dst
+        .projects(false)
+        .unwrap()
+        .into_iter()
+        .find(|p| p.project.name == "Home")
+        .unwrap();
+    assert_eq!(home.project.section_id, Some(family.id));
+}
+
+#[test]
+fn old_export_imports_into_clients_and_personal() {
+    let old = old_workspace_export();
+    let mut dst = Db::open_in_memory().unwrap();
+    dst.import_json(&old).unwrap();
+    let sections = dst.sections().unwrap();
+    let names: Vec<&str> = sections.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(names, ["Clients", "Personal"]);
+    assert!(
+        dst.clients(true)
+            .unwrap()
+            .iter()
+            .all(|c| c.section_id == Some(sections[0].id))
+    );
+    for p in dst.projects(true).unwrap() {
+        if p.project.is_inbox {
+            continue;
+        }
+        let want = if p.project.client_id.is_some() {
+            sections[0].id
+        } else {
+            sections[1].id
+        };
+        assert_eq!(p.project.section_id, Some(want), "{}", p.project.name);
+    }
+}
+
+#[test]
+fn reimporting_old_export_reuses_sections() {
+    let old = old_workspace_export();
+    let mut dst = Db::open_in_memory().unwrap();
+    dst.import_json(&old).unwrap();
+    dst.import_json(&old).unwrap();
+    let names: Vec<String> = dst
+        .sections()
+        .unwrap()
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    assert_eq!(names, ["Clients", "Personal"]);
+}
