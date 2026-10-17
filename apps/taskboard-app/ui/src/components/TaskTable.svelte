@@ -11,7 +11,7 @@
   import type { TaskSummary } from '../lib/bindings/TaskSummary'
   import { dueLabel, isOverdue, isTyping, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
-  import { act, app, scopeQuery } from '../lib/store.svelte'
+  import { act, app, scopeQuery, sectionById } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import { COLUMN_DEFS, orderedColumns, saveTableLayout, setColumnVisible, tableLayout, type ColId, type ColumnDef } from '../lib/tableLayout.svelte'
@@ -483,6 +483,16 @@
     ])
   }
 
+  /** project id → "Section › Group / Project", for the project cell's tooltip. */
+  const projectPath = $derived(
+    new Map(
+      app.projects.map((p) => [
+        p.id,
+        [sectionById(p.section_id)?.name, p.client_name ? `${p.client_name} / ${p.name}` : p.name].filter(Boolean).join(' › '),
+      ]),
+    ),
+  )
+
   function projectMenu(e: MouseEvent, row: TaskRow) {
     const ids = targets(row)
     openMenu(
@@ -668,7 +678,7 @@
                     </span>
                   {/if}
                 {:else if col.id === 'project'}
-                  <button class="cell-btn" onclick={(e) => projectMenu(e, row)}>
+                  <button class="cell-btn" title={projectPath.get(row.project_id)} onclick={(e) => projectMenu(e, row)}>
                     <span class="size-2 shrink-0 rounded-full" style="background: {swatch(row.project_color)}"></span>
                     {#if row.client_name}<span class="truncate text-muted">{row.client_name}</span><span class="text-subtle">/</span>{/if}
                     <span class="truncate">{row.project_name}</span>

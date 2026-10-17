@@ -53,8 +53,11 @@
     const active = app.views.find((v) => v.id === app.activeViewId)
     if (active && activeViewChanged())
       list.push({ id: 'sv-update', group: 'Actions', label: `Update view “${active.name}” with current filters`, run: () => void updateActiveView() })
+    list.push({ id: 'new-section', group: 'Actions', label: 'New section…', run: () => (app.sectionDialog = { id: null }) })
+    for (const s of app.sections)
+      list.push({ id: `s-${s.id}`, group: 'Sections', label: s.name, color: s.color, run: () => setScope({ kind: 'section', id: s.id }) })
     for (const c of app.clients)
-      list.push({ id: `c-${c.id}`, group: 'Clients', label: c.name, color: c.color, run: () => setScope({ kind: 'client', id: c.id }) })
+      list.push({ id: `c-${c.id}`, group: 'Groups', label: c.name, color: c.color, run: () => setScope({ kind: 'client', id: c.id }) })
     for (const p of app.projects)
       if (!p.is_inbox)
         list.push({
@@ -173,7 +176,7 @@
         bind:this={input}
         bind:value={query}
         class="flex-1 bg-transparent text-[15px] outline-none placeholder:text-subtle"
-        placeholder="Search tasks, projects, clients, or type a command…"
+        placeholder="Search tasks, projects, groups, or type a command…"
         role="combobox"
         aria-expanded="true"
         aria-controls="cmd-list"

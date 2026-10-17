@@ -1,10 +1,11 @@
 <script lang="ts">
+  import type { Id } from '../lib/bindings/Id'
   import { Copy, Globe } from '@lucide/svelte'
   import type { SlotResult } from '../lib/bindings/SlotResult'
   import { availabilityText, cal, fmtRange, localZone, timeIn, zoneLabel } from '../lib/cal.svelte'
   import { isoDate } from '../lib/format'
   import { errorMessage, ipc } from '../lib/ipc'
-  import { app } from '../lib/store.svelte'
+  import { app, sectionById } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
 
@@ -42,6 +43,8 @@
   let loading = $state(false)
 
   const client = $derived(app.clients.find((c) => c.id === q.clientId))
+  const groupLabel = (c: { name: string; section_id: Id | null }) =>
+    app.sections.length > 1 ? [sectionById(c.section_id)?.name, c.name].filter(Boolean).join(' › ') : c.name
   const clientZone = $derived(result?.client_time_zone ?? null)
   const myZone = localZone()
 
@@ -113,10 +116,10 @@
         <label><span class="field-label">From</span><input type="date" class="field" bind:value={q.from} /></label>
         <label><span class="field-label">To</span><input type="date" class="field" bind:value={q.to} min={q.from} /></label>
         <label>
-          <span class="field-label">With client</span>
+          <span class="field-label">With</span>
           <select class="field" bind:value={q.clientId}>
             <option value="">Anyone</option>
-            {#each app.clients as c (c.id)}<option value={c.id}>{c.name}{c.time_zone ? ` · ${c.time_zone.split('/').pop()?.replace('_', ' ')}` : ''}</option>{/each}
+            {#each app.clients as c (c.id)}<option value={c.id}>{groupLabel(c)}{c.time_zone ? ` · ${c.time_zone.split('/').pop()?.replace('_', ' ')}` : ''}</option>{/each}
           </select>
         </label>
       </div>

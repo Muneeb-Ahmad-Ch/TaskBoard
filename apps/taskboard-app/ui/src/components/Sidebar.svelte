@@ -7,7 +7,7 @@
   import type { Id } from '../lib/bindings/Id'
   import type { ProjectSummary } from '../lib/bindings/ProjectSummary'
   import type { SavedView } from '../lib/bindings/SavedView'
-  import { swatch } from '../lib/format'
+  import { cap, swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
   import { act, activeViewChanged, app, applySavedView, groupsIn, isPage, itemName, looseProjectsIn, projectsOf, saveCurrentView, sectionById, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
   import { layout, NAV_LABELS, type NavId } from '../lib/layout.svelte'
@@ -61,7 +61,6 @@
 
   /** Sections shown in the sidebar (hidden ones live in Settings → Layout). */
   const visibleSections = $derived(app.sections.filter((s) => !layout.hiddenSections.includes(s.id)))
-  const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1)
 
   function isActive(scope: Scope): boolean {
     if (isPage(app.view) || app.activeViewId) return false

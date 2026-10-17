@@ -4,7 +4,7 @@
   import type { ProjectState } from '../lib/bindings/ProjectState'
   import { PALETTE, swatch } from '../lib/format'
   import { errorMessage, ipc } from '../lib/ipc'
-  import { act, app } from '../lib/store.svelte'
+  import { act, app, groupsIn, itemName } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
   import Progress from './Progress.svelte'
@@ -15,13 +15,20 @@
   const f = $state({
     name: project?.name ?? '',
     color: project?.color ?? '262',
-    client: project?.client_id ?? '',
+    /** "c:<group>" or "s:<section>" (in the section, no group). */
+    place: project?.client_id ? `c:${project.client_id}` : project?.section_id ? `s:${project.section_id}` : '',
     code: project?.code ?? '',
     state: (project?.state ?? 'active') as ProjectState,
     start: project?.start_date ?? '',
     deadline: project?.deadline ?? '',
   })
   let saving = $state(false)
+
+  function placement(): { client_id?: Id | null; section_id?: Id } {
+    if (project?.is_inbox || !f.place) return {}
+    const [kind, target] = [f.place.slice(0, 1), f.place.slice(2)]
+    return kind === 'c' ? { client_id: target } : { client_id: null, section_id: target }
+  }
 
   async function save() {
     if (!f.name.trim()) return toast('Give the project a name', { kind: 'error' })
@@ -30,7 +37,7 @@
       await ipc.updateProject(id, {
         name: f.name,
         color: f.color,
-        client_id: project?.is_inbox ? undefined : f.client || null,
+        ...placement(),
         code: f.code || null,
         state: f.state,
         start_date: f.start || null,
@@ -65,10 +72,15 @@
       </div>
       <div class="grid grid-cols-2 gap-2">
         <label>
-          <span class="field-label">Client</span>
-          <select class="field" bind:value={f.client} disabled={project.is_inbox}>
-            <option value="">Personal (no client)</option>
-            {#each app.clients as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
+          <span class="field-label">In</span>
+          <select class="field" bind:value={f.place} disabled={project.is_inbox}>
+            {#if project.is_inbox}<option value="">Inbox</option>{/if}
+            {#each app.sections as s (s.id)}
+              <optgroup label={s.name}>
+                <option value="s:{s.id}">{s.name} (no {itemName(s)})</option>
+                {#each groupsIn(s.id) as c (c.id)}<option value="c:{c.id}">{c.name}</option>{/each}
+              </optgroup>
+            {/each}
           </select>
         </label>
         <label>

@@ -15,7 +15,7 @@ export interface ColumnDef {
 
 export const COLUMN_DEFS: ColumnDef[] = [
   { id: 'title', label: 'Task', width: 0, sort: 'title' },
-  { id: 'project', label: 'Client / Project', width: 230 },
+  { id: 'project', label: 'Group / Project', width: 230 },
   { id: 'status', label: 'Status', width: 130 },
   { id: 'priority', label: 'Priority', width: 104, sort: 'priority' },
   { id: 'due', label: 'Due', width: 136, sort: 'due' },

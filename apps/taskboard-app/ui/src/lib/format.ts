@@ -86,6 +86,11 @@ export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`
 }
 
+/** "group" → "Group". */
+export function cap(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1)
+}
+
 /** Best-guess singular of a section name, for its item name ("Teams" → "team"). */
 export function singular(name: string): string {
   const w = name.trim().toLowerCase()

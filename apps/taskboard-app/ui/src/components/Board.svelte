@@ -6,10 +6,10 @@
   import type { Id } from '../lib/bindings/Id'
   import type { Priority } from '../lib/bindings/Priority'
   import type { TaskRow } from '../lib/bindings/TaskRow'
-  import { buildColumns, buildLanes, laneKey, type Column } from '../lib/board'
+  import { buildColumns, buildLanes, laneKey, type Column, type SectionOf } from '../lib/board'
   import { dueLabel, isOverdue, minutes, PALETTE, swatch } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
-  import { act, app, inboxId, scopeProjectId, scopeProjectIds, scopeQuery, type Lanes } from '../lib/store.svelte'
+  import { act, app, inboxId, scopeProjectId, scopeProjectIds, scopeQuery, sectionById, type Lanes } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import Progress from './Progress.svelte'
@@ -79,7 +79,9 @@
 
   // ---------- lanes & collapse ----------
   const allRows = $derived([...data.values()].flatMap((d) => d.rows))
-  const lanes = $derived(buildLanes(allRows, app.lanes))
+  const projectSection = $derived(new Map(app.projects.map((p) => [p.id, sectionById(p.section_id)])))
+  const sectionOf: SectionOf = (projectId) => projectSection.get(projectId)
+  const lanes = $derived(buildLanes(allRows, app.lanes, sectionOf))
   let laneCollapsed = $state<Record<string, boolean>>({})
 
   function loadCollapsed(): Record<string, boolean> {
@@ -101,7 +103,7 @@
 
   function cellRows(colKey: string, lane: string): TaskRow[] {
     const rows = data.get(colKey)?.rows ?? []
-    return app.lanes === 'none' ? rows : rows.filter((r) => laneKey(r, app.lanes) === lane)
+    return app.lanes === 'none' ? rows : rows.filter((r) => laneKey(r, app.lanes, sectionOf) === lane)
   }
 
   function columnOf(id: Id): string | undefined {
@@ -235,7 +237,7 @@
       app.lanes === 'priority' && target.lane !== row.priority ? (target.lane as Priority) : null
 
     // Nothing to do if it lands where it already is.
-    const source = cellRows(fromKey, laneKey(row, app.lanes))
+    const source = cellRows(fromKey, laneKey(row, app.lanes, sectionOf))
     const at = source.findIndex((r) => r.id === row.id)
     if (
       statusId === row.status_id &&
@@ -513,7 +515,7 @@
 
   const LANE_OPTIONS: { value: Lanes; label: string }[] = [
     { value: 'none', label: 'None' },
-    { value: 'client', label: 'Client' },
+    { value: 'client', label: 'Group' },
     { value: 'project', label: 'Project' },
     { value: 'priority', label: 'Priority' },
   ]

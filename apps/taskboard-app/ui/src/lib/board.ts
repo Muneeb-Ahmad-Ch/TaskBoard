@@ -73,10 +73,16 @@ const PRIORITY_LABEL: Record<Priority, string> = {
   none: 'No priority',
 }
 
-export function laneKey(row: TaskRow, lanes: Lanes): string {
+/** Where a project sits, for lanes of projects that are in no group. */
+export type SectionOf = (projectId: Id) => { id: Id; name: string } | undefined
+
+export function laneKey(row: TaskRow, lanes: Lanes, sectionOf?: SectionOf): string {
   switch (lanes) {
-    case 'client':
-      return row.client_id ?? 'personal'
+    case 'client': {
+      if (row.client_id) return row.client_id
+      const section = sectionOf?.(row.project_id)
+      return section ? `s:${section.id}` : 'none'
+    }
     case 'project':
       return row.project_id
     case 'priority':
@@ -87,16 +93,16 @@ export function laneKey(row: TaskRow, lanes: Lanes): string {
 }
 
 /** Lanes present in the loaded cards, in a stable, meaningful order. */
-export function buildLanes(rows: TaskRow[], lanes: Lanes): Lane[] {
+export function buildLanes(rows: TaskRow[], lanes: Lanes, sectionOf?: SectionOf): Lane[] {
   if (lanes === 'none') return [{ key: 'all', label: '' }]
   if (lanes === 'priority') {
     return PRIORITY_ORDER.map((p) => ({ key: p, label: PRIORITY_LABEL[p], color: `var(--priority-${p})` }))
   }
   const seen = new Map<string, Lane>()
   for (const r of rows) {
-    const key = laneKey(r, lanes)
+    const key = laneKey(r, lanes, sectionOf)
     if (seen.has(key)) continue
-    if (lanes === 'client') seen.set(key, { key, label: r.client_name ?? 'Personal' })
+    if (lanes === 'client') seen.set(key, { key, label: r.client_name ?? sectionOf?.(r.project_id)?.name ?? 'No group' })
     else
       seen.set(key, {
         key,
@@ -104,7 +110,7 @@ export function buildLanes(rows: TaskRow[], lanes: Lanes): Lane[] {
         color: r.project_color,
       })
   }
-  return [...seen.values()].sort((a, b) =>
-    a.key === 'personal' ? 1 : b.key === 'personal' ? -1 : a.label.localeCompare(b.label),
-  )
+  // Groups first, then each section's groupless projects, then anything left.
+  const rank = (key: string) => (key === 'none' ? 2 : key.startsWith('s:') ? 1 : 0)
+  return [...seen.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.label.localeCompare(b.label))
 }

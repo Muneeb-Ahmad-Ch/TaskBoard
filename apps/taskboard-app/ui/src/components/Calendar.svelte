@@ -209,7 +209,7 @@
         {/if}
 
         <section class="box">
-          <h3 class="box-title">This week by client</h3>
+          <h3 class="box-title">Hours per group this week</h3>
           {#each hours as h (h.client_id ?? 'none')}
             <div class="mb-2">
               <div class="flex items-center gap-1.5 text-[12.5px]">

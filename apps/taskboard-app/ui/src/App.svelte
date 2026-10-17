@@ -27,7 +27,7 @@
   import Welcome from './components/Welcome.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
   import { isTyping, swatch } from './lib/format'
-  import { app, isPage, redo, scopeTitle, undo, type View } from './lib/store.svelte'
+  import { app, isPage, redo, scopeTitle, sectionById, undo, type View } from './lib/store.svelte'
 
   const views: { id: View; label: string; key: string; icon: typeof Rows3; milestone: string }[] = [
     { id: 'table', label: 'Table', key: '1', icon: Rows3, milestone: 'M2' },
@@ -47,12 +47,17 @@
     const s = app.scope
     if (s.kind === 'project') {
       const p = app.projects.find((x) => x.id === s.id)
-      return p ? { text: p.client_name ?? 'Personal', color: p.color } : null
+      if (!p) return null
+      const text = [sectionById(p.section_id)?.name, p.client_name].filter(Boolean).join(' › ')
+      return text ? { text, color: p.color } : null
     }
-    if (s.kind === 'client') return { text: 'Client', color: app.clients.find((c) => c.id === s.id)?.color ?? 'gray' }
+    if (s.kind === 'client') {
+      const c = app.clients.find((x) => x.id === s.id)
+      return c ? { text: sectionById(c.section_id)?.name ?? '', color: c.color } : null
+    }
     return null
   })
-  /** Done / total top-level tasks (cancelled excluded) for a project or client scope. */
+  /** Done / total top-level tasks (cancelled excluded) for a project, group or section scope. */
   const scopeProgress = $derived.by(() => {
     const s = app.scope
     const list =
@@ -60,7 +65,9 @@
         ? app.projects.filter((p) => p.id === s.id)
         : s.kind === 'client'
           ? app.projects.filter((p) => p.client_id === s.id)
-          : []
+          : s.kind === 'section'
+            ? app.projects.filter((p) => !p.is_inbox && p.section_id === s.id)
+            : []
     const total = list.reduce((n, p) => n + p.total_tasks, 0)
     const done = list.reduce((n, p) => n + p.done_tasks, 0)
     return total ? { done, total, pct: (done / total) * 100 } : null
@@ -191,7 +198,7 @@
             <span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{subtitle.text}
           </span>
         {/if}
-        {#if !isPage() && (app.scope.kind === 'client' || app.scope.kind === 'project')}
+        {#if !isPage() && (app.scope.kind === 'client' || app.scope.kind === 'project' || app.scope.kind === 'section')}
           <span class="min-w-0 max-[1000px]:hidden">
             <ScopeStats kind={app.scope.kind} id={app.scope.id} done={scopeProgress?.done ?? 0} total={scopeProgress?.total ?? 0} />
           </span>

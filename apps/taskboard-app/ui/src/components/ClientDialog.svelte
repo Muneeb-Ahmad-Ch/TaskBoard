@@ -2,9 +2,9 @@
   import { untrack } from 'svelte'
   import type { Id } from '../lib/bindings/Id'
   import { zoneLabel } from '../lib/cal.svelte'
-  import { PALETTE, swatch } from '../lib/format'
+  import { cap, PALETTE, swatch } from '../lib/format'
   import { errorMessage, ipc } from '../lib/ipc'
-  import { act, app } from '../lib/store.svelte'
+  import { act, app, itemName, sectionById } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
   import Notes from './Notes.svelte'
@@ -12,6 +12,7 @@
   let { id, onclose }: { id: Id; onclose: () => void } = $props()
 
   const client = untrack(() => app.clients.find((c) => c.id === id))
+  const item = untrack(() => itemName(sectionById(client?.section_id)))
   const f = $state({
     name: client?.name ?? '',
     color: client?.color ?? '262',
@@ -21,7 +22,10 @@
     workStart: client?.work_start ?? '09:00',
     workEnd: client?.work_end ?? '17:00',
     counts: client?.meetings_count_as_time ?? true,
+    section: client?.section_id ?? '',
   })
+  /** Time zone, hours and contact; open when any is set. */
+  const detailsOpen = untrack(() => !!(f.timeZone || f.contact))
   let saving = $state(false)
 
   // Every IANA zone the WebView knows, for the picker.
@@ -35,7 +39,7 @@
   const zoneValid = $derived(!f.timeZone || zones.includes(f.timeZone))
 
   async function save() {
-    if (!f.name.trim()) return toast('Give the client a name', { kind: 'error' })
+    if (!f.name.trim()) return toast(`Give the ${item} a name`, { kind: 'error' })
     if (!zoneValid) return toast(`Unknown time zone “${f.timeZone}”`, { kind: 'error' })
     saving = true
     try {
@@ -48,8 +52,9 @@
         work_start: f.timeZone ? f.workStart : null,
         work_end: f.timeZone ? f.workEnd : null,
         meetings_count_as_time: f.counts,
+        section_id: f.section && f.section !== client?.section_id ? f.section : undefined,
       })
-      toast('Client saved', { action: { label: 'Undo', run: () => void ipc.undo() } })
+      toast(`${cap(item)} saved`, { action: { label: 'Undo', run: () => void ipc.undo() } })
       onclose()
     } catch (err) {
       toast(errorMessage(err), { kind: 'error' })
@@ -59,12 +64,20 @@
   }
 </script>
 
-<Modal title="Client settings" {onclose} width={540}>
+<Modal title="{cap(item)} details" {onclose} width={540}>
   {#if !client}
-    <p class="text-muted">This client no longer exists.</p>
+    <p class="text-muted">This {item} no longer exists.</p>
   {:else}
     <div class="flex flex-col gap-3">
-      <label><span class="field-label">Name</span><input class="field" bind:value={f.name} /></label>
+      <div class="grid grid-cols-[1fr_180px] gap-2">
+        <label><span class="field-label">Name</span><input class="field" bind:value={f.name} /></label>
+        <label>
+          <span class="field-label">Section</span>
+          <select class="field" bind:value={f.section}>
+            {#each app.sections as s (s.id)}<option value={s.id}>{s.name}</option>{/each}
+          </select>
+        </label>
+      </div>
 
       <div>
         <span class="field-label">Color</span>
@@ -75,6 +88,9 @@
         </div>
       </div>
 
+      <details class="details" open={detailsOpen}>
+        <summary class="cursor-pointer text-[13px] font-medium">Details <span class="font-normal text-subtle">(time zone, working hours, contact)</span></summary>
+        <div class="mt-3 flex flex-col gap-3">
       <div class="grid grid-cols-[1fr_auto_auto] items-end gap-2">
         <label>
           <span class="field-label">Time zone <span class="text-subtle">(for finding meeting slots)</span></span>
@@ -89,10 +105,12 @@
       {/if}
 
       <label><span class="field-label">Contact</span><input class="field" placeholder="Name, email, phone" bind:value={f.contact} /></label>
+        </div>
+      </details>
       <div><span class="field-label">Notes</span><Notes value={f.notes} rows={4} placeholder="Preferences, contacts, access details… (Markdown)" onsave={(v) => (f.notes = v)} /></div>
       <label class="flex items-center gap-1.5 text-[13px]">
         <input type="checkbox" class="accent-[var(--accent)]" bind:checked={f.counts} />
-        Meetings with this client count as work time
+        Meetings with this {item} count as work time
       </label>
     </div>
   {/if}
