@@ -92,8 +92,8 @@
             </tr>
           </thead>
           <tbody>
-            {#each d.clients as c (c.client_id ?? 'personal')}
-              <tr class="row" onclick={() => c.client_id ? setScope({ kind: 'client', id: c.client_id }) : setScope({ kind: 'personal' })}>
+            {#each d.clients as c (c.client_id ?? `s:${c.section_id ?? ''}`)}
+              <tr class="row" onclick={() => (c.client_id ? setScope({ kind: 'client', id: c.client_id }) : c.section_id ? setScope({ kind: 'section', id: c.section_id }) : setScope({ kind: 'all' }))}>
                 <td class="py-1"><span class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background: {swatch(c.color)}"></span>{c.name}</span></td>
                 <td class="tabular text-right">{c.open}</td>
                 <td class="tabular text-right {c.overdue ? 'font-medium text-danger' : 'text-subtle'}">{c.overdue}</td>

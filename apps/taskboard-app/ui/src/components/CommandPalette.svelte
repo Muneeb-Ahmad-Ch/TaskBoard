@@ -48,7 +48,6 @@
       { id: 'g-up', group: 'Go to', label: 'Upcoming', run: () => setScope({ kind: 'upcoming' }) },
       { id: 'g-inbox', group: 'Go to', label: 'Inbox', run: () => setScope({ kind: 'inbox' }) },
       { id: 'g-all', group: 'Go to', label: 'All work', run: () => setScope({ kind: 'all' }) },
-      { id: 'g-personal', group: 'Go to', label: 'Personal projects', run: () => setScope({ kind: 'personal' }) },
     ]
     for (const v of app.views) list.push({ id: `sv-${v.id}`, group: 'Saved views', label: v.name, run: () => applySavedView(v) })
     const active = app.views.find((v) => v.id === app.activeViewId)

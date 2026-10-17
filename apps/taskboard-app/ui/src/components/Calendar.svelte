@@ -38,7 +38,11 @@
     const s = app.scope
     if (s.kind === 'client') return o.client_id === s.id
     if (s.kind === 'project') return o.project_id === s.id
-    if (s.kind === 'personal') return !o.client_id && !!o.project_id
+    if (s.kind === 'section') {
+      const project = o.project_id ? app.projects.find((p) => p.id === o.project_id) : undefined
+      const group = o.client_id ? app.clients.find((c) => c.id === o.client_id) : undefined
+      return (project?.section_id ?? group?.section_id) === s.id
+    }
     return true
   }
 

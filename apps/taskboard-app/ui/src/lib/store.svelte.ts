@@ -57,6 +57,9 @@ export const app = $state({
   integrityError: null as string | null,
   clientDialog: null as Id | null,
   projectDialog: null as Id | null,
+  /** Section dialog: create (null id) or edit; and the section being deleted. */
+  sectionDialog: null as { id: Id | null } | null,
+  deleteSection: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
   quickAddFocus: 0,
   /** Settings section to scroll to when Settings opens (e.g. 'layout'). */

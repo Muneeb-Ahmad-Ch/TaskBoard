@@ -6,6 +6,8 @@
   import ClientDialog from './components/ClientDialog.svelte'
   import CommandPalette from './components/CommandPalette.svelte'
   import ProjectDialog from './components/ProjectDialog.svelte'
+  import SectionDialog from './components/SectionDialog.svelte'
+  import DeleteSectionDialog from './components/DeleteSectionDialog.svelte'
   import QuickAdd from './components/QuickAdd.svelte'
   import Sidebar from './components/Sidebar.svelte'
   import StatusBar from './components/StatusBar.svelte'
@@ -108,6 +110,8 @@
     void app.paletteOpen
     void app.clientDialog
     void app.projectDialog
+    void app.sectionDialog
+    void app.deleteSection
     untrack(() => (app.sidebarOpen = false))
   })
 
@@ -272,6 +276,12 @@
 {/if}
 {#if app.projectDialog}
   {#key app.projectDialog}<ProjectDialog id={app.projectDialog} onclose={() => (app.projectDialog = null)} />{/key}
+{/if}
+{#if app.sectionDialog}
+  {#key app.sectionDialog}<SectionDialog id={app.sectionDialog.id} onclose={() => (app.sectionDialog = null)} />{/key}
+{/if}
+{#if app.deleteSection}
+  {#key app.deleteSection}<DeleteSectionDialog id={app.deleteSection} onclose={() => (app.deleteSection = null)} />{/key}
 {/if}
 <Toasts />
 
