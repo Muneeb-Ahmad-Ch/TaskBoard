@@ -1,6 +1,8 @@
 # Custom sections: organize work your own way
 
-Status: proposed (2026-10-17), for the release after 0.2.0.
+Status: approved (2026-10-17), for the release after 0.2.0. The owner asked
+Claude to recheck the design and go with its best recommendations; the
+revisions from that recheck are folded in below.
 
 ## Why
 
@@ -71,7 +73,8 @@ and new users must build structure first).
   "Project…"), and a collapse toggle.
 - A **"+ New section"** row at the end of the sidebar list.
 - Right-click a section header: Rename, Color, Move up/down, Hide (goes to
-  Settings → Layout like other hiding), Delete. Right-click group / project:
+  Settings → Layout like other hiding), Delete. Sections have a color only
+  (no icon picker): less setup, and it matches how projects look. Right-click group / project:
   today's menus, plus "Move to section…".
 - Groups show their badge (initial on color) as clients do today.
 - **Clicking a section's name** opens all work in that section (every group
@@ -108,6 +111,11 @@ groups:
 - **Find a meeting slot**: "With" picker lists groups that have a time zone
   or hours; labelled "Section › Group".
 - **Hours per client** (dashboard, week summary): becomes hours per group.
+  Projects that sit directly in a section (no group) roll up under the
+  section's name, as "Personal" does today.
+- **Board swimlanes** "by client" become "by group".
+- The **meeting editor's** "Client / project" picker lists groups and
+  projects organized by section.
 - **Meetings**: a meeting can be linked to a group or project as today;
   the Meetings page filter lists groups.
 
@@ -117,8 +125,8 @@ The welcome screen offers a starting setup (one click, then editable):
 | Setup | Sections created |
 |---|---|
 | Freelancer | Clients (item: client), Personal |
-| Company | Teams (item: team), Departments (item: department), Personal |
-| Personal life | Work, Home, Family, Personal |
+| Company | Departments (item: department), Clients (item: client), Internal |
+| Personal life | Home, Family, Health, Personal |
 | Blank | My work |
 
 "Explore with sample data" stays and fills a Clients/Personal setup.
@@ -139,7 +147,7 @@ Neutral words replace "client" where the meaning is general:
 | Header subtitle "Client" | the section's name (e.g. "Teams") |
 | Dashboard "Clients" table | "Groups" |
 | "Hours per client" | "Hours per group" |
-| Command palette group "Clients" | "Groups" |
+| Command palette group "Clients" | "Groups", plus a "Sections" group and "New section…" |
 | Quick Add `@"Acme/Website"` | unchanged (group/project) |
 
 Where a section has an item name, UI text uses it ("Add team").
@@ -183,7 +191,9 @@ fixed section.
    (one undo step); empty sections delete immediately.
 4. Group details (time zone, hours, contact, "meetings count") are
    available on every group, tucked under "Details".
-5. First-run setups and their section names as in the table above.
+5. First-run setups and their section names as in the table above
+   (revised: Company = Departments, Clients, Internal; Personal life =
+   Home, Family, Health, Personal).
 6. Wording table above ("Group / Project", "Groups", "Hours per group").
 7. Section visibility is a per-device preference (like other layout
    settings); the sections themselves are data (in the database, exported,
@@ -192,6 +202,9 @@ fixed section.
 8. Clicking a section name shows all its work with header stats.
 9. Moving a group between sections moves its projects; no section is
    special (a "Personal" section is ordinary).
+10. Sections have a color but no icon; section-level projects roll up
+    under the section name in hours tables; Board swimlanes and the meeting
+    editor's picker use groups by section; Ctrl+K lists sections.
 
 ## Left to the builder
 
