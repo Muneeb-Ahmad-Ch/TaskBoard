@@ -3,7 +3,8 @@
 
 export type NavId = 'today' | 'upcoming' | 'inbox' | 'all' | 'meetings' | 'dashboard'
 export type TabId = 'table' | 'board' | 'calendar'
-export type SectionId = 'clients' | 'personal' | 'savedViews'
+/** Fixed sidebar sections (user sections are hidden by id, see `hiddenSections`). */
+export type SectionId = 'savedViews'
 
 export const NAV_LABELS: Record<NavId, string> = {
   today: 'Today',
@@ -14,7 +15,7 @@ export const NAV_LABELS: Record<NavId, string> = {
   dashboard: 'Dashboard',
 }
 export const TAB_LABELS: Record<TabId, string> = { table: 'Table', board: 'Board', calendar: 'Calendar' }
-export const SECTION_LABELS: Record<SectionId, string> = { clients: 'Clients', personal: 'Personal projects', savedViews: 'Saved views' }
+export const SECTION_LABELS: Record<SectionId, string> = { savedViews: 'Saved views' }
 
 const NAV_ORDER: NavId[] = ['today', 'upcoming', 'inbox', 'all', 'meetings', 'dashboard']
 const TABS: TabId[] = ['table', 'board', 'calendar']
@@ -23,13 +24,20 @@ const KEY = 'taskboard.layout'
 type Stored = {
   nav: { id: NavId; visible: boolean }[]
   sections: Record<SectionId, boolean>
+  /** User sections hidden from the sidebar (ids). */
+  hiddenSections: string[]
+  /** Section names hidden before sections were user-defined ("Clients",
+   *  "Personal"); turned into ids once the sections are known. */
+  legacyHidden: string[]
   tabs: Record<TabId, boolean>
 }
 
 function defaults(): Stored {
   return {
     nav: NAV_ORDER.map((id) => ({ id, visible: true })),
-    sections: { clients: true, personal: true, savedViews: true },
+    sections: { savedViews: true },
+    hiddenSections: [],
+    legacyHidden: [],
     tabs: { table: true, board: true, calendar: true },
   }
 }
@@ -45,7 +53,19 @@ function load(): Stored {
     const nav = [...known, ...NAV_ORDER.filter((id) => !seen.has(id)).map((id) => ({ id, visible: true }))]
     const tabs = { ...base.tabs, ...saved.tabs }
     if (!TABS.some((t) => tabs[t])) tabs.table = true
-    return { nav, sections: { ...base.sections, ...saved.sections }, tabs }
+    const old = (saved.sections ?? {}) as Record<string, boolean>
+    const legacyHidden = [
+      ...(saved.legacyHidden ?? []),
+      ...(old.clients === false ? ['Clients'] : []),
+      ...(old.personal === false ? ['Personal'] : []),
+    ]
+    return {
+      nav,
+      sections: { savedViews: old.savedViews ?? true },
+      hiddenSections: saved.hiddenSections ?? [],
+      legacyHidden,
+      tabs,
+    }
   } catch {
     return base
   }
@@ -78,6 +98,22 @@ export function moveNav(id: NavId, dir: -1 | 1) {
 
 export function setSection(id: SectionId, visible: boolean) {
   layout.sections[id] = visible
+  save()
+}
+
+export function setSectionHidden(id: string, hidden: boolean) {
+  layout.hiddenSections = hidden ? [...new Set([...layout.hiddenSections, id])] : layout.hiddenSections.filter((h) => h !== id)
+  save()
+}
+
+/** Hidden "Clients" / "Personal" from before sections existed carry over. */
+export function adoptLegacySectionPrefs(sections: { id: string; name: string }[]) {
+  if (!layout.legacyHidden.length || !sections.length) return
+  for (const name of layout.legacyHidden) {
+    const match = sections.find((s) => s.name.toLowerCase() === name.toLowerCase())
+    if (match && !layout.hiddenSections.includes(match.id)) layout.hiddenSections.push(match.id)
+  }
+  layout.legacyHidden = []
   save()
 }
 
