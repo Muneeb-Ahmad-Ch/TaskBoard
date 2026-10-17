@@ -62,7 +62,9 @@ needs permission (see [License](#license)).
 - **Markdown notes** on tasks, meetings and clients (rendered safely, links
   open in your browser).
 - **Time and progress**: task timer, logged hours per client, task progress
-  from subtasks, dashboard with streaks and project burndown.
+  from subtasks (color-coded, ✓ when done), and for each client or project:
+  time left, meetings this week and overdue tasks. Dashboard with streaks and
+  project burndown.
 - **Repeating tasks**: fixed schedules (every Friday) or after completion
   (every! 3 days).
 - **Safe by design**: every change can be undone (bulk edits as one step),
@@ -71,8 +73,10 @@ needs permission (see [License](#license)).
 - **Modern Windows UI**: light and dark themes, accent colors, Mica, tray icon,
   start with Windows, Windows notifications; keyboard-first and checked with
   axe-core against WCAG 2.2 AA. Works down to small windows (the sidebar
-  becomes a drawer). Show, hide and reorder sidebar items, sections and view
-  tabs; order clients and projects.
+  becomes a drawer).
+- **Make it yours** (Settings → Layout): show, hide and reorder sidebar items,
+  sections, view tabs and table columns; resize columns; order clients and
+  projects.
 
 ## Install
 

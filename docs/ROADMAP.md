@@ -43,7 +43,9 @@ These need accounts or keys only the project owner can create. Steps are in
 
 ## Next improvements
 
-- Table: group by client / project / status; reorder columns by drag.
+- Table: group by client / project / status; drag column headers to reorder
+  (reordering works today from Settings → Layout).
+- In-app updates (needs the owner's updater key; see RELEASING.md §4).
 - Meeting notes: turn `- [ ]` action items into tasks.
 - Calendar: keyboard moving and resizing of events.
 - Subscribe to an ICS feed (read-only calendar layer; schema exists).

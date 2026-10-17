@@ -3,9 +3,11 @@
 ## 1. Prepare
 
 1. Make sure `main` is green in CI (`CI` and `Secret scan` workflows).
-2. Bump the version in **both** `Cargo.toml` (`[workspace.package] version`)
-   and `apps/taskboard-app/src-tauri/tauri.conf.json` (`version`). The app
-   shows this number in the status bar and Settings → About.
+2. Bump the version in `Cargo.toml` (`[workspace.package] version`),
+   `apps/taskboard-app/src-tauri/tauri.conf.json` (`version`), and the
+   `taskboard-core` dependency pins in `crates/taskboard-cli/Cargo.toml` and
+   `apps/taskboard-app/src-tauri/Cargo.toml`, then run `cargo check` to update
+   `Cargo.lock`. The app shows this number in the status bar and Settings → About.
 3. Update `CHANGELOG.md`: rename **[Unreleased]** to **[X.Y.Z] - date**,
    start a new empty **[Unreleased]** section, and update the compare links
    at the bottom. The app's "What's new" opens this file on GitHub.

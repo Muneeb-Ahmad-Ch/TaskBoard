@@ -9,6 +9,10 @@ Download any version from the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.2.0] - 2026-10-17
+
 ### Added
 - The app shows its version in the status bar and in **Settings → About**;
   clicking it opens this changelog. **What's new** and **About Taskboard**
@@ -78,5 +82,6 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/releases/tag/v0.1.0

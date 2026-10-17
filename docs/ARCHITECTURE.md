@@ -134,9 +134,12 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   neighbour among the visible siblings (one undo step); groups with tied
   sort keys are renumbered in the same action. A project moved to another
   client goes last there.
-- **Layout preferences** (`ui/src/lib/layout.svelte.ts`): sidebar item order
-  and visibility, sections and view tabs, per device in `localStorage`;
-  hidden items stay in Ctrl+K. Below 1000 px the sidebar is a drawer, below
+- **Layout preferences** (`ui/src/lib/layout.svelte.ts`,
+  `ui/src/lib/tableLayout.svelte.ts`): sidebar item order and visibility,
+  sections, view tabs, and table column order / visibility / widths, per
+  device in `localStorage`; edited in Settings → Layout; hidden sidebar items
+  stay in Ctrl+K. Widening a column never auto-hides others (auto-hide uses
+  the smaller of default and chosen width). Below 1000 px the sidebar is a drawer, below
   1200 px the task panel overlays the list; checked at 720×480 up to
   1280×800.
 - **Subtasks in lists**: list scopes show top-level tasks; Today, Upcoming
