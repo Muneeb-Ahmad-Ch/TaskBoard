@@ -239,6 +239,49 @@ impl Db {
     }
 }
 
+/// The section new groups and projects go to when none is given: the
+/// first one, or a new "My work" section on a database that has none.
+pub(crate) fn default_section(tx: &mut Tx<'_>) -> Result<Id> {
+    let first: Option<Id> = tx
+        .conn()
+        .query_row(
+            "SELECT id FROM section WHERE deleted_at IS NULL ORDER BY sort_key, id LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(id) = first {
+        return Ok(id);
+    }
+    let id = Id::new();
+    tx.insert(
+        Table::Section,
+        &[
+            ("id", id.into()),
+            ("name", text("My work")),
+            ("item_name", text("")),
+            ("color", text(palette_color(2))),
+            ("sort_key", text(key_between(None, None)?)),
+            ("created_at", int(tx.now())),
+        ],
+    )?;
+    Ok(id)
+}
+
+/// Fails unless `id` is a live section.
+pub(crate) fn require_section(tx: &Tx<'_>, id: Id) -> Result<()> {
+    let live: bool = tx.conn().query_row(
+        "SELECT EXISTS(SELECT 1 FROM section WHERE id = ?1 AND deleted_at IS NULL)",
+        [id],
+        |r| r.get(0),
+    )?;
+    if live {
+        Ok(())
+    } else {
+        Err(Error::NotFound("section"))
+    }
+}
+
 fn ids(tx: &Tx<'_>, sql: &str, section: Id) -> Result<Vec<Id>> {
     let mut stmt = tx.conn().prepare(sql)?;
     let rows = stmt

@@ -3,6 +3,7 @@
 
 use jiff::ToSpan;
 use jiff::civil::{Date, Time};
+use rusqlite::OptionalExtension;
 use rusqlite::types::Value;
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +24,51 @@ struct SampleIds {
     client: Option<Id>,
     projects: Vec<Id>,
     events: Vec<Id>,
+    /// Sections the sample created (removed again if they end up empty).
+    #[serde(default)]
+    sections: Vec<Id>,
+}
+
+/// A live section with this name (case-insensitive), or a new one recorded
+/// in `created` so removing the sample can take it away again.
+fn sample_section(
+    tx: &mut Tx<'_>,
+    name: &str,
+    item: &str,
+    color: &str,
+    created: &mut Vec<Id>,
+) -> Result<Id> {
+    let existing: Option<Id> = tx
+        .conn()
+        .query_row(
+            "SELECT id FROM section WHERE deleted_at IS NULL AND name = ?1 COLLATE NOCASE
+             ORDER BY sort_key LIMIT 1",
+            [name],
+            |r| r.get(0),
+        )
+        .optional()?;
+    if let Some(id) = existing {
+        return Ok(id);
+    }
+    let last: Option<String> = tx.conn().query_row(
+        "SELECT max(sort_key) FROM section WHERE deleted_at IS NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    let id = Id::new();
+    tx.insert(
+        Table::Section,
+        &[
+            ("id", id.into()),
+            ("name", text(name)),
+            ("item_name", text(item)),
+            ("color", text(color)),
+            ("sort_key", text(key_between(last.as_deref(), None)?)),
+            ("created_at", int(tx.now())),
+        ],
+    )?;
+    created.push(id);
+    Ok(id)
 }
 
 fn ms(day: Date, h: i8, m: i8) -> Option<i64> {
@@ -35,14 +81,18 @@ fn ms(day: Date, h: i8, m: i8) -> Option<i64> {
 fn insert_client(tx: &mut Tx<'_>, input: &NewClient) -> Result<Id> {
     let id = Id::new();
     let last: Option<String> = tx.conn().query_row(
-        "SELECT max(sort_key) FROM client WHERE deleted_at IS NULL",
-        [],
+        "SELECT max(sort_key) FROM client WHERE deleted_at IS NULL AND section_id IS ?1",
+        [input.section_id.map_or(Value::Null, Value::from)],
         |r| r.get(0),
     )?;
     tx.insert(
         Table::Client,
         &[
             ("id", id.into()),
+            (
+                "section_id",
+                input.section_id.map_or(Value::Null, Value::from),
+            ),
             ("name", text(input.name.clone())),
             (
                 "color",
@@ -84,11 +134,14 @@ impl Db {
         let tomorrow = today.tomorrow().unwrap_or(today);
         let mut ids = SampleIds::default();
         self.transact("Add sample workspace", |tx| {
+            let clients_section =
+                sample_section(tx, "Clients", "client", "230", &mut ids.sections)?;
+            let personal_section = sample_section(tx, "Personal", "", "45", &mut ids.sections)?;
             let client = insert_client(
                 tx,
                 &NewClient {
                     name: "Sample Co. (example)".into(),
-                    section_id: None,
+                    section_id: Some(clients_section),
                     color: Some("190".into()),
                     contact: Some("Alex Rivera · alex@example.com".into()),
                     notes_md: Some(
@@ -120,6 +173,7 @@ impl Db {
                 tx,
                 &NewProject {
                     name: "Learning (sample)".into(),
+                    section_id: Some(personal_section),
                     color: Some("45".into()),
                     ..Default::default()
                 },
@@ -298,6 +352,17 @@ impl Db {
                 )?;
                 if others == 0 {
                     tx.update(Table::Client, &[c.into()], &[("deleted_at", int(now))])?;
+                }
+            }
+            for s in &ids.sections {
+                let used: bool = tx.conn().query_row(
+                    "SELECT EXISTS(SELECT 1 FROM client WHERE section_id = ?1 AND deleted_at IS NULL)
+                         OR EXISTS(SELECT 1 FROM project WHERE section_id = ?1 AND deleted_at IS NULL)",
+                    [s],
+                    |r| r.get(0),
+                )?;
+                if !used {
+                    tx.update(Table::Section, &[(*s).into()], &[("deleted_at", int(now))])?;
                 }
             }
             tx.delete(Table::Setting, &[text(SAMPLE_KEY)])

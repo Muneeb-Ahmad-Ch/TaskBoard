@@ -34,9 +34,9 @@ pub struct TaskQuery {
     pub client_id: Option<Id>,
     #[ts(optional)]
     pub project_id: Option<Id>,
-    /// Only projects without a client (Inbox excluded).
-    #[ts(as = "Option<bool>", optional)]
-    pub personal: bool,
+    /// Every project in this sidebar section (grouped or not).
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     /// Empty = every category.
     #[ts(as = "Option<Vec<Category>>", optional)]
     pub categories: Vec<Category>,
@@ -172,7 +172,7 @@ impl Db {
         if !q.include_archived {
             filters.push("t.archived_at IS NULL".into());
         }
-        if q.client_id.is_some() || q.personal {
+        if q.client_id.is_some() || q.section_id.is_some() {
             // Selective: drive the query from the matching projects.
             let mut project_filter = vec!["deleted_at IS NULL".to_owned()];
             if !q.include_archived {
@@ -182,8 +182,9 @@ impl Db {
                 project_filter.push("client_id = ?".into());
                 args.push(client.into());
             }
-            if q.personal {
-                project_filter.push("client_id IS NULL AND is_inbox = 0".into());
+            if let Some(section) = q.section_id {
+                project_filter.push("section_id = ?".into());
+                args.push(section.into());
             }
             filters.push(format!(
                 "t.project_id IN (SELECT id FROM project WHERE {})",

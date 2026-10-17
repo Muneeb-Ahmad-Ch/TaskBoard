@@ -26,7 +26,8 @@ use crate::tasks::insert_task;
 use crate::tx::{Table, Tx};
 
 /// Export order respects foreign keys (parents first).
-const TABLES: [&str; 16] = [
+const TABLES: [&str; 17] = [
+    "section",
     "client",
     "project",
     "status",

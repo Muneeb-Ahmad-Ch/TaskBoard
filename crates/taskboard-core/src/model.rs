@@ -221,6 +221,10 @@ pub struct NewClient {
 pub struct ClientPatch {
     #[ts(optional)]
     pub name: Option<String>,
+    /// Move the group (and its projects) to another section.
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[ts(optional)]
     pub color: Option<String>,
     #[ts(optional)]
@@ -268,6 +272,11 @@ pub struct NewProject {
 pub struct ProjectPatch {
     #[ts(optional)]
     pub name: Option<String>,
+    /// Move a project without a group to another section (grouped projects
+    /// move with their group).
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[ts(optional)]
     pub color: Option<String>,
     #[serde(default, deserialize_with = "nullable")]

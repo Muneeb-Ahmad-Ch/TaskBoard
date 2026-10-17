@@ -412,10 +412,11 @@ fn queries_filter_by_client_personal_category_and_paginate() {
     );
     assert_eq!(
         titles(&q(TaskQuery {
-            personal: true,
+            section_id: db.project(mine.id).unwrap().section_id,
             ..Default::default()
         })),
-        ["personal"]
+        ["acme 0", "acme 1", "acme 2", "acme 3", "acme 4", "personal"],
+        "one default section holds the group's and the loose project's tasks"
     );
     let open = q(TaskQuery {
         categories: vec![Category::Todo, Category::Active],

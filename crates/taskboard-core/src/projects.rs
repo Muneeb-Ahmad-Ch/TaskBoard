@@ -10,6 +10,7 @@ use crate::model::{
     clean_color, clean_date, clean_name, int, opt_id, opt_text, palette_color, text,
 };
 use crate::order::key_between;
+use crate::sections::{default_section, require_section};
 use crate::storage::Db;
 use crate::tx::{Table, Tx};
 
@@ -104,18 +105,22 @@ pub(crate) fn insert_project(tx: &mut Tx<'_>, input: &NewProject) -> Result<Id> 
         require_client(tx, client)?;
     }
     // A grouped project lives in its group's section.
-    let section_id: Option<Id> = match input.client_id {
-        Some(client) => tx.conn().query_row(
+    let section_id: Option<Id> = match (input.client_id, input.section_id) {
+        (Some(client), _) => tx.conn().query_row(
             "SELECT section_id FROM client WHERE id = ?1",
             [client],
             |r| r.get(0),
         )?,
-        None => input.section_id,
+        (None, Some(section)) => {
+            require_section(tx, section)?;
+            Some(section)
+        }
+        (None, None) => Some(default_section(tx)?),
     };
     let (count, last): (i64, Option<String>) = tx.conn().query_row(
         "SELECT count(*), max(sort_key) FROM project
-         WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1",
-        [opt_id(input.client_id)],
+         WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1 AND section_id IS ?2",
+        [opt_id(input.client_id), opt_id(section_id)],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
     let color = match &input.color {
@@ -288,19 +293,41 @@ impl Db {
                 opt_text(d.as_deref().map(clean_date).transpose()?),
             ));
         }
+        let new_client = patch.client_id.unwrap_or(current.client_id);
+        if patch.section_id.is_some() && (current.is_inbox || new_client.is_some()) {
+            return Err(invalid(
+                "a project in a group moves with its group; move the group instead",
+            ));
+        }
         self.transact(&format!("Edit project “{}”", current.name), |tx| {
             if let Some(Some(client)) = patch.client_id {
                 require_client(tx, client)?;
             }
-            // Moving to another client (or Personal) puts it last there,
+            // Grouped projects live in their group's section; leaving a group
+            // keeps the section the project was in.
+            let new_section: Option<Id> = match (new_client, patch.section_id) {
+                (Some(client), _) => tx.conn().query_row(
+                    "SELECT section_id FROM client WHERE id = ?1",
+                    [client],
+                    |r| r.get(0),
+                )?,
+                (None, Some(section)) => {
+                    require_section(tx, section)?;
+                    Some(section)
+                }
+                (None, None) => current.section_id,
+            };
+            if new_section != current.section_id {
+                changes.push(("section_id", opt_id(new_section)));
+            }
+            // A project that changes group or section goes last there,
             // instead of keeping a key that may tie with the new siblings.
-            if let Some(client) = patch.client_id
-                && client != current.client_id
-            {
+            if (new_client, new_section) != (current.client_id, current.section_id) {
                 let last: Option<String> = tx.conn().query_row(
                     "SELECT max(sort_key) FROM project
-                     WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1 AND id <> ?2",
-                    rusqlite::params![client, id],
+                     WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1
+                       AND section_id IS ?2 AND id <> ?3",
+                    rusqlite::params![new_client, new_section, id],
                     |r| r.get(0),
                 )?;
                 changes.push(("sort_key", text(key_between(last.as_deref(), None)?)));

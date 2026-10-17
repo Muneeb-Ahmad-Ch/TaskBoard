@@ -68,9 +68,12 @@ impl Db {
                 tx,
                 "SELECT id, sort_key FROM project
                  WHERE deleted_at IS NULL AND archived_at IS NULL AND is_inbox = 0
-                   AND client_id IS ?1
+                   AND client_id IS ?1 AND section_id IS ?2
                  ORDER BY sort_key, id",
-                &[project.client_id.map_or(Value::Null, Value::from)],
+                &[
+                    project.client_id.map_or(Value::Null, Value::from),
+                    project.section_id.map_or(Value::Null, Value::from),
+                ],
             )?;
             step(tx, Table::Project, siblings, id, direction)
         })

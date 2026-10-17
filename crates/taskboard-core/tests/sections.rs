@@ -284,3 +284,178 @@ fn cannot_delete_last_section() {
         "{err}"
     );
 }
+
+// ---------- Task 3: groups and projects belong to sections ----------
+
+fn in_section(db: &mut Db, name: &str, section: Id) -> Project {
+    db.create_project(NewProject {
+        name: name.into(),
+        section_id: Some(section),
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+#[test]
+fn new_group_and_project_default_to_first_section() {
+    let mut db = Db::open_in_memory().unwrap();
+    let first = section(&mut db, "First");
+    section(&mut db, "Second");
+    let g = client(&mut db, "G");
+    let p = project(&mut db, "P", None);
+    assert_eq!(g.section_id, Some(first.id));
+    assert_eq!(p.section_id, Some(first.id));
+}
+
+#[test]
+fn fresh_db_creates_my_work_on_first_project() {
+    let mut db = Db::open_in_memory().unwrap();
+    let p = project(&mut db, "P", None);
+    let sections = db.sections().unwrap();
+    assert_eq!(sections.len(), 1);
+    assert_eq!(sections[0].name, "My work");
+    assert_eq!(p.section_id, Some(sections[0].id));
+}
+
+#[test]
+fn moving_group_moves_its_projects_in_one_undo() {
+    let mut db = Db::open_in_memory().unwrap();
+    let a = section(&mut db, "A");
+    let b = section(&mut db, "B");
+    let g = client(&mut db, "G");
+    let p = project(&mut db, "P", Some(g.id));
+    assert_eq!(p.section_id, Some(a.id));
+    db.update_client(
+        g.id,
+        ClientPatch {
+            section_id: Some(b.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(db.client(g.id).unwrap().section_id, Some(b.id));
+    assert_eq!(db.project(p.id).unwrap().section_id, Some(b.id));
+    db.undo().unwrap();
+    assert_eq!(db.client(g.id).unwrap().section_id, Some(a.id));
+    assert_eq!(db.project(p.id).unwrap().section_id, Some(a.id));
+}
+
+#[test]
+fn project_follows_group_into_other_section() {
+    let mut db = Db::open_in_memory().unwrap();
+    let a = section(&mut db, "A");
+    let b = section(&mut db, "B");
+    let loose = in_section(&mut db, "Loose", a.id);
+    let g = db
+        .create_client(NewClient {
+            name: "G".into(),
+            section_id: Some(b.id),
+            ..Default::default()
+        })
+        .unwrap();
+    db.update_project(
+        loose.id,
+        ProjectPatch {
+            client_id: Some(Some(g.id)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(db.project(loose.id).unwrap().section_id, Some(b.id));
+}
+
+#[test]
+fn groupless_project_moves_between_sections() {
+    let mut db = Db::open_in_memory().unwrap();
+    let a = section(&mut db, "A");
+    let b = section(&mut db, "B");
+    let p = in_section(&mut db, "P", a.id);
+    db.update_project(
+        p.id,
+        ProjectPatch {
+            section_id: Some(b.id),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert_eq!(db.project(p.id).unwrap().section_id, Some(b.id));
+    // A grouped project moves with its group, not on its own.
+    let g = client(&mut db, "G");
+    let gp = project(&mut db, "GP", Some(g.id));
+    let err = db.update_project(
+        gp.id,
+        ProjectPatch {
+            section_id: Some(b.id),
+            ..Default::default()
+        },
+    );
+    assert!(err.is_err());
+}
+
+#[test]
+fn section_query_lists_all_work_in_section() {
+    let mut db = Db::open_in_memory().unwrap();
+    let a = section(&mut db, "A");
+    let b = section(&mut db, "B");
+    let g = client(&mut db, "G");
+    let grouped = project(&mut db, "Grouped", Some(g.id));
+    let direct = in_section(&mut db, "Direct", a.id);
+    let other = in_section(&mut db, "Other", b.id);
+    for (title, p) in [("one", grouped.id), ("two", direct.id), ("three", other.id)] {
+        db.create_task(NewTask {
+            title: title.into(),
+            project_id: Some(p),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    db.create_task(NewTask {
+        title: "inbox".into(),
+        ..Default::default()
+    })
+    .unwrap();
+    let page = db
+        .list_tasks(&TaskQuery {
+            section_id: Some(a.id),
+            ..Default::default()
+        })
+        .unwrap();
+    let mut titles: Vec<String> = page.rows.into_iter().map(|r| r.title).collect();
+    titles.sort();
+    assert_eq!(titles, ["one", "two"]);
+}
+
+#[test]
+fn reorder_projects_within_section_and_group_only() {
+    let mut db = Db::open_in_memory().unwrap();
+    let a = section(&mut db, "A");
+    let b = section(&mut db, "B");
+    let first = in_section(&mut db, "First", a.id);
+    in_section(&mut db, "Other section", b.id);
+    let second = in_section(&mut db, "Second", a.id);
+    assert!(db.move_project(second.id, Direction::Up).unwrap());
+    let order: Vec<String> = db
+        .projects(false)
+        .unwrap()
+        .into_iter()
+        .filter(|p| p.project.section_id == Some(a.id))
+        .map(|p| p.project.name)
+        .collect();
+    assert_eq!(order, ["Second", "First"]);
+    assert!(!db.move_project(second.id, Direction::Up).unwrap());
+    assert!(db.project(first.id).is_ok());
+}
+
+#[test]
+fn sample_workspace_uses_or_creates_clients_and_personal() {
+    let today = jiff::civil::date(2026, 10, 17);
+    let mut db = Db::open_in_memory().unwrap();
+    let mine = section(&mut db, "Family");
+    db.create_sample_workspace(today).unwrap();
+    let names: Vec<String> = db.sections().unwrap().into_iter().map(|s| s.name).collect();
+    assert_eq!(names, ["Family", "Clients", "Personal"]);
+    db.remove_sample_workspace().unwrap();
+    let names: Vec<String> = db.sections().unwrap().into_iter().map(|s| s.name).collect();
+    assert_eq!(names, ["Family"], "only the sample's empty sections go");
+    assert!(db.section(mine.id).is_ok());
+}
