@@ -9,6 +9,10 @@ Download any version from the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.3.1] - 2026-10-17
+
 ### Added
 - **Archived** list in **Settings → Data**: restore or delete archived groups
   and projects (restoring a group brings its projects back).
@@ -36,6 +40,10 @@ Download any version from the
   right of the Task column moved the wrong edge, and some stopped early.
 - Quick add highlights (dates, tags, `@project`) no longer sit offset from
   the text.
+
+### Security
+- Updated the Markdown sanitizer (ammonia 4.2.4, RUSTSEC-2026-0373).
+  Taskboard already stripped the affected `style` attributes.
 
 ## [0.3.0] - 2026-10-17
 
@@ -133,7 +141,8 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/releases/tag/v0.1.0
