@@ -209,8 +209,8 @@ fixed section.
 ## Left to the builder
 
 - Whether the `client` table is renamed internally or kept with a new
-  `section` table alongside (UI/API wording must say "group" either way;
-  old JSON exports must still import).
+  `section` table alongside (the UI must say "group" either way; internal
+  names may stay `client`; old JSON exports must still import).
 - CLI subcommands for sections/groups (keep `client` working as an alias).
 - Exact menus, icons, colors and copy beyond the wording table.
 - Section color/icon picker details; collapse-state storage.
