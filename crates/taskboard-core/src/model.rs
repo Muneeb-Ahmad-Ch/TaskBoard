@@ -101,6 +101,8 @@ impl ProjectState {
 #[ts(export)]
 pub struct Client {
     pub id: Id,
+    /// The sidebar section this group belongs to.
+    pub section_id: Option<Id>,
     pub name: String,
     pub color: String,
     pub icon: Option<String>,
@@ -121,6 +123,8 @@ pub struct Client {
 pub struct Project {
     pub id: Id,
     pub client_id: Option<Id>,
+    /// The sidebar section (None only for the Inbox).
+    pub section_id: Option<Id>,
     pub name: String,
     pub code: Option<String>,
     pub color: String,

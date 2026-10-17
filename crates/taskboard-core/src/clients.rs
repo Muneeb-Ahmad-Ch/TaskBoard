@@ -14,7 +14,7 @@ use crate::storage::Db;
 use crate::tx::Table;
 
 const COLS: &str = "id, name, color, icon, notes_md, contact, time_zone, work_start, work_end,
-                    meetings_count_as_time, sort_key, archived_at, created_at, updated_at";
+                    meetings_count_as_time, sort_key, archived_at, created_at, updated_at, section_id";
 
 fn map(r: &Row<'_>) -> rusqlite::Result<Client> {
     Ok(Client {
@@ -32,6 +32,7 @@ fn map(r: &Row<'_>) -> rusqlite::Result<Client> {
         archived_at: r.get(11)?,
         created_at: r.get(12)?,
         updated_at: r.get(13)?,
+        section_id: r.get(14)?,
     })
 }
 

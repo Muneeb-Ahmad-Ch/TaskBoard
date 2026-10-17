@@ -14,22 +14,30 @@ use crate::id::Id;
 use crate::tx::{OpKind, Replay, Tx};
 
 /// Forward-only migrations. Never edit a released entry; append a new one.
-const MIGRATIONS: &[M<'static>] = &[
-    M::up(
-        "CREATE TABLE app_meta (
+/// A function rather than a constant because migration 7 runs a Rust hook.
+fn migrations() -> Vec<M<'static>> {
+    vec![
+        M::up(
+            "CREATE TABLE app_meta (
             key   TEXT PRIMARY KEY NOT NULL,
             value TEXT NOT NULL
         ) STRICT;",
-    ),
-    M::up(include_str!("migrations/0002_domain.sql")),
-    M::up(include_str!("migrations/0003_query_indexes.sql")),
-    M::up(include_str!("migrations/0004_task_progress.sql")),
-    M::up(include_str!("migrations/0005_notifications.sql")),
-    M::up(include_str!("migrations/0006_startup_indexes.sql")),
-];
+        ),
+        M::up(include_str!("migrations/0002_domain.sql")),
+        M::up(include_str!("migrations/0003_query_indexes.sql")),
+        M::up(include_str!("migrations/0004_task_progress.sql")),
+        M::up(include_str!("migrations/0005_notifications.sql")),
+        M::up(include_str!("migrations/0006_startup_indexes.sql")),
+        M::up_with_hook(
+            include_str!("migrations/0007_sections.sql"),
+            crate::sections::assign_existing,
+        ),
+    ]
+}
 
-/// Schema version this build writes (`PRAGMA user_version`).
-pub const SCHEMA_VERSION: usize = MIGRATIONS.len();
+/// Schema version this build writes (`PRAGMA user_version`); equals the
+/// number of migrations (checked by a test).
+pub const SCHEMA_VERSION: usize = 7;
 
 /// Applied to every connection. `synchronous=FULL` keeps committed edits safe
 /// across power loss (SPEC §7); writes are rare, so the cost is negligible.
@@ -125,11 +133,11 @@ impl Db {
         let version = check_not_newer(&conn)?;
         if let Some(path) = path
             && version > 0
-            && version < MIGRATIONS.len()
+            && version < SCHEMA_VERSION
         {
             backup_before_migration(&conn, path, version)?;
         }
-        Migrations::from_slice(MIGRATIONS).to_latest(&mut conn)?;
+        Migrations::new(migrations()).to_latest(&mut conn)?;
         if check {
             quick_check(&conn)?;
         }
@@ -382,7 +390,7 @@ impl Db {
 fn check_not_newer(conn: &Connection) -> Result<usize> {
     let found: u32 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     let found = found as usize;
-    let supported = MIGRATIONS.len();
+    let supported = SCHEMA_VERSION;
     if found > supported {
         return Err(Error::SchemaTooNew { found, supported });
     }
@@ -403,7 +411,7 @@ fn backup_before_migration(conn: &Connection, path: &Path, version: usize) -> Re
 }
 
 /// Stable per-database device id, used to attribute changes for sync.
-fn load_device_id(conn: &Connection) -> Result<Id> {
+pub(crate) fn load_device_id(conn: &Connection) -> Result<Id> {
     let existing: Option<String> = conn
         .query_row(
             "SELECT value FROM app_meta WHERE key = 'device_id'",
@@ -438,7 +446,8 @@ mod tests {
 
     #[test]
     fn migrations_are_valid() {
-        Migrations::from_slice(MIGRATIONS).validate().unwrap();
+        Migrations::new(migrations()).validate().unwrap();
+        assert_eq!(migrations().len(), SCHEMA_VERSION);
     }
 
     #[test]
@@ -448,7 +457,7 @@ mod tests {
         let info = db.info().unwrap();
         assert_eq!(info.journal_mode, "wal");
         assert!(info.fts5, "bundled SQLite must include FTS5");
-        assert_eq!(info.schema_version as usize, MIGRATIONS.len());
+        assert_eq!(info.schema_version as usize, SCHEMA_VERSION);
     }
 
     #[test]
@@ -457,7 +466,7 @@ mod tests {
         let path = dir.path().join("taskboard.db");
         drop(Db::open(&path).unwrap());
         let db = Db::open(&path).unwrap();
-        assert_eq!(db.info().unwrap().schema_version as usize, MIGRATIONS.len());
+        assert_eq!(db.info().unwrap().schema_version as usize, SCHEMA_VERSION);
     }
 
     #[test]
@@ -465,7 +474,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("taskboard.db");
         drop(Db::open(&path).unwrap());
-        let future = MIGRATIONS.len() as i64 + 1;
+        let future = SCHEMA_VERSION as i64 + 1;
         Connection::open(&path)
             .unwrap()
             .pragma_update(None, "user_version", future)

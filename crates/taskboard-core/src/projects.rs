@@ -14,7 +14,8 @@ use crate::storage::Db;
 use crate::tx::{Table, Tx};
 
 const COLS: &str = "p.id, p.client_id, p.name, p.code, p.color, p.icon, p.state, p.start_date,
-                    p.deadline, p.is_inbox, p.sort_key, p.archived_at, p.created_at, p.updated_at";
+                    p.deadline, p.is_inbox, p.sort_key, p.archived_at, p.created_at, p.updated_at,
+                    p.section_id";
 
 /// Default workflow for new projects (SPEC §4.2).
 const DEFAULT_STATUSES: [(&str, &str, Category); 5] = [
@@ -41,6 +42,7 @@ fn map(r: &Row<'_>) -> rusqlite::Result<Project> {
         archived_at: r.get(11)?,
         created_at: r.get(12)?,
         updated_at: r.get(13)?,
+        section_id: r.get(14)?,
     })
 }
 
@@ -222,10 +224,10 @@ impl Db {
             .query_map([], |r| {
                 Ok(ProjectSummary {
                     project: map(r)?,
-                    client_name: r.get(14)?,
-                    open_tasks: r.get(15)?,
-                    total_tasks: r.get(16)?,
-                    done_tasks: r.get(17)?,
+                    client_name: r.get(15)?,
+                    open_tasks: r.get(16)?,
+                    total_tasks: r.get(17)?,
+                    done_tasks: r.get(18)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
