@@ -7,11 +7,17 @@ export type ThemePref = 'system' | 'light' | 'dark'
 
 export const ACCENTS = [
   { name: 'Violet', hue: 262 },
-  { name: 'Blue', hue: 245 },
-  { name: 'Teal', hue: 190 },
-  { name: 'Green', hue: 150 },
-  { name: 'Amber', hue: 70 },
+  { name: 'Indigo', hue: 280 },
+  { name: 'Purple', hue: 305 },
+  { name: 'Magenta', hue: 330 },
   { name: 'Rose', hue: 10 },
+  { name: 'Orange', hue: 40 },
+  { name: 'Amber', hue: 70 },
+  { name: 'Lime', hue: 115 },
+  { name: 'Green', hue: 150 },
+  { name: 'Teal', hue: 190 },
+  { name: 'Sky', hue: 220 },
+  { name: 'Blue', hue: 245 },
 ] as const
 
 const THEME_KEY = 'taskboard.theme'

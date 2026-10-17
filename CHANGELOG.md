@@ -16,6 +16,9 @@ Download any version from the
   project; on **Meetings**, opens a new meeting.
 - Taskboard **reopens where you left off** (the last list and view).
 - Press **?** (or "Keyboard shortcuts" in Ctrl+K) to see every shortcut.
+- **More colors:** 18 colors for sections, groups, projects and statuses
+  (was 12), and 12 accent themes (was 6): Indigo, Purple, Magenta, Orange,
+  Lime and Sky are new.
 - **Settings → Layout:** edit, delete and add sections; switch each sidebar
   count on or off (view counts, overdue badge, section and project counts).
 

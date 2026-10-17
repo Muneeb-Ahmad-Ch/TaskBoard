@@ -271,7 +271,7 @@
           </div>
           <div class="set-row">
             {@render row('Accent color', 'Used for selection, buttons and highlights.')}
-            <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Accent color">
+            <div class="flex max-w-[186px] flex-wrap justify-end gap-1.5" role="radiogroup" aria-label="Accent color">
               {#each ACCENTS as a (a.hue)}
                 <button role="radio" aria-checked={theme.accentHue === a.hue} aria-label={a.name} title={a.name} class="swatch" style="--s: oklch(0.6 0.17 {a.hue})" onclick={() => { setAccentHue(a.hue); saved() }}></button>
               {/each}
