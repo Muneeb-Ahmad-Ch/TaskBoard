@@ -340,3 +340,25 @@ fn sample_workspace_adds_and_removes_cleanly() {
     db.undo().unwrap();
     assert!(db.has_sample_workspace().unwrap(), "removal is undoable");
 }
+
+#[test]
+fn ics_import_skips_events_that_already_exist_here() {
+    // Re-importing your own calendar (into the same database, or after a JSON
+    // restore) must not duplicate meetings.
+    let mut src = workspace();
+    let ics = src.export_ics().unwrap();
+    let r = src.import_ics(&ics).unwrap();
+    assert_eq!(r.created, 0, "{r:?}");
+
+    let json = src.export_json().unwrap();
+    let mut restored = Db::open_in_memory().unwrap();
+    restored.import_json(&json).unwrap();
+    let range = (at(2030, 1, 1, 0), at(2030, 2, 1, 0));
+    let before = restored.occurrences(range.0, range.1).unwrap().len();
+    let r = restored.import_ics(&ics).unwrap();
+    assert_eq!(r.created, 0, "{r:?}");
+    assert_eq!(
+        restored.occurrences(range.0, range.1).unwrap().len(),
+        before
+    );
+}

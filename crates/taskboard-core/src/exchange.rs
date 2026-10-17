@@ -833,12 +833,20 @@ impl Db {
         self.transact("Import calendar", |tx| {
             for props in &events {
                 let prop = |n: &str| props.iter().find(|(k, ..)| k == n);
-                let title = prop("SUMMARY").map(|(_, _, v)| ics_unescape(v)).unwrap_or_else(|| "Untitled event".into());
+                let title = prop("SUMMARY")
+                    .map(|(_, _, v)| ics_unescape(v))
+                    .unwrap_or_else(|| "Untitled event".into());
                 let uid = prop("UID").map(|(_, _, v)| v.clone());
                 if let Some(uid) = &uid {
+                    // Our own exports use `<event id>@taskboard`: those events
+                    // may already be here (same database, or a JSON restore).
+                    let own: Option<Id> = uid
+                        .strip_suffix("@taskboard")
+                        .and_then(|id| id.parse().ok());
                     let seen: bool = tx.conn().query_row(
-                        "SELECT EXISTS(SELECT 1 FROM event WHERE external_uid = ?1 AND deleted_at IS NULL)",
-                        [uid],
+                        "SELECT EXISTS(SELECT 1 FROM event WHERE deleted_at IS NULL
+                           AND (external_uid = ?1 OR id = ?2))",
+                        rusqlite::params![uid, own],
                         |r| r.get(0),
                     )?;
                     if seen {
@@ -846,7 +854,9 @@ impl Db {
                         continue;
                     }
                 }
-                let Some((start_ms, start_day)) = prop("DTSTART").and_then(|(_, p, v)| parse_ics_time(v, p)) else {
+                let Some((start_ms, start_day)) =
+                    prop("DTSTART").and_then(|(_, p, v)| parse_ics_time(v, p))
+                else {
                     report.skipped += 1;
                     report.warnings.push(format!("“{title}”: no start time"));
                     continue;
@@ -862,7 +872,9 @@ impl Db {
                     Some(r) => match Rule::parse(&r) {
                         Ok(r) => Some(r.to_string()),
                         Err(_) => {
-                            report.warnings.push(format!("“{title}”: repeat rule not supported, imported once"));
+                            report.warnings.push(format!(
+                                "“{title}”: repeat rule not supported, imported once"
+                            ));
                             None
                         }
                     },
@@ -880,7 +892,9 @@ impl Db {
                     all_day_end: None,
                     time_zone: None,
                     location: prop("LOCATION").map(|(_, _, v)| ics_unescape(v)),
-                    meeting_url: prop("URL").map(|(_, _, v)| v.trim().to_owned()).filter(|u| u.starts_with("http")),
+                    meeting_url: prop("URL")
+                        .map(|(_, _, v)| v.trim().to_owned())
+                        .filter(|u| u.starts_with("http")),
                     attendees: None,
                     notes_md: prop("DESCRIPTION").map(|(_, _, v)| ics_unescape(v)),
                     status: None,
@@ -911,7 +925,11 @@ impl Db {
                 match insert_event(tx, &input) {
                     Ok(id) => {
                         if let Some(uid) = &uid {
-                            tx.update(Table::Event, &[id.into()], &[("external_uid", text(uid.clone()))])?;
+                            tx.update(
+                                Table::Event,
+                                &[id.into()],
+                                &[("external_uid", text(uid.clone()))],
+                            )?;
                         }
                         // Cancelled occurrences of a repeating series.
                         if input.recurrence_rule.is_some() {
