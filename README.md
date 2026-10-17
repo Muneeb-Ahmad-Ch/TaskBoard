@@ -1,12 +1,39 @@
-# Taskboard
+<p align="center">
+  <img src="apps/taskboard-app/src-tauri/icons/icon.svg" width="112" height="112" alt="Taskboard logo">
+</p>
 
-A fast, local-first planner for people who juggle several clients and projects:
-tasks, a Kanban board, a calendar with meetings and working hours, and a slot
-finder for booking meetings across time zones. Windows desktop app. No
-account, no cloud, no telemetry. Your data stays in a single SQLite file on
-your computer.
+<h1 align="center">Taskboard</h1>
 
-Free for personal use; commercial use needs permission (see [License](#license)).
+<p align="center">
+  <strong>A fast, local-first planner for people who juggle several clients and projects.</strong><br>
+  Tasks, a Kanban board and a calendar with meetings, working hours and a meeting-slot finder.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Muneeb-Ahmad-Ch/TaskBoard/actions/workflows/ci.yml"><img src="https://github.com/Muneeb-Ahmad-Ch/TaskBoard/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D4" alt="Platform: Windows 10 and 11">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0-6E56CF" alt="License: PolyForm Noncommercial 1.0"></a>
+  <img src="https://img.shields.io/badge/built%20with-Tauri%202%20%C2%B7%20Svelte%205%20%C2%B7%20Rust-24C8DB" alt="Built with Tauri 2, Svelte 5 and Rust">
+</p>
+
+<p align="center">
+  <a href="#install">Download</a> ·
+  <a href="#features">Features</a> ·
+  <a href="docs/SHORTCUTS.md">Shortcuts</a> ·
+  <a href="#build-from-source">Build</a> ·
+  <a href="#license">License</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshot-dark.png">
+    <img src="docs/assets/screenshot-light.png" width="900" alt="Taskboard showing the task table for a sample client, with a task's details and subtasks open on the right">
+  </picture>
+</p>
+
+Windows desktop app. No account, no cloud, no telemetry: your data stays in a
+single SQLite file on your computer. Free for personal use; commercial use
+needs permission (see [License](#license)).
 
 ## Features
 

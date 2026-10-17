@@ -283,13 +283,6 @@
 {/snippet}
 
 <aside class="flex h-full w-[264px] shrink-0 flex-col bg-[var(--sidebar-bg)] px-2.5 pt-3 pb-2" aria-label="Navigation">
-  <div class="mb-3 flex items-center gap-2 px-2">
-    <div class="grid size-7 place-items-center rounded-lg bg-accent text-on-accent shadow-sm">
-      <svg viewBox="0 0 16 16" class="size-4" aria-hidden="true"><path fill="currentColor" d="M3 3h4v4H3zm6 0h4v4H9zM3 9h4v4H3zm6.5 1.8 1.2 1.2 2.3-2.6.9.8-3.2 3.6-2.1-2.1z" /></svg>
-    </div>
-    <span class="font-display text-[15px] font-semibold tracking-tight">Taskboard</span>
-  </div>
-
   <button
     class="mb-3 flex h-8 items-center gap-2 rounded-md border border-border bg-surface-1 px-2.5 text-muted transition-colors hover:border-border-strong"
     onclick={() => (app.paletteOpen = true)}
@@ -335,7 +328,7 @@
       {:else}
         <div class="group relative">
           <button
-            class="absolute top-[5px] left-0.5 z-[1] grid size-5 place-items-center rounded text-subtle hover:bg-hover hover:text-text"
+            class="absolute top-[3px] left-0 z-[1] grid size-6 place-items-center rounded text-subtle hover:bg-hover hover:text-text"
             aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
             aria-expanded={!collapsed[client.id]}
             onclick={() => toggle(client.id)}
@@ -432,6 +425,7 @@
     align-items: center;
     gap: 0.55rem;
     height: 30px;
+    flex-shrink: 0;
     padding-inline: 0.5rem;
     border-radius: 6px;
     color: var(--text);
@@ -440,7 +434,7 @@
   /* Clients leave a gutter for the collapse chevron; their projects indent
      under the client's badge. */
   .nav-item.client-row {
-    padding-left: 24px;
+    padding-left: 26px;
   }
   .nav-item.in-client {
     padding-left: 30px;

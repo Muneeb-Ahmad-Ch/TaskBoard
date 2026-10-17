@@ -213,7 +213,7 @@
             <span class="flex min-h-[30px] items-center gap-2 px-2" title="Subtasks stay in their parent's project">
               {#if project}
                 <span class="size-2 shrink-0 rounded-full" style="background: {swatch(project.color)}"></span>
-                <span class="truncate">{#if project.client_name}<span class="text-muted">{project.client_name} / </span>{/if}{project.name}</span>
+                <span class="truncate">{#if project.client_name}<span class="text-muted">{project.client_name}&nbsp;/&nbsp;</span>{/if}{project.name}</span>
               {/if}
               <button class="ml-auto shrink-0 text-xs text-muted underline-offset-2 hover:text-text hover:underline" onclick={detach}>Make separate task</button>
             </span>
@@ -226,7 +226,7 @@
           })))}>
             {#if project}
               <span class="size-2 shrink-0 rounded-full" style="background: {swatch(project.color)}"></span>
-              <span class="min-w-0 truncate" title="{project.client_name ? `${project.client_name} / ` : ''}{project.name}">{#if project.client_name}<span class="text-muted">{project.client_name} / </span>{/if}{project.name}</span>
+              <span class="min-w-0 truncate" title="{project.client_name ? `${project.client_name} / ` : ''}{project.name}">{#if project.client_name}<span class="text-muted">{project.client_name}&nbsp;/&nbsp;</span>{/if}{project.name}</span>
             {/if}
           </button>
           {/if}
@@ -260,13 +260,13 @@
 
         <dt>Start</dt>
         <dd>
-          <input type="date" class="prop-input" value={task.start_date ?? ''} onchange={(e) => void save({ start_date: e.currentTarget.value || null })} />
+          <input type="date" class="prop-input" aria-label="Start date" value={task.start_date ?? ''} onchange={(e) => void save({ start_date: e.currentTarget.value || null })} />
         </dd>
 
         <dt>Due</dt>
         <dd class="flex gap-1.5">
-          <input type="date" class="prop-input" value={task.due_date ?? ''} onchange={(e) => void save({ due_date: e.currentTarget.value || null })} />
-          <input type="time" class="prop-input w-[104px]" value={task.due_time ?? ''} disabled={!task.due_date} onchange={(e) => void save({ due_time: e.currentTarget.value || null })} />
+          <input type="date" class="prop-input" aria-label="Due date" value={task.due_date ?? ''} onchange={(e) => void save({ due_date: e.currentTarget.value || null })} />
+          <input type="time" class="prop-input w-[104px]" aria-label="Due time" value={task.due_time ?? ''} disabled={!task.due_date} onchange={(e) => void save({ due_time: e.currentTarget.value || null })} />
         </dd>
 
         {#if !task.parent_id || task.recurrence_rule}

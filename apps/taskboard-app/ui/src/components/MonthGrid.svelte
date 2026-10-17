@@ -10,7 +10,15 @@
 
   let { days, occ, tasks, plans }: { days: Date[]; occ: Occurrence[]; tasks: TaskRow[]; plans: Map<string, DayPlan> } = $props()
 
-  const MAX_ITEMS = 4
+  /** Each entry takes 24px (20px target + 4px gap, WCAG 2.5.8); fit as many as the cell allows. */
+  const ENTRY_PX = 24
+  let gridHeight = $state(0)
+  const maxItems = $derived(Math.max(0, Math.floor((gridHeight / 6 - 34) / ENTRY_PX)))
+  /** Entries shown in a cell: leave room for "+N more" when they don't all fit. */
+  function visible<T>(list: T[]): T[] {
+    return list.length > maxItems ? list.slice(0, Math.max(0, maxItems - 1)) : list
+  }
+  const weeks = $derived(Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => days.slice(i * 7, i * 7 + 7)))
   const today = new Date()
   const month = $derived(cal.anchor.getMonth())
   const weekdays = $derived(days.slice(0, 7).map((d) => new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d)))
@@ -63,12 +71,14 @@
   }
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-surface-2">
-  <div class="grid shrink-0 grid-cols-7 border-b border-border">
-    {#each weekdays as w (w)}<div class="px-2 py-1.5 text-xs font-medium text-muted uppercase">{w}</div>{/each}
+<div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-surface-2" role="grid" aria-label="Month">
+  <div class="grid shrink-0 grid-cols-7 border-b border-border" role="row">
+    {#each weekdays as w (w)}<div class="px-2 py-1.5 text-xs font-medium text-muted uppercase" role="columnheader">{w}</div>{/each}
   </div>
-  <div class="grid min-h-0 flex-1 grid-cols-7 grid-rows-6">
-    {#each days as day (isoDate(day))}
+  <div class="grid min-h-0 flex-1 grid-cols-7 grid-rows-6" bind:clientHeight={gridHeight}>
+    {#each weeks as week (isoDate(week[0]))}
+    <div class="contents" role="row">
+    {#each week as day (isoDate(day))}
       {@const list = entries(day)}
       {@const plan = plans.get(isoDate(day))}
       <div
@@ -92,7 +102,7 @@
           }}>{day.getDate()}</button>
           {#if plan?.day_off}<span class="truncate text-[10.5px] text-subtle">{plan.note || 'Off'}</span>{/if}
         </div>
-        {#each list.slice(0, MAX_ITEMS) as entry (entry.key)}
+        {#each visible(list) as entry (entry.key)}
           {#if entry.o}
             <button class="entry" style="--c: {swatch(entry.o.color, 0.6, 0.14)}" class:allday={entry.o.all_day} onclick={() => open(entry)}>
               {#if !entry.o.all_day}<span class="dot"></span><span class="tabular shrink-0 whitespace-nowrap text-subtle">{fmtTime(entry.o.start_at)}</span>{/if}
@@ -105,13 +115,15 @@
             </button>
           {/if}
         {/each}
-        {#if list.length > MAX_ITEMS}
+        {#if list.length > maxItems}
           <button class="more" onclick={() => {
             cal.anchor = day
             cal.mode = 'day'
-          }}>+{list.length - MAX_ITEMS} more</button>
+          }}>+{list.length - visible(list).length} more</button>
         {/if}
       </div>
+    {/each}
+    </div>
     {/each}
   </div>
 </div>
@@ -121,7 +133,7 @@
     display: flex;
     min-height: 0;
     flex-direction: column;
-    gap: 1px;
+    gap: 4px;
     overflow: hidden;
     padding: 4px;
     border-left: 1px solid var(--border);
@@ -159,7 +171,8 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    height: 19px;
+    flex-shrink: 0;
+    height: 20px;
     padding-inline: 4px;
     border-radius: 4px;
     font-size: 11.5px;
@@ -184,6 +197,8 @@
   }
   .more {
     align-self: flex-start;
+    flex-shrink: 0;
+    height: 20px;
     padding-inline: 4px;
     font-size: 11px;
     color: var(--text-subtle);
