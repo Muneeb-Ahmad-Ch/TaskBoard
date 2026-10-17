@@ -30,9 +30,34 @@ export type Lanes = 'none' | 'client' | 'project' | 'priority'
 
 const OPEN: Category[] = ['todo', 'active']
 
+const PLACE_KEY = 'taskboard.lastPlace'
+const SCOPE_KINDS = ['inbox', 'today', 'upcoming', 'all', 'section', 'client', 'project']
+
+/** Where the app was last time (per device); unknown ids fall back once data loads. */
+function lastPlace(): { scope: Scope; view: View } {
+  try {
+    const p = JSON.parse(localStorage.getItem(PLACE_KEY) ?? 'null') as { scope?: Scope; view?: View } | null
+    if (p?.scope && SCOPE_KINDS.includes(p.scope.kind) && p.view) return { scope: p.scope, view: p.view }
+  } catch {
+    // Storage unavailable or old format: start on Today.
+  }
+  return { scope: { kind: 'today' }, view: 'table' }
+}
+
+/** Remembers the current list and view for the next start. */
+export function savePlace() {
+  try {
+    localStorage.setItem(PLACE_KEY, JSON.stringify({ scope: app.scope, view: app.view }))
+  } catch {
+    // per-device convenience only
+  }
+}
+
+const place = lastPlace()
+
 export const app = $state({
-  scope: { kind: 'today' } as Scope,
-  view: 'table' as View,
+  scope: place.scope,
+  view: place.view,
   clients: [] as Client[],
   projects: [] as ProjectSummary[],
   /** Every live status, for building board columns. */
@@ -62,6 +87,7 @@ export const app = $state({
   deleteSection: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
   quickAddFocus: 0,
+  shortcutsOpen: false,
   /** Settings section to scroll to when Settings opens (e.g. 'layout'). */
   settingsSection: null as string | null,
   /** Navigation drawer, used instead of the sidebar on narrow windows. */

@@ -612,7 +612,7 @@
         <div>
           <CheckCircle2 size={28} class="mx-auto mb-2 text-subtle" />
           <p class="font-medium">{app.search ? 'No matching tasks' : 'Nothing here'}</p>
-          <p class="text-muted">{app.search ? 'Try a different search.' : 'Add a task above, or press N.'}</p>
+          <p class="text-muted">{app.search ? 'Try a different search.' : 'Add a task below, or press N.'}</p>
         </div>
       </div>
     {/if}

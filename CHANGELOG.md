@@ -9,7 +9,22 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Archived** list in **Settings → Data**: restore or delete archived groups
+  and projects (restoring a group brings its projects back).
+- Hover **+** on a project adds a task to it; on a group, starts a new
+  project; on **Meetings**, opens a new meeting.
+- Taskboard **reopens where you left off** (the last list and view).
+- Press **?** (or "Keyboard shortcuts" in Ctrl+K) to see every shortcut.
+- **Settings → Layout:** edit, delete and add sections; switch each sidebar
+  count on or off (view counts, overdue badge, section and project counts).
+
+### Changed
+- **Sidebar redesign:** section names in normal case with a count
+  ("Clients · 2"), fold arrows on the right, and each project shows a small
+  **progress ring** in its color.
+- **Quick add moved to the bottom** of the Table view; what it will create
+  shows just above it.
 
 ## [0.3.0] - 2026-10-17
 

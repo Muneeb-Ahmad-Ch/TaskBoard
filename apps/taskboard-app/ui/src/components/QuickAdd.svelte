@@ -118,6 +118,27 @@
 </script>
 
 <div class="quick-add rounded-[var(--radius)] border border-border bg-surface-2 focus-within:border-accent">
+  <!-- What the line will create; shown above the input since quick add sits at the bottom. -->
+  {#if preview && line.trim()}
+    <div class="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2 text-xs">
+      {#if preview.project_missing}
+        <span class="chip text-warn"><AlertTriangle size={12} /> No project matches “@{preview.parsed.project_hint}”</span>
+      {:else}
+        <span class="chip">
+          {#if preview.project}<span class="size-2 rounded-full" style="background: {swatch(preview.project.color)}"></span>{:else}<Folder size={12} />{/if}
+          {targetName}
+        </span>
+      {/if}
+      {#if dueText}<span class="chip date"><CalendarDays size={12} /> {dueText}</span>{/if}
+      {#if preview.parsed.end_time}<span class="chip text-muted"><Clock size={12} /> Time range — becomes a meeting in M4</span>{/if}
+      {#if preview.parsed.priority && preview.parsed.priority !== 'none'}
+        <span class="chip"><Flag size={12} style="color: var(--priority-{preview.parsed.priority})" /> {priorityNames[preview.parsed.priority]}</span>
+      {/if}
+      {#each preview.parsed.tags as tag (tag)}<span class="chip tag"><Hash size={12} />{tag}</span>{/each}
+      {#if preview.recurrence_text}<span class="chip date"><Repeat size={12} /> {preview.recurrence_text}</span>{/if}
+      {#if preview.parsed.estimate_minutes}<span class="chip"><Timer size={12} /> {minutes(preview.parsed.estimate_minutes)}</span>{/if}
+    </div>
+  {/if}
   <div class="flex h-10 items-center gap-2 px-3">
     <Plus size={16} class="shrink-0 text-subtle" />
     <div class="relative min-w-0 flex-1">
@@ -139,26 +160,6 @@
     <kbd class="hidden shrink-0 rounded border border-border px-1 text-[11px] text-subtle lg:block">Enter</kbd>
   </div>
 
-  {#if preview && line.trim()}
-    <div class="flex flex-wrap items-center gap-1.5 border-t border-border px-3 py-2 text-xs">
-      {#if preview.project_missing}
-        <span class="chip text-warn"><AlertTriangle size={12} /> No project matches “@{preview.parsed.project_hint}”</span>
-      {:else}
-        <span class="chip">
-          {#if preview.project}<span class="size-2 rounded-full" style="background: {swatch(preview.project.color)}"></span>{:else}<Folder size={12} />{/if}
-          {targetName}
-        </span>
-      {/if}
-      {#if dueText}<span class="chip date"><CalendarDays size={12} /> {dueText}</span>{/if}
-      {#if preview.parsed.end_time}<span class="chip text-muted"><Clock size={12} /> Time range — becomes a meeting in M4</span>{/if}
-      {#if preview.parsed.priority && preview.parsed.priority !== 'none'}
-        <span class="chip"><Flag size={12} style="color: var(--priority-{preview.parsed.priority})" /> {priorityNames[preview.parsed.priority]}</span>
-      {/if}
-      {#each preview.parsed.tags as tag (tag)}<span class="chip tag"><Hash size={12} />{tag}</span>{/each}
-      {#if preview.recurrence_text}<span class="chip date"><Repeat size={12} /> {preview.recurrence_text}</span>{/if}
-      {#if preview.parsed.estimate_minutes}<span class="chip"><Timer size={12} /> {minutes(preview.parsed.estimate_minutes)}</span>{/if}
-    </div>
-  {/if}
 </div>
 
 <style>

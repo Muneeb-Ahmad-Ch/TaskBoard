@@ -11,7 +11,7 @@
   import { ipc } from '../lib/ipc'
   import { act, activeViewChanged, app, applySavedView, groupsIn, isPage, itemName, looseProjectsIn, projectsOf, saveCurrentView, sectionById, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
   import { layout, NAV_LABELS, type NavId } from '../lib/layout.svelte'
-  import { startOfDay, addDays } from '../lib/cal.svelte'
+  import { startOfDay, addDays, newMeeting } from '../lib/cal.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
 
   const COLLAPSE_KEY = 'taskboard.collapsedClients'
@@ -94,6 +94,13 @@
   }
 
   /** Opens the new-project editor under a group, expanding it so it is visible. */
+  /** "+" on a project: open it and put the cursor in quick add. */
+  function addTaskTo(p: ProjectSummary) {
+    setScope({ kind: 'project', id: p.id })
+    if (app.view !== 'table') app.view = 'table'
+    app.quickAddFocus++
+  }
+
   function startProject(c: Client) {
     setCollapsed(c.id, false)
     if (c.section_id) setCollapsed(c.section_id, false)
@@ -303,6 +310,8 @@
   {#if editing?.kind === 'rename-project' && editing.id === p.id}
     {@render editor('Project name', editing.value)}
   {:else}
+    {@const pct = p.total_tasks ? Math.round((p.done_tasks / p.total_tasks) * 100) : 0}
+    <div class="group relative flex flex-col">
     <button
       class="nav-item"
       class:in-client={indent}
@@ -312,10 +321,21 @@
       onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveProject(p.id, dir))}
       ondblclick={() => (editing = { kind: 'rename-project', id: p.id, value: p.name })}
     >
-      <span class="size-2 shrink-0 rounded-full" style="background: {swatch(p.color)}"></span>
+      <span
+        class="ring"
+        style="--c: {swatch(p.color)}; --p: {pct}%"
+        title={p.total_tasks ? `${p.done_tasks} of ${p.total_tasks} done` : 'No tasks yet'}
+      ></span>
       <span class="flex-1 truncate text-left">{p.name}</span>
-      {#if p.open_tasks}<span class="tabular text-xs text-subtle">{p.open_tasks}</span>{/if}
+      {#if p.open_tasks && layout.counts.projects}<span class="tabular text-xs text-subtle group-hover:invisible group-focus-within:invisible">{p.open_tasks}</span>{/if}
     </button>
+    <button
+      class="icon-btn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
+      aria-label="Add a task to {p.name}"
+      title="Add a task"
+      onclick={() => addTaskTo(p)}
+    ><Plus size={14} /></button>
+    </div>
   {/if}
 {/snippet}
 
@@ -332,22 +352,33 @@
   <nav class="flex flex-col gap-px" aria-label="Views">
     {#each shownNav as id (id)}
       {@const Icon = NAV_ICONS[id]}
+      <div class="group relative">
       <button class="nav-item w-full" class:active={navActive(id)} onclick={() => navGo(id)} oncontextmenu={customizeMenu}>
         <Icon size={15} />
         <span class="flex-1 text-left">{NAV_LABELS[id]}</span>
-        <span class="counts flex items-center gap-2">
+        <!-- Meetings swaps its count for a + on hover. -->
+        <span class="counts flex items-center gap-2 {id === 'meetings' ? 'group-hover:invisible group-focus-within:invisible' : ''}">
         {#if id === 'today'}
-          {#if app.counts?.overdue}<span class="badge-danger tabular" title="Overdue">{app.counts.overdue}</span>{/if}
-          {#if app.counts?.today}<span class="tabular text-xs text-subtle">{app.counts.today}</span>{/if}
+          {#if app.counts?.overdue && layout.counts.overdue}<span class="badge-danger tabular" title="Overdue">{app.counts.overdue}</span>{/if}
+          {#if app.counts?.today && layout.counts.views}<span class="tabular text-xs text-subtle">{app.counts.today}</span>{/if}
         {:else if id === 'upcoming'}
-          {#if app.counts?.upcoming}<span class="tabular text-xs text-subtle">{app.counts.upcoming}</span>{/if}
+          {#if app.counts?.upcoming && layout.counts.views}<span class="tabular text-xs text-subtle">{app.counts.upcoming}</span>{/if}
         {:else if id === 'inbox'}
-          {#if app.counts?.inbox}<span class="tabular text-xs text-subtle">{app.counts.inbox}</span>{/if}
+          {#if app.counts?.inbox && layout.counts.views}<span class="tabular text-xs text-subtle">{app.counts.inbox}</span>{/if}
         {:else if id === 'meetings'}
-          {#if meetingsLeft}<span class="tabular text-xs text-subtle" title="Meetings left today">{meetingsLeft}</span>{/if}
+          {#if meetingsLeft && layout.counts.views}<span class="tabular text-xs text-subtle" title="Meetings left today">{meetingsLeft}</span>{/if}
         {/if}
         </span>
       </button>
+      {#if id === 'meetings'}
+        <button
+          class="icon-btn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
+          aria-label="New meeting"
+          title="New meeting"
+          onclick={newMeeting}
+        ><Plus size={14} /></button>
+      {/if}
+      </div>
     {/each}
   </nav>
 
@@ -361,14 +392,6 @@
       {:else}
         <div class="section-head group relative" class:mt-4={si > 0}>
           <button
-            class="absolute top-[3px] left-0 z-[1] grid size-6 place-items-center rounded text-subtle hover:bg-hover hover:text-text"
-            aria-label="{collapsed[sec.id] ? 'Expand' : 'Collapse'} {sec.name}"
-            aria-expanded={!collapsed[sec.id]}
-            onclick={() => toggle(sec.id)}
-          >
-            <ChevronRight size={12} class="transition-transform {collapsed[sec.id] ? '' : 'rotate-90'}" />
-          </button>
-          <button
             class="section-name"
             class:active={isActive({ kind: 'section', id: sec.id })}
             title="Show all work in {sec.name}"
@@ -379,8 +402,17 @@
           >
             <span class="size-1.5 shrink-0 rounded-full" style="background: {swatch(sec.color)}"></span>
             <span class="truncate">{sec.name}</span>
+            {#if layout.counts.sections}<span class="shrink-0 font-normal text-subtle tabular">· {groups.length + loose.length}</span>{/if}
           </button>
           <button class="icon-btn" aria-label="Add to {sec.name}" title="Add a {item} or a project" aria-haspopup="menu" onclick={(e) => addMenu(e, sec)}><Plus size={14} /></button>
+          <button
+            class="icon-btn"
+            aria-label="{collapsed[sec.id] ? 'Expand' : 'Collapse'} {sec.name}"
+            aria-expanded={!collapsed[sec.id]}
+            onclick={() => toggle(sec.id)}
+          >
+            <ChevronRight size={13} class="transition-transform {collapsed[sec.id] ? '' : 'rotate-90'}" />
+          </button>
         </div>
       {/if}
       {#if !collapsed[sec.id]}
@@ -390,14 +422,6 @@
             {@render editor(`${cap(item)} name`, editing.value)}
           {:else}
             <div class="group relative">
-              <button
-                class="absolute top-[3px] left-0 z-[1] grid size-6 place-items-center rounded text-subtle hover:bg-hover hover:text-text"
-                aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
-                aria-expanded={!collapsed[client.id]}
-                onclick={() => toggle(client.id)}
-              >
-                <ChevronRight size={13} class="transition-transform {collapsed[client.id] ? '' : 'rotate-90'}" />
-              </button>
               <button
                 class="nav-item client-row w-full"
                 class:active={isActive({ kind: 'client', id: client.id })}
@@ -412,10 +436,24 @@
                 <span class="flex-1 truncate text-left font-medium">{client.name}</span>
               </button>
               <button
-                class="icon-btn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                class="icon-btn absolute top-1 right-[49px] opacity-0 group-hover:opacity-100 focus:opacity-100"
+                aria-label="New project in {client.name}"
+                title="New project"
+                onclick={() => startProject(client)}
+              ><Plus size={14} /></button>
+              <button
+                class="icon-btn absolute top-1 right-[26px] opacity-0 group-hover:opacity-100 focus:opacity-100"
                 aria-label="{cap(item)} actions"
                 onclick={(e) => clientMenu(e, client)}
               ><MoreHorizontal size={14} /></button>
+              <button
+                class="icon-btn absolute top-1 right-1"
+                aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
+                aria-expanded={!collapsed[client.id]}
+                onclick={() => toggle(client.id)}
+              >
+                <ChevronRight size={13} class="transition-transform {collapsed[client.id] ? '' : 'rotate-90'}" />
+              </button>
             </div>
           {/if}
           {#if !collapsed[client.id]}
@@ -423,7 +461,7 @@
               {@render projectRow(p, true)}
             {/each}
             {#if editing?.kind === 'new-project' && editing.clientId === client.id}
-              <div class="pl-[22px]">{@render editor('Project name')}</div>
+              <div class="pl-[24px]">{@render editor('Project name')}</div>
             {/if}
           {/if}
         {/each}
@@ -492,17 +530,16 @@
     color: var(--text);
     transition: background-color 120ms var(--ease-out);
   }
-  /* Clients leave a gutter for the collapse chevron; their projects indent
-     under the client's badge. */
+  /* Groups keep room on the right for the actions button and fold arrow;
+     their projects line up under the group's name. */
   .nav-item.client-row {
-    padding-left: 26px;
+    padding-right: 76px;
   }
   .section-head {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     min-height: 30px;
-    padding-left: 22px;
     padding-right: 0.25rem;
   }
   .section-name {
@@ -514,11 +551,9 @@
     min-height: 24px;
     padding-inline: 4px;
     border-radius: 5px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--text-subtle);
+    color: var(--text-muted);
     text-align: left;
   }
   .section-name:hover {
@@ -546,7 +581,17 @@
     color: var(--text);
   }
   .nav-item.in-client {
-    padding-left: 30px;
+    padding-left: 32px;
+  }
+  /* Project progress ring in the project's color; the faint track keeps the
+     color visible before any task is done. */
+  .ring {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: conic-gradient(var(--c) var(--p), color-mix(in oklch, var(--c) 28%, transparent) 0);
+    mask: radial-gradient(circle, transparent 3.5px, #000 4px);
   }
   .nav-item:hover {
     background: var(--hover);

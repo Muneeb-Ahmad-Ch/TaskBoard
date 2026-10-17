@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ArchivedList from './ArchivedList.svelte'
   // Settings, organized by category (left) with the chosen page on the right.
   // Every change is saved immediately; there is no Save button.
   import {
@@ -370,6 +371,7 @@
             </div>
           </div>
         </section>
+        <ArchivedList />
         <section class="card">
           <div class="set-row">
             {@render row('Sample workspace', 'A small example client in a Clients section, with projects, tasks and meetings to explore.')}

@@ -7,6 +7,7 @@
   import CommandPalette from './components/CommandPalette.svelte'
   import ProjectDialog from './components/ProjectDialog.svelte'
   import SectionDialog from './components/SectionDialog.svelte'
+  import ShortcutsDialog from './components/ShortcutsDialog.svelte'
   import DeleteSectionDialog from './components/DeleteSectionDialog.svelte'
   import QuickAdd from './components/QuickAdd.svelte'
   import Sidebar from './components/Sidebar.svelte'
@@ -27,7 +28,7 @@
   import Welcome from './components/Welcome.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
   import { isTyping, swatch } from './lib/format'
-  import { app, isPage, redo, scopeTitle, sectionById, undo, type View } from './lib/store.svelte'
+  import { app, isPage, redo, savePlace, scopeTitle, sectionById, undo, type View } from './lib/store.svelte'
 
   const views: { id: View; label: string; key: string; icon: typeof Rows3; milestone: string }[] = [
     { id: 'table', label: 'Table', key: '1', icon: Rows3, milestone: 'M2' },
@@ -120,7 +121,16 @@
     void app.projectDialog
     void app.sectionDialog
     void app.deleteSection
+    void cal.draft
+    void app.shortcutsOpen
     untrack(() => (app.sidebarOpen = false))
+  })
+
+  // Reopen on the same list and view next time.
+  $effect(() => {
+    void JSON.stringify(app.scope)
+    void app.view
+    savePlace()
   })
 
   function onKeydown(e: KeyboardEvent) {
@@ -154,6 +164,9 @@
     if (e.key === 'n') {
       e.preventDefault()
       app.quickAddFocus++
+    } else if (e.key === '?') {
+      e.preventDefault()
+      app.shortcutsOpen = true
     } else if (e.key === '/') {
       e.preventDefault()
       searchInput?.focus()
@@ -238,12 +251,13 @@
     <div class="relative flex min-h-0 flex-1">
       <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5 max-[1000px]:px-4" role="tabpanel" aria-label={current.label}>
         {#if app.view === 'table'}
-          <QuickAdd />
           {#if isEmpty && !welcomeDismissed}
             <Welcome ondismiss={dismissWelcome} />
           {:else}
             <TaskTable />
           {/if}
+          <!-- Quick add sits under the list, like a chat box. -->
+          <div class="mt-auto"><QuickAdd /></div>
         {:else if app.view === 'board'}
           <Board />
         {:else if app.view === 'calendar'}
@@ -278,6 +292,7 @@
 {#if cal.workingHoursOpen}<WorkingHoursDialog onclose={() => (cal.workingHoursOpen = false)} />{/if}
 {#if cal.findSlotOpen}<FindSlotDialog onclose={() => (cal.findSlotOpen = false)} />{/if}
 {#if app.settingsOpen}<SettingsDialog onclose={() => (app.settingsOpen = false)} />{/if}
+{#if app.shortcutsOpen}<ShortcutsDialog onclose={() => (app.shortcutsOpen = false)} />{/if}
 <ReminderBanner />
 {#if app.clientDialog}
   {#key app.clientDialog}<ClientDialog id={app.clientDialog} onclose={() => (app.clientDialog = null)} />{/key}
