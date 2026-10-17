@@ -4,7 +4,7 @@
   import { ExternalLink, MapPin, Plus, Repeat, Search, Video } from '@lucide/svelte'
   import type { Id } from '../lib/bindings/Id'
   import type { Occurrence } from '../lib/bindings/Occurrence'
-  import { addDays, cal, fmtRange, sameDay, startOfDay } from '../lib/cal.svelte'
+  import { addDays, cal, fmtRange, newMeeting, sameDay, startOfDay } from '../lib/cal.svelte'
   import { swatch } from '../lib/format'
   import { errorMessage, ipc, openLink } from '../lib/ipc'
   import { app } from '../lib/store.svelte'
@@ -80,13 +80,6 @@
       allDay: o.all_day,
       title: o.title,
     }
-  }
-
-  function newMeeting() {
-    const s = new Date()
-    s.setMinutes(0, 0, 0)
-    s.setHours(s.getHours() + 1)
-    cal.draft = { kind: 'meeting', start: s.getTime(), end: s.getTime() + 3_600_000 }
   }
 
   const clientsWithMeetings = $derived(app.clients.filter((c) => meetings.some((m) => m.client_id === c.id)))

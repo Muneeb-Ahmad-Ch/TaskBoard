@@ -80,7 +80,8 @@ export function isTyping(e: Event): boolean {
 }
 
 /** Selectable colors for clients, projects and columns (OKLCH hues + gray). */
-export const PALETTE = ['gray', '230', '262', '300', '330', '10', '45', '70', '100', '150', '190', '210']
+/** Colors for sections, groups, projects and statuses: gray, then hues around the wheel. */
+export const PALETTE = ['gray', '10', '25', '45', '70', '100', '125', '150', '170', '190', '210', '230', '245', '262', '280', '300', '330', '350']
 
 export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`

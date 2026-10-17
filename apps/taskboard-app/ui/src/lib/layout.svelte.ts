@@ -17,6 +17,15 @@ export const NAV_LABELS: Record<NavId, string> = {
 export const TAB_LABELS: Record<TabId, string> = { table: 'Table', board: 'Board', calendar: 'Calendar' }
 export const SECTION_LABELS: Record<SectionId, string> = { savedViews: 'Saved views' }
 
+/** Numbers the sidebar can show next to items; each can be turned off. */
+export type CountId = 'views' | 'overdue' | 'sections' | 'projects'
+export const COUNT_LABELS: Record<CountId, { name: string; hint: string }> = {
+  views: { name: 'View counts', hint: 'Tasks in Today, Upcoming and Inbox; meetings left today' },
+  overdue: { name: 'Overdue badge', hint: 'Red count of overdue tasks on Today' },
+  sections: { name: 'Section counts', hint: 'Groups and projects next to each section name' },
+  projects: { name: 'Project counts', hint: 'Open tasks next to each project' },
+}
+
 const NAV_ORDER: NavId[] = ['today', 'upcoming', 'inbox', 'all', 'meetings', 'dashboard']
 const TABS: TabId[] = ['table', 'board', 'calendar']
 const KEY = 'taskboard.layout'
@@ -30,6 +39,11 @@ type Stored = {
    *  "Personal"); turned into ids once the sections are known. */
   legacyHidden: string[]
   tabs: Record<TabId, boolean>
+  counts: Record<CountId, boolean>
+  /** The colored dot before each section name. */
+  sectionDots: boolean
+  /** Where the Table view's add-a-task box sits. */
+  quickAdd: 'top' | 'bottom'
 }
 
 function defaults(): Stored {
@@ -39,6 +53,9 @@ function defaults(): Stored {
     hiddenSections: [],
     legacyHidden: [],
     tabs: { table: true, board: true, calendar: true },
+    counts: { views: true, overdue: true, sections: true, projects: true },
+    sectionDots: true,
+    quickAdd: 'bottom',
   }
 }
 
@@ -65,6 +82,9 @@ function load(): Stored {
       hiddenSections: saved.hiddenSections ?? [],
       legacyHidden,
       tabs,
+      counts: { ...base.counts, ...saved.counts },
+      sectionDots: saved.sectionDots ?? true,
+      quickAdd: saved.quickAdd === 'top' ? 'top' : 'bottom',
     }
   } catch {
     return base
@@ -98,6 +118,21 @@ export function moveNav(id: NavId, dir: -1 | 1) {
 
 export function setSection(id: SectionId, visible: boolean) {
   layout.sections[id] = visible
+  save()
+}
+
+export function setCount(id: CountId, shown: boolean) {
+  layout.counts[id] = shown
+  save()
+}
+
+export function setQuickAddPlacement(where: 'top' | 'bottom') {
+  layout.quickAdd = where
+  save()
+}
+
+export function setSectionDots(shown: boolean) {
+  layout.sectionDots = shown
   save()
 }
 

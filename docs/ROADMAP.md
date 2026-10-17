@@ -41,6 +41,28 @@ These need accounts or keys only the project owner can create. Steps are in
 | Bits UI primitives | Own small components were enough | Dialogs, menus and palette pass the axe audit |
 | Nightly startup trace in CI | Needs a Windows runner with a display | Measured by hand per release (RELEASING checklist) |
 
+## Usability to-do (2026-10-17)
+
+Small, high value (done after 0.3.0):
+
+- [x] **Archived list with Restore / Delete** for groups and projects. Today
+      archiving hides them and only Ctrl+Z right after brings them back.
+- [x] **Hover + on projects and groups** (like the Meetings +): on a project,
+      focus quick add with that project set; on a group, start a new project in it.
+- [x] **Reopen where you left off**: restore the last scope (project / group /
+      section) and view on start instead of always opening Today.
+- [x] **Shortcut cheat sheet**: press `?` to see every keyboard shortcut in the
+      app (N, Space, F2, Alt+↑/↓…), not only in SHORTCUTS.md.
+
+Bigger (a release of their own):
+
+- [ ] **Drag and drop in the sidebar**: reorder sections, groups and projects;
+      drag a project into another group or section.
+- [ ] **Drop tasks on the sidebar**: drag tasks from the table or board onto a
+      project to move them.
+- [ ] **Pinned projects**: a short "Pinned" list at the top of the sidebar for
+      the projects used daily.
+
 ## Next improvements
 
 - Table: group by client / project / status; drag column headers to reorder

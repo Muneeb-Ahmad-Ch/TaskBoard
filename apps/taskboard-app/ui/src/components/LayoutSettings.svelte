@@ -1,32 +1,38 @@
 <script lang="ts">
   // Settings → Layout: sidebar items, sections, view tabs and table columns —
   // show, hide and order. Hidden items stay reachable from Ctrl+K.
-  import { ArrowDown, ArrowUp } from '@lucide/svelte'
+  import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from '@lucide/svelte'
   import {
+    COUNT_LABELS,
     layout,
     moveNav,
     NAV_LABELS,
     resetLayout,
     SECTION_LABELS,
+    setCount,
+    setQuickAddPlacement,
+    setSectionDots,
     setNavVisible,
     setSection,
     setSectionHidden,
     setTab,
     TAB_LABELS,
+    type CountId,
     type SectionId,
     type TabId,
   } from '../lib/layout.svelte'
   import { toast } from '../lib/toast.svelte'
   import { moveColumn, orderedColumns, resetTableLayout, setColumnVisible, tableLayout } from '../lib/tableLayout.svelte'
   import Switch from './Switch.svelte'
-  import { swatch } from '../lib/format'
+  import { plural, swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
-  import { act, app } from '../lib/store.svelte'
+  import { act, app, groupsIn, itemName, looseProjectsIn } from '../lib/store.svelte'
 
   let { onchange = () => {} }: { onchange?: () => void } = $props()
 
   const SECTIONS = Object.keys(SECTION_LABELS) as SectionId[]
   const TABS = Object.keys(TAB_LABELS) as TabId[]
+  const COUNTS = Object.keys(COUNT_LABELS) as CountId[]
 
   function toggleTab(id: TabId, visible: boolean) {
     if (!setTab(id, visible)) toast('Keep at least one view')
@@ -59,12 +65,20 @@
       {@const shown = !layout.hiddenSections.includes(sec.id)}
       <li class="item">
         <span class="size-2 shrink-0 rounded-full" style="background: {swatch(sec.color)}"></span>
-        <span class="flex-1 text-[13px] {shown ? '' : 'text-subtle'}">{sec.name}</span>
+        <span class="flex min-w-0 flex-1 flex-col">
+          <span class="truncate text-[13px] {shown ? '' : 'text-subtle'}">{sec.name}</span>
+          <span class="truncate text-xs text-muted">{plural(groupsIn(sec.id).length, itemName(sec))} · {plural(looseProjectsIn(sec.id).length, 'project')} outside them</span>
+        </span>
+        <button class="order" aria-label="Edit {sec.name}" title="Edit name, item name and color" onclick={() => (app.sectionDialog = { id: sec.id })}><Pencil size={13} /></button>
+        <button class="order" aria-label="Delete {sec.name}" title={app.sections.length > 1 ? 'Delete section…' : 'Keep at least one section'} disabled={app.sections.length <= 1} onclick={() => (app.deleteSection = sec.id)}><Trash2 size={13} /></button>
         <button class="order" aria-label="Move {sec.name} up" title="Move up" disabled={i === 0} onclick={() => void act(() => ipc.moveSection(sec.id, 'up')).then(onchange)}><ArrowUp size={14} /></button>
         <button class="order" aria-label="Move {sec.name} down" title="Move down" disabled={i === app.sections.length - 1} onclick={() => void act(() => ipc.moveSection(sec.id, 'down')).then(onchange)}><ArrowDown size={14} /></button>
         <Switch label="Show {sec.name}" checked={shown} onchange={(v) => { setSectionHidden(sec.id, !v); onchange() }} />
       </li>
     {/each}
+    <li class="item">
+      <button class="btn !h-7 text-xs" onclick={() => (app.sectionDialog = { id: null })}><Plus size={13} /> New section</button>
+    </li>
     {#each SECTIONS as id (id)}
       <li class="item">
         <span class="flex-1 text-[13px] {layout.sections[id] ? '' : 'text-subtle'}">{SECTION_LABELS[id]}</span>
@@ -72,6 +86,43 @@
       </li>
     {/each}
   </ul>
+</section>
+
+<section class="card">
+  <h4 class="card-title">Sidebar details</h4>
+  <ul aria-label="Sidebar details">
+    <li class="item">
+      <span class="flex min-w-0 flex-1 flex-col">
+        <span class="text-[13px] {layout.sectionDots ? '' : 'text-subtle'}">Section color dot</span>
+        <span class="text-xs text-muted">The colored dot before each section name</span>
+      </span>
+      <Switch label="Show section color dot" checked={layout.sectionDots} onchange={(v) => { setSectionDots(v); onchange() }} />
+    </li>
+    {#each COUNTS as id (id)}
+      <li class="item">
+        <span class="flex min-w-0 flex-1 flex-col">
+          <span class="text-[13px] {layout.counts[id] ? '' : 'text-subtle'}">{COUNT_LABELS[id].name}</span>
+          <span class="text-xs text-muted">{COUNT_LABELS[id].hint}</span>
+        </span>
+        <Switch label="Show {COUNT_LABELS[id].name.toLowerCase()}" checked={layout.counts[id]} onchange={(v) => { setCount(id, v); onchange() }} />
+      </li>
+    {/each}
+  </ul>
+</section>
+
+<section class="card">
+  <h4 class="card-title">Add-a-task box</h4>
+  <div class="item">
+    <span class="flex min-w-0 flex-1 flex-col">
+      <span class="text-[13px]">Position in the Table view</span>
+      <span class="text-xs text-muted">Press N to jump to it from anywhere</span>
+    </span>
+    <div class="seg-group" role="radiogroup" aria-label="Add-a-task box position">
+      {#each [['top', 'Top'], ['bottom', 'Bottom']] as [value, label] (value)}
+        <button role="radio" aria-checked={layout.quickAdd === value} class="seg" onclick={() => { setQuickAddPlacement(value as 'top' | 'bottom'); onchange() }}>{label}</button>
+      {/each}
+    </div>
+  </div>
 </section>
 
 <section class="card">
@@ -128,6 +179,25 @@
   }
   .item + .item {
     border-top: 1px solid var(--border);
+  }
+  .seg-group {
+    display: flex;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-2);
+  }
+  .seg {
+    height: 24px;
+    padding-inline: 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .seg[aria-checked='true'] {
+    background: var(--accent-soft);
+    color: var(--accent-soft-text);
+    font-weight: 500;
   }
   .order {
     display: grid;

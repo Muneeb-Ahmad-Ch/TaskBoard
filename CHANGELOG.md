@@ -9,7 +9,33 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Archived** list in **Settings → Data**: restore or delete archived groups
+  and projects (restoring a group brings its projects back).
+- Hover **+** on a project adds a task to it; on a group, starts a new
+  project; on **Meetings**, opens a new meeting.
+- Taskboard **reopens where you left off** (the last list and view).
+- Press **?** (or "Keyboard shortcuts" in Ctrl+K) to see every shortcut.
+- **More colors:** 18 colors for sections, groups, projects and statuses
+  (was 12), and 12 accent themes (was 6): Indigo, Purple, Magenta, Orange,
+  Lime and Sky are new.
+- **Settings → Layout:** edit, delete and add sections; switch each sidebar
+  count on or off (view counts, overdue badge, section and project counts).
+
+### Changed
+- **Sidebar redesign:** section names in normal case with a count
+  ("Clients · 2") that stand out more, fold arrows on the right, and each
+  project shows a small **progress ring** in its color. The dot before a
+  section name can be hidden in Settings → Layout.
+- **Quick add moved to the bottom** of the Table view (choose Top or Bottom
+  in Settings → Layout); what it will create shows next to it. Typing `@`
+  opens a **project dropdown** (Tab inserts, or ↑ ↓ then Enter).
+
+### Fixed
+- **Column resizing:** every column edge now follows the mouse. Before, edges
+  right of the Task column moved the wrong edge, and some stopped early.
+- Quick add highlights (dates, tags, `@project`) no longer sit offset from
+  the text.
 
 ## [0.3.0] - 2026-10-17
 

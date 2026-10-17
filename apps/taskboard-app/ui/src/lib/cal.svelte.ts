@@ -46,6 +46,14 @@ export function saveLayers() {
 export const MINUTE = 60_000
 export const HOUR = 60 * MINUTE
 
+/** Opens the new-meeting dialog for an hour starting at the next full hour. */
+export function newMeeting() {
+  const s = new Date()
+  s.setMinutes(0, 0, 0)
+  s.setHours(s.getHours() + 1)
+  cal.draft = { kind: 'meeting', start: s.getTime(), end: s.getTime() + 3_600_000 }
+}
+
 export function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate())
 }

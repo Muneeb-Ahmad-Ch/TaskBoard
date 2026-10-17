@@ -54,17 +54,52 @@
   const COL_MAX = 600
 
   /**
-   * The column a resize handle changes. The Task column fills the remaining
-   * space, so its handle resizes the column to its right (dragging right widens Task).
+   * What a column's right-edge handle changes, so the edge follows the mouse.
+   * The Task column fills the remaining space, so:
+   * - Task's own handle takes width from (or gives it to) the columns to its right;
+   * - left of Task, a column just grows and Task gives way;
+   * - right of Task, the column trades width with the columns to its right
+   *   (nearest first), so Task and everything to the left stay put.
    */
-  function resizeTarget(col: Col): { target: Col; sign: 1 | -1 } | null {
-    if (col.id !== 'title') return { target: col, sign: 1 }
-    const next = cols[cols.indexOf(col) + 1]
-    return next ? { target: next, sign: -1 } : null
+  type Resize = { target: Col; sign: 1 | -1; after?: Col[] }
+  function resizeTarget(col: Col): Resize | null {
+    // By id: `cols` is rebuilt on every width change, so a handle's own
+    // column object goes stale between key presses.
+    const i = cols.findIndex((c) => c.id === col.id)
+    if (i < 0) return null
+    col = cols[i]
+    const next = cols[i + 1]
+    if (col.id === 'title') return next ? { target: col, sign: 1, after: cols.slice(i + 1) } : null
+    if (i < cols.findIndex((c) => c.id === 'title')) return { target: col, sign: 1 }
+    return next ? { target: col, sign: 1, after: cols.slice(i + 1) } : null
   }
 
   function setWidth(id: ColId, w: number) {
     layout.widths[id] = Math.round(Math.max(COL_MIN, Math.min(COL_MAX, w)))
+  }
+
+  /** Moves a handle by `dx` pixels from the starting widths (target, then the columns after it). */
+  function applyResize(r: Resize, startA: number, startAfter: number[], dx: number) {
+    // Task fills the leftover space, so only the columns after it change.
+    const fill = r.target.id === 'title'
+    let d = fill ? dx : Math.max(COL_MIN - startA, Math.min(COL_MAX - startA, dx * r.sign))
+    if (r.after) {
+      if (d > 0) {
+        // Growing: take from the next column, then the one after, down to their minimum.
+        d = Math.min(d, startAfter.reduce((sum, w) => sum + Math.max(0, w - COL_MIN), 0))
+        let left = d
+        r.after.forEach((c, k) => {
+          const give = Math.min(left, Math.max(0, startAfter[k] - COL_MIN))
+          left -= give
+          setWidth(c.id, startAfter[k] - give)
+        })
+      } else {
+        // Shrinking: the next column takes the space.
+        d = Math.max(d, -(COL_MAX - startAfter[0]))
+        r.after.forEach((c, k) => setWidth(c.id, k === 0 ? startAfter[0] - d : startAfter[k]))
+      }
+    }
+    if (!fill) setWidth(r.target.id, startA + d)
   }
 
   function startResize(e: PointerEvent, col: Col) {
@@ -77,8 +112,9 @@
     handle.setPointerCapture(e.pointerId)
     document.body.classList.add('col-resizing')
     const startX = e.clientX
-    const startW = r.target.width
-    const move = (ev: PointerEvent) => setWidth(r.target.id, startW + (ev.clientX - startX) * r.sign)
+    const startA = r.target.width
+    const startAfter = (r.after ?? []).map((c) => c.width)
+    const move = (ev: PointerEvent) => applyResize(r, startA, startAfter, ev.clientX - startX)
     const up = () => {
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', up)
@@ -96,10 +132,11 @@
     const r = resizeTarget(col)
     if (!r) return
     const step = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0
-    // Read the saved width: repeated keys can arrive before the next render.
-    const current = layout.widths[r.target.id] ?? r.target.width
-    if (step) setWidth(r.target.id, current + step * r.sign)
-    else if (e.key === 'Home') delete layout.widths[r.target.id]
+    // Read the saved widths: repeated keys can arrive before the next render.
+    const a = layout.widths[r.target.id] ?? r.target.width
+    const after = (r.after ?? []).map((c) => layout.widths[c.id] ?? c.width)
+    if (step) applyResize(r, a, after, step)
+    else if (e.key === 'Home') delete layout.widths[r.target.id === 'title' && r.after ? r.after[0].id : r.target.id]
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -111,6 +148,7 @@
     const r = resizeTarget(col)
     if (!r) return
     delete layout.widths[r.target.id]
+    if (r.after?.[0]) delete layout.widths[r.after[0].id]
     saveLayout()
   }
 
@@ -584,7 +622,7 @@
               {#if app.descending}<ArrowDown size={12} />{:else}<ArrowUp size={12} />{/if}
             {/if}
           </button>
-          {#if col.id !== 'title' || cols.length > 1}
+          {#if resizeTarget(col)}
             <!-- Focusable splitter (ARIA window-splitter pattern): ←/→ resize. -->
             <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
             <span
@@ -596,7 +634,7 @@
               aria-label="Resize {col.label} column (arrow keys; double-click to reset)"
               aria-valuemin={COL_MIN}
               aria-valuemax={COL_MAX}
-              aria-valuenow={resizeTarget(col)?.target.width}
+              aria-valuenow={col.id === 'title' ? (cols[ci + 1]?.width ?? 0) : col.width}
               title="Drag to resize · double-click to reset"
               onpointerdown={(e) => startResize(e, col)}
               ondblclick={() => resetWidth(col)}
@@ -612,7 +650,7 @@
         <div>
           <CheckCircle2 size={28} class="mx-auto mb-2 text-subtle" />
           <p class="font-medium">{app.search ? 'No matching tasks' : 'Nothing here'}</p>
-          <p class="text-muted">{app.search ? 'Try a different search.' : 'Add a task above, or press N.'}</p>
+          <p class="text-muted">{app.search ? 'Try a different search.' : 'Add a task below, or press N.'}</p>
         </div>
       </div>
     {/if}
