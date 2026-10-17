@@ -9,9 +9,9 @@ export type TaskQuery = {
  */
 id?: Id, client_id?: Id, project_id?: Id, 
 /**
- * Only projects without a client (Inbox excluded).
+ * Every project in this sidebar section (grouped or not).
  */
-personal?: boolean, 
+section_id?: Id, 
 /**
  * Empty = every category.
  */
