@@ -104,6 +104,8 @@ pub struct TaskRow {
     /// open = their manual progress); else the task's own manual progress.
     pub progress: i64,
     pub recurring: bool,
+    /// Title of the parent task, for subtasks shown outside their parent.
+    pub parent_title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -305,7 +307,8 @@ impl Db {
                               FROM task x WHERE x.parent_id = t.id AND x.deleted_at IS NULL),
                            t.progress, 0)
                     END,
-                    t.recurrence_rule IS NOT NULL
+                    t.recurrence_rule IS NOT NULL,
+                    (SELECT x.title FROM task x WHERE x.id = t.parent_id)
              FROM page
              JOIN task t ON t.rid = page.rid
              JOIN project p ON p.id = t.project_id
@@ -348,6 +351,7 @@ impl Db {
                         .unwrap_or_default(),
                     progress: r.get(22)?,
                     recurring: r.get(23)?,
+                    parent_title: r.get(24)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

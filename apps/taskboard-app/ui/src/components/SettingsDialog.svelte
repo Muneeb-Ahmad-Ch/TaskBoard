@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Archive, Bell, Clock, Database, Download, FolderOpen, Monitor, Palette, RotateCcw, Upload } from '@lucide/svelte'
+  import { Archive, Bell, Clock, Database, Download, FolderOpen, Monitor, Palette, PanelLeft, RotateCcw, Upload } from '@lucide/svelte'
   import type { BackupInfo } from '../lib/bindings/BackupInfo'
   import { exportTo, importFrom } from '../lib/data'
   import type { AppSettings } from '../lib/bindings/AppSettings'
@@ -8,9 +8,20 @@
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
   import { ACCENTS, setAccentHue, setThemePref, theme, type ThemePref } from '../lib/theme.svelte'
   import { toast } from '../lib/toast.svelte'
+  import { app } from '../lib/store.svelte'
+  import LayoutSettings from './LayoutSettings.svelte'
   import Modal from './Modal.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
+
+  // Opened from "Customize sidebar…": jump to that section.
+  let layoutSection = $state<HTMLElement | null>(null)
+  $effect(() => {
+    if (app.settingsSection === 'layout' && layoutSection) {
+      layoutSection.scrollIntoView({ block: 'start' })
+      app.settingsSection = null
+    }
+  })
 
   let notify = $state<NotifySettings | null>(null)
   let appSettings = $state<AppSettings | null>(null)
@@ -124,6 +135,11 @@
           {/each}
         </div>
       </div>
+    </section>
+
+    <section bind:this={layoutSection}>
+      <h3 class="sec"><PanelLeft size={14} /> Sidebar &amp; views</h3>
+      <LayoutSettings />
     </section>
 
     {#if notify}

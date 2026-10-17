@@ -53,6 +53,7 @@
 
 /* Windows 11 Mica shows through the window chrome; content panels stay opaque. */
 :root[data-mica='true'] { --sidebar-bg: transparent; }
+.drawer { --sidebar-bg: var(--surface-1); }
 :root[data-mica='true'] body { background: transparent; }
 
 @theme inline {

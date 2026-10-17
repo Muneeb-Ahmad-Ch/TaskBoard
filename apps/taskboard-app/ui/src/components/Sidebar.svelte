@@ -1,12 +1,16 @@
 <script lang="ts">
-  import { Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Plus, Search, Settings, Star, CalendarDays, User } from '@lucide/svelte'
+  import { untrack } from 'svelte'
+  import { Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Plus, Search, Settings, Star, CalendarDays, User, Video } from '@lucide/svelte'
   import type { Client } from '../lib/bindings/Client'
+  import type { Direction } from '../lib/bindings/Direction'
   import type { Id } from '../lib/bindings/Id'
   import type { ProjectSummary } from '../lib/bindings/ProjectSummary'
   import type { SavedView } from '../lib/bindings/SavedView'
   import { swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
-  import { act, activeViewChanged, app, applySavedView, projectsOf, saveCurrentView, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
+  import { act, activeViewChanged, app, applySavedView, isPage, projectsOf, saveCurrentView, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
+  import { layout, NAV_LABELS, setNavVisible, setSection, type NavId, type SectionId } from '../lib/layout.svelte'
+  import { startOfDay, addDays } from '../lib/cal.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
 
   const COLLAPSE_KEY = 'taskboard.collapsedClients'
@@ -18,14 +22,26 @@
     }
   }
   let collapsed = $state<Record<string, boolean>>(loadCollapsed())
-  function toggle(id: Id) {
-    collapsed[id] = !collapsed[id]
+  function setCollapsed(id: Id, value: boolean) {
+    if (!!collapsed[id] === value) return
+    collapsed[id] = value
     try {
       localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsed))
     } catch {
       // per-device convenience only
     }
   }
+  const toggle = (id: Id) => setCollapsed(id, !collapsed[id])
+
+  // Opening a project (from search, a dialog, a new project…) expands its
+  // client, so the selected row is never hidden inside a collapsed group.
+  $effect(() => {
+    const s = app.scope
+    if (s.kind !== 'project') return
+    const clientId = app.projects.find((p) => p.id === s.id)?.client_id
+    // untrack: collapsing the client by hand must not re-run this and undo it.
+    if (clientId) untrack(() => setCollapsed(clientId, false))
+  })
 
   /** Inline editor: adding a client/project, or renaming one. */
   type Editing =
@@ -41,7 +57,7 @@
   const personal = $derived(projectsOf(null))
 
   function isActive(scope: Scope): boolean {
-    if (app.view === 'dashboard' || app.activeViewId) return false
+    if (isPage(app.view) || app.activeViewId) return false
     const s = app.scope
     if (s.kind !== scope.kind) return false
     return !('id' in scope) || ('id' in s && s.id === scope.id)
@@ -57,10 +73,7 @@
       if (c) setScope({ kind: 'client', id: c.id })
     } else if (e.kind === 'new-project') {
       const p = await act(() => ipc.createProject({ name, client_id: e.clientId ?? undefined }))
-      if (p) {
-        if (e.clientId) collapsed[e.clientId] = false
-        setScope({ kind: 'project', id: p.id })
-      }
+      if (p) setScope({ kind: 'project', id: p.id })
     } else if (e.kind === 'rename-client' && name !== e.value) {
       await act(() => ipc.updateClient(e.id, { name }))
     } else if (e.kind === 'rename-project' && name !== e.value) {
@@ -70,6 +83,12 @@
     } else if (e.kind === 'rename-view' && name !== e.value) {
       await act(() => ipc.updateSavedView(e.id, { name }))
     }
+  }
+
+  /** Opens the new-project editor under a client, expanding it so it is visible. */
+  function startProject(clientId: Id) {
+    setCollapsed(clientId, false)
+    editing = { kind: 'new-project', clientId }
   }
 
   function editorKeys(e: KeyboardEvent) {
@@ -83,9 +102,11 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: 'New project', run: () => (editing = { kind: 'new-project', clientId: c.id }) },
+        { label: 'New project', run: () => startProject(c.id) },
         { label: 'Settings…', hint: 'time zone, hours', run: () => (app.clientDialog = c.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-client', id: c.id, value: c.name }) },
+        'separator',
+        ...orderItems(app.clients, c.id, (dir) => ipc.moveClient(c.id, dir)),
         'separator',
         { label: 'Archive client', run: () => void act(() => ipc.setClientArchived(c.id, true), `Archived “${c.name}”`) },
         { label: 'Delete client', danger: true, run: () => void act(() => ipc.deleteClient(c.id), `Deleted “${c.name}”`) },
@@ -113,10 +134,92 @@
       items: [
         { label: 'Settings…', run: () => (app.projectDialog = p.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-project', id: p.id, value: p.name }) },
+        'separator',
+        ...orderItems(projectsOf(p.client_id), p.id, (dir) => ipc.moveProject(p.id, dir)),
         ...(moveTargets.length ? (['separator', ...moveTargets] as MenuEntry[]) : []),
         'separator',
         { label: 'Archive project', run: () => void act(() => ipc.setProjectArchived(p.id, true), `Archived “${p.name}”`) },
         { label: 'Delete project and its tasks', danger: true, run: () => void act(() => ipc.deleteProject(p.id), `Deleted “${p.name}”`) },
+      ],
+    }
+  }
+
+  /** "Move up" / "Move down" entries, disabled at the ends of the list. */
+  function orderItems(list: { id: Id }[], id: Id, move: (dir: Direction) => Promise<boolean>): MenuEntry[] {
+    const i = list.findIndex((x) => x.id === id)
+    return [
+      { label: 'Move up', hint: 'Alt ↑', disabled: i <= 0, run: () => void act(() => move('up')) },
+      { label: 'Move down', hint: 'Alt ↓', disabled: i < 0 || i >= list.length - 1, run: () => void act(() => move('down')) },
+    ]
+  }
+
+  /** Alt+↑ / Alt+↓ on a focused client or project row moves it, keeping focus on it. */
+  function reorderKeys(e: KeyboardEvent, move: (dir: Direction) => Promise<boolean>) {
+    if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return
+    e.preventDefault()
+    const row = e.currentTarget as HTMLElement
+    void act(() => move(e.key === 'ArrowUp' ? 'up' : 'down')).then(() => requestAnimationFrame(() => row.isConnected && row.focus()))
+  }
+
+  // ---------- top navigation (order and visibility from layout) ----------
+  const NAV_ICONS = { today: Star, upcoming: CalendarDays, inbox: Inbox, all: Layers, meetings: Video, dashboard: LayoutDashboard }
+  const shownNav = $derived(layout.nav.filter((n) => n.visible).map((n) => n.id))
+
+  function navActive(id: NavId): boolean {
+    if (id === 'meetings' || id === 'dashboard') return app.view === id
+    return isActive({ kind: id })
+  }
+
+  function navGo(id: NavId) {
+    if (id === 'meetings' || id === 'dashboard') app.view = id
+    else setScope({ kind: id })
+  }
+
+  /** Meetings still ahead today, for the Meetings badge. */
+  let meetingsLeft = $state(0)
+  $effect(() => {
+    void app.dataVersion
+    if (!shownNav.includes('meetings')) return
+    const from = startOfDay(new Date())
+    let stale = false
+    ipc
+      .occurrences(from.getTime(), addDays(from, 1).getTime())
+      .then((list) => {
+        if (!stale) meetingsLeft = list.filter((o) => o.kind === 'meeting' && o.status !== 'cancelled' && o.end_at > Date.now()).length
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  })
+
+  function customize() {
+    app.settingsSection = 'layout'
+    app.settingsOpen = true
+  }
+
+  function navMenu(e: MouseEvent, id: NavId) {
+    e.preventDefault()
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: `Hide “${NAV_LABELS[id]}”`, hint: 'still in Ctrl K', run: () => setNavVisible(id, false) },
+        'separator',
+        { label: 'Customize sidebar…', run: customize },
+      ],
+    }
+  }
+
+  function sectionMenu(e: MouseEvent, id: SectionId, label: string) {
+    e.preventDefault()
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: `Hide ${label}`, run: () => setSection(id, false) },
+        'separator',
+        { label: 'Customize sidebar…', run: customize },
       ],
     }
   }
@@ -164,10 +267,12 @@
     {@render editor('Project name', editing.value)}
   {:else}
     <button
-      class="nav-item {indent ? 'pl-7' : ''}"
+      class="nav-item"
+      class:in-client={indent}
       class:active={isActive({ kind: 'project', id: p.id })}
       onclick={() => setScope({ kind: 'project', id: p.id })}
       oncontextmenu={(e) => projectMenu(e, p)}
+      onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveProject(p.id, dir))}
       ondblclick={() => (editing = { kind: 'rename-project', id: p.id, value: p.name })}
     >
       <span class="size-2 shrink-0 rounded-full" style="background: {swatch(p.color)}"></span>
@@ -195,30 +300,23 @@
   </button>
 
   <nav class="flex flex-col gap-px" aria-label="Views">
-    <button class="nav-item" class:active={isActive({ kind: 'today' })} onclick={() => setScope({ kind: 'today' })}>
-      <Star size={15} />
-      <span class="flex-1 text-left">Today</span>
-      {#if app.counts?.overdue}<span class="badge-danger tabular" title="Overdue">{app.counts.overdue}</span>{/if}
-      {#if app.counts?.today}<span class="tabular text-xs text-subtle">{app.counts.today}</span>{/if}
-    </button>
-    <button class="nav-item" class:active={isActive({ kind: 'upcoming' })} onclick={() => setScope({ kind: 'upcoming' })}>
-      <CalendarDays size={15} />
-      <span class="flex-1 text-left">Upcoming</span>
-      {#if app.counts?.upcoming}<span class="tabular text-xs text-subtle">{app.counts.upcoming}</span>{/if}
-    </button>
-    <button class="nav-item" class:active={isActive({ kind: 'inbox' })} onclick={() => setScope({ kind: 'inbox' })}>
-      <Inbox size={15} />
-      <span class="flex-1 text-left">Inbox</span>
-      {#if app.counts?.inbox}<span class="tabular text-xs text-subtle">{app.counts.inbox}</span>{/if}
-    </button>
-    <button class="nav-item" class:active={isActive({ kind: 'all' })} onclick={() => setScope({ kind: 'all' })}>
-      <Layers size={15} />
-      <span class="flex-1 text-left">All work</span>
-    </button>
-    <button class="nav-item" class:active={app.view === 'dashboard'} onclick={() => (app.view = 'dashboard')}>
-      <LayoutDashboard size={15} />
-      <span class="flex-1 text-left">Dashboard</span>
-    </button>
+    {#each shownNav as id (id)}
+      {@const Icon = NAV_ICONS[id]}
+      <button class="nav-item" class:active={navActive(id)} onclick={() => navGo(id)} oncontextmenu={(e) => navMenu(e, id)}>
+        <Icon size={15} />
+        <span class="flex-1 text-left">{NAV_LABELS[id]}</span>
+        {#if id === 'today'}
+          {#if app.counts?.overdue}<span class="badge-danger tabular" title="Overdue">{app.counts.overdue}</span>{/if}
+          {#if app.counts?.today}<span class="tabular text-xs text-subtle">{app.counts.today}</span>{/if}
+        {:else if id === 'upcoming'}
+          {#if app.counts?.upcoming}<span class="tabular text-xs text-subtle">{app.counts.upcoming}</span>{/if}
+        {:else if id === 'inbox'}
+          {#if app.counts?.inbox}<span class="tabular text-xs text-subtle">{app.counts.inbox}</span>{/if}
+        {:else if id === 'meetings'}
+          {#if meetingsLeft}<span class="tabular text-xs text-subtle" title="Meetings left today">{meetingsLeft}</span>{/if}
+        {/if}
+      </button>
+    {/each}
   </nav>
 
   <div class="-mx-1 mt-4 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1 pb-2">
@@ -237,7 +335,7 @@
       {:else}
         <div class="group relative">
           <button
-            class="chevron absolute top-[3px] left-0.5 z-[1] grid size-6 place-items-center rounded text-subtle hover:bg-hover"
+            class="absolute top-[5px] left-0.5 z-[1] grid size-5 place-items-center rounded text-subtle hover:bg-hover hover:text-text"
             aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
             aria-expanded={!collapsed[client.id]}
             onclick={() => toggle(client.id)}
@@ -245,10 +343,11 @@
             <ChevronRight size={13} class="transition-transform {collapsed[client.id] ? '' : 'rotate-90'}" />
           </button>
           <button
-            class="nav-item w-full pl-6"
+            class="nav-item client-row w-full"
             class:active={isActive({ kind: 'client', id: client.id })}
             onclick={() => setScope({ kind: 'client', id: client.id })}
             oncontextmenu={(e) => clientMenu(e, client)}
+            onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveClient(client.id, dir))}
             ondblclick={() => (editing = { kind: 'rename-client', id: client.id, value: client.name })}
           >
 
@@ -269,12 +368,13 @@
           {@render projectRow(p, true)}
         {/each}
         {#if editing?.kind === 'new-project' && editing.clientId === client.id}
-          <div class="pl-6">{@render editor('Project name')}</div>
+          <div class="pl-[22px]">{@render editor('Project name')}</div>
         {/if}
       {/if}
     {/each}
 
-    <div class="section mt-4">
+    {#if layout.sections.personal}
+    <div class="section mt-4" role="presentation" oncontextmenu={(e) => sectionMenu(e, 'personal', 'Personal')}>
       <span>Personal</span>
       <button class="icon-btn" aria-label="Add personal project" title="Add personal project" onclick={() => (editing = { kind: 'new-project', clientId: null })}><Plus size={14} /></button>
     </div>
@@ -282,8 +382,10 @@
       {@render projectRow(p, false)}
     {/each}
     {#if editing?.kind === 'new-project' && editing.clientId === null}{@render editor('Project name')}{/if}
+    {/if}
 
-    <div class="section mt-4">
+    {#if layout.sections.savedViews}
+    <div class="section mt-4" role="presentation" oncontextmenu={(e) => sectionMenu(e, 'savedViews', 'Saved views')}>
       <span>Saved views</span>
       <button class="icon-btn" aria-label="Save current view" title="Save current filters as a view" onclick={() => (editing = { kind: 'new-view' })}><Plus size={14} /></button>
     </div>
@@ -293,7 +395,7 @@
       {:else}
         <button
           class="nav-item"
-          class:active={app.activeViewId === v.id && app.view !== 'dashboard'}
+          class:active={app.activeViewId === v.id && !isPage(app.view)}
           onclick={() => applySavedView(v)}
           oncontextmenu={(e) => viewMenu(e, v)}
           ondblclick={() => (editing = { kind: 'rename-view', id: v.id, value: v.name })}
@@ -309,6 +411,7 @@
     {#if editing?.kind === 'new-view'}{@render editor('Name this view')}{/if}
     {#if !app.views.length && editing?.kind !== 'new-view'}
       <p class="px-2 py-1 text-xs text-subtle">Set filters, then + to save them.</p>
+    {/if}
     {/if}
   </div>
 
@@ -333,6 +436,14 @@
     border-radius: 6px;
     color: var(--text);
     transition: background-color 120ms var(--ease-out);
+  }
+  /* Clients leave a gutter for the collapse chevron; their projects indent
+     under the client's badge. */
+  .nav-item.client-row {
+    padding-left: 24px;
+  }
+  .nav-item.in-client {
+    padding-left: 30px;
   }
   .nav-item:hover {
     background: var(--hover);

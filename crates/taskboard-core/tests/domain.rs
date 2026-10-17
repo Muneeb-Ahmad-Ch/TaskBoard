@@ -1376,3 +1376,114 @@ fn repeating_tasks_repeat_inside_a_batch() {
     db.undo().unwrap();
     assert_eq!(db.list_tasks(&open).unwrap().total, 2);
 }
+
+// ---------- ordering clients and projects ----------
+
+fn client_names(db: &Db) -> Vec<String> {
+    db.clients(false)
+        .unwrap()
+        .into_iter()
+        .map(|c| c.name)
+        .collect()
+}
+
+fn project_names(db: &Db, client: Option<Id>) -> Vec<String> {
+    db.projects(false)
+        .unwrap()
+        .into_iter()
+        .filter(|p| !p.project.is_inbox && p.project.client_id == client)
+        .map(|p| p.project.name)
+        .collect()
+}
+
+#[test]
+fn clients_move_up_and_down() {
+    let mut db = db();
+    let a = client(&mut db, "A");
+    client(&mut db, "B");
+    let c = client(&mut db, "C");
+    assert!(db.move_client(c.id, Direction::Up).unwrap());
+    assert_eq!(client_names(&db), ["A", "C", "B"]);
+    assert!(db.move_client(c.id, Direction::Up).unwrap());
+    assert_eq!(client_names(&db), ["C", "A", "B"]);
+    // Already first: nothing changes and nothing goes on the undo stack.
+    let before = db.history_state().unwrap();
+    assert!(!db.move_client(c.id, Direction::Up).unwrap());
+    assert_eq!(db.history_state().unwrap().undo, before.undo);
+    assert!(db.move_client(a.id, Direction::Down).unwrap());
+    assert_eq!(client_names(&db), ["C", "B", "A"]);
+    assert!(!db.move_client(a.id, Direction::Down).unwrap());
+    db.undo().unwrap();
+    assert_eq!(client_names(&db), ["C", "A", "B"]);
+}
+
+#[test]
+fn projects_move_within_their_client_only() {
+    let mut db = db();
+    let acme = client(&mut db, "Acme");
+    let other = client(&mut db, "Other");
+    let web = project(&mut db, "Web", Some(acme.id));
+    project(&mut db, "App", Some(acme.id));
+    project(&mut db, "Elsewhere", Some(other.id));
+    let mine = project(&mut db, "Mine", None);
+    project(&mut db, "Hobby", None);
+
+    assert!(db.move_project(web.id, Direction::Down).unwrap());
+    assert_eq!(project_names(&db, Some(acme.id)), ["App", "Web"]);
+    assert!(!db.move_project(web.id, Direction::Down).unwrap());
+    assert_eq!(project_names(&db, Some(other.id)), ["Elsewhere"]);
+    assert!(db.move_project(mine.id, Direction::Down).unwrap());
+    assert_eq!(project_names(&db, None), ["Hobby", "Mine"]);
+
+    let inbox = db
+        .projects(false)
+        .unwrap()
+        .into_iter()
+        .find(|p| p.project.is_inbox)
+        .unwrap();
+    assert!(!db.move_project(inbox.project.id, Direction::Down).unwrap());
+}
+
+#[test]
+fn moving_skips_archived_rows() {
+    let mut db = db();
+    let a = client(&mut db, "A");
+    let hidden = client(&mut db, "Hidden");
+    let c = client(&mut db, "C");
+    db.set_client_archived(hidden.id, true).unwrap();
+    assert!(db.move_client(c.id, Direction::Up).unwrap());
+    assert_eq!(client_names(&db), ["C", "A"]);
+    assert!(!db.move_client(c.id, Direction::Up).unwrap());
+    assert_eq!(db.client(a.id).unwrap().name, "A");
+}
+
+#[test]
+fn moved_projects_go_last_and_move_up() {
+    let mut db = db();
+    let acme = client(&mut db, "Acme");
+    let other = client(&mut db, "Other");
+    // Each client's first project gets the same key; moving one over makes a tie.
+    let first = project(&mut db, "First", Some(acme.id));
+    let moved = project(&mut db, "Moved", Some(other.id));
+    assert_eq!(first.sort_key, moved.sort_key);
+    db.update_project(
+        moved.id,
+        ProjectPatch {
+            client_id: Some(Some(acme.id)),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let names = project_names(&db, Some(acme.id));
+    // A project moved to another client goes last there.
+    assert_eq!(names, ["First", "Moved"]);
+    let last = names.last().unwrap().clone();
+    let last_id = if last == "First" { first.id } else { moved.id };
+    assert!(db.move_project(last_id, Direction::Up).unwrap());
+    let after = project_names(&db, Some(acme.id));
+    assert_eq!(after.first().unwrap(), &last);
+    assert_eq!(after.len(), 2);
+    // One undo restores the original order and keys.
+    db.undo().unwrap();
+    assert_eq!(project_names(&db, Some(acme.id)), names);
+}

@@ -629,6 +629,7 @@
                       <span class="truncate" ondblclick={() => (renaming = row.id)}>{row.title}</span>
                       {#if row.recurring}<Repeat size={12} class="shrink-0 text-subtle" aria-label="Repeats" />{/if}
                       {#if row.subtasks_total}<span class="tabular shrink-0 text-xs text-subtle">{row.subtasks_done}/{row.subtasks_total}</span>{/if}
+                      {#if row.parent_title}<span class="min-w-0 shrink truncate text-xs text-subtle" title="Subtask of “{row.parent_title}”">↳ {row.parent_title}</span>{/if}
                     </span>
                   {/if}
                 {:else if col.id === 'project'}

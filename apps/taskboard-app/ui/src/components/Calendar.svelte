@@ -12,12 +12,9 @@
   import { act, app, scopeQuery } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Agenda from './Agenda.svelte'
-  import EventDialog from './EventDialog.svelte'
-  import FindSlotDialog from './FindSlotDialog.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import MonthGrid from './MonthGrid.svelte'
   import WeekGrid from './WeekGrid.svelte'
-  import WorkingHoursDialog from './WorkingHoursDialog.svelte'
 
   const days = $derived(visibleDays(cal.mode, cal.anchor))
   const range = $derived({
@@ -152,7 +149,7 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="flex min-h-0 flex-1 flex-col gap-2">
-  <div class="flex h-8 shrink-0 items-center gap-2">
+  <div class="flex min-h-8 shrink-0 flex-wrap items-center gap-2">
     <button class="tb" onclick={() => (cal.anchor = startOfDay(new Date()))} title="Today (T)">Today</button>
     <div class="flex">
       <button class="tb-icon" aria-label="Previous" title="Previous (←)" onclick={() => shiftAnchor(-1)}><ChevronLeft size={16} /></button>
@@ -165,10 +162,11 @@
         <button role="radio" aria-checked={cal.mode === m.id} class="seg" title="{m.label} ({m.key.toUpperCase()})" onclick={() => (cal.mode = m.id)}>{m.label}</button>
       {/each}
     </div>
-    <button class="tb" onclick={layersMenu}><Layers size={14} /> Layers</button>
-    <button class="tb" onclick={() => (cal.workingHoursOpen = true)}><Clock size={14} /> Hours</button>
-    <button class="tb" onclick={() => (cal.findSlotOpen = true)}><Search size={14} /> Find slot</button>
-    <button class="tb primary" onclick={newMeeting}><Plus size={14} /> Meeting</button>
+    <!-- Labels collapse to icons on narrow windows (names stay as tooltips). -->
+    <button class="tb" title="Layers" onclick={layersMenu}><Layers size={14} /> <span class="max-[1180px]:sr-only">Layers</span></button>
+    <button class="tb" title="Working hours" onclick={() => (cal.workingHoursOpen = true)}><Clock size={14} /> <span class="max-[1180px]:sr-only">Hours</span></button>
+    <button class="tb" title="Find a meeting slot" onclick={() => (cal.findSlotOpen = true)}><Search size={14} /> <span class="max-[1180px]:sr-only">Find slot</span></button>
+    <button class="tb primary" title="New meeting" onclick={newMeeting}><Plus size={14} /> <span class="max-[820px]:sr-only">Meeting</span></button>
   </div>
 
   <div class="flex min-h-0 flex-1 gap-3">
@@ -181,7 +179,7 @@
     {/if}
 
     {#if !app.openTaskId}
-      <aside class="flex w-[236px] shrink-0 flex-col gap-3 overflow-y-auto" aria-label="Planning">
+      <aside class="flex w-[236px] shrink-0 flex-col gap-3 overflow-y-auto max-[1100px]:hidden" aria-label="Planning">
         {#if timer}
           <section class="box border-accent">
             <div class="flex items-center gap-2 text-[13px]">
@@ -238,13 +236,6 @@
 </div>
 
 {#if menu}<Menu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />{/if}
-{#if cal.draft}
-  {#key cal.draft}
-    <EventDialog draft={cal.draft} onclose={() => (cal.draft = null)} />
-  {/key}
-{/if}
-{#if cal.workingHoursOpen}<WorkingHoursDialog onclose={() => (cal.workingHoursOpen = false)} />{/if}
-{#if cal.findSlotOpen}<FindSlotDialog onclose={() => (cal.findSlotOpen = false)} />{/if}
 
 <style>
   .tb {

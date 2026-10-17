@@ -280,6 +280,19 @@ impl Db {
             if let Some(Some(client)) = patch.client_id {
                 require_client(tx, client)?;
             }
+            // Moving to another client (or Personal) puts it last there,
+            // instead of keeping a key that may tie with the new siblings.
+            if let Some(client) = patch.client_id
+                && client != current.client_id
+            {
+                let last: Option<String> = tx.conn().query_row(
+                    "SELECT max(sort_key) FROM project
+                     WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1 AND id <> ?2",
+                    rusqlite::params![client, id],
+                    |r| r.get(0),
+                )?;
+                changes.push(("sort_key", text(key_between(last.as_deref(), None)?)));
+            }
             tx.update(Table::Project, &[id.into()], &changes)
         })?;
         self.project(id)

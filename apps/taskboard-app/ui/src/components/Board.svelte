@@ -301,6 +301,24 @@
     }
   }
 
+  /**
+   * Keeps keyboard focus on a card after a drop: the card re-renders in its new
+   * column (possibly more than once while data reloads). Stops early if the
+   * user moves focus somewhere else.
+   */
+  function refocusCard(id: string) {
+    let frames = 0
+    const step = () => {
+      const card = document.querySelector<HTMLElement>(`[data-card="${id}"]`)
+      const active = document.activeElement
+      const lost = !active || active === document.body
+      if (card && lost) card.focus()
+      else if (!lost && active !== card) return
+      if (++frames < 40) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }
+
   function announce(text: string) {
     announcement = text
   }
@@ -337,6 +355,7 @@
       over = null
       announce(`Dropped “${row.title}” in ${describe(target)}.`)
       void commitMove(row, target)
+      refocusCard(row.id)
       return
     } else if (e.key === 'Escape') {
       e.preventDefault()

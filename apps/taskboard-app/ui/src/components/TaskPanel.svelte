@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { CheckCircle2, Circle, Copy, Plus, Timer, Trash2, X } from '@lucide/svelte'
+  import { ArrowLeft, CheckCircle2, ChevronRight, Circle, Copy, Plus, Timer, Trash2, X } from '@lucide/svelte'
   import type { Priority } from '../lib/bindings/Priority'
   import type { Status } from '../lib/bindings/Status'
   import type { Task } from '../lib/bindings/Task'
   import type { TaskPatch } from '../lib/bindings/TaskPatch'
   import type { TaskRow } from '../lib/bindings/TaskRow'
-  import { isTyping, minutes, parseMinutes, swatch } from '../lib/format'
+  import { dueLabel, isOverdue, isTyping, minutes, parseMinutes, swatch } from '../lib/format'
   import { errorMessage, ipc } from '../lib/ipc'
   import { act, app } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
@@ -17,6 +17,8 @@
   let task = $state<Task | null>(null)
   let statuses = $state<Status[]>([])
   let subtasks = $state<TaskRow[]>([])
+  /** The parent, when the open task is a subtask (for the back link). */
+  let parent = $state<Task | null>(null)
   let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
   let newSubtask = $state('')
   /** Progress as the core computes it (derived from subtasks when present). */
@@ -35,13 +37,15 @@
     ;(async () => {
       try {
         const t = await ipc.getTask(id)
-        const [st, subs, self] = await Promise.all([
+        const [st, subs, self, up] = await Promise.all([
           ipc.listStatuses(t.project_id),
           ipc.listTasks({ parent_id: id, sort: 'manual', limit: 500 }),
           ipc.listTasks({ id, include_archived: true, limit: 1 }),
+          t.parent_id ? ipc.getTask(t.parent_id).catch(() => null) : Promise.resolve(null),
         ])
         if (cancelled) return
         task = t
+        parent = up
         statuses = st
         subtasks = subs.rows
         computed = self.rows[0]?.progress ?? 0
@@ -132,17 +136,31 @@
     app.openTaskId = null
   }
 
+  /** Esc and the back link: from a subtask go to its parent, otherwise close. */
+  function back() {
+    if (task?.parent_id) app.openTaskId = task.parent_id
+    else close()
+  }
+
+  /** Turns a subtask into an ordinary task in the same project. */
+  function detach() {
+    if (!task) return
+    const title = task.title
+    void act(() => ipc.updateTask(task!.id, { parent_id: null }), `“${title}” is now a separate task`)
+  }
+
   const fmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 </script>
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Escape' && app.openTaskId && !menu && !isTyping(e)) close()
+    if (e.key === 'Escape' && app.openTaskId && !menu && !isTyping(e)) back()
   }}
 />
 
 {#if task}
-  <aside class="panel flex w-[380px] shrink-0 flex-col border-l border-border bg-surface-1" aria-label="Task details">
+  <!-- Docked beside the list on wide windows; overlays it on narrow ones. -->
+  <aside class="panel flex w-[380px] shrink-0 flex-col border-l border-border bg-surface-1 max-[1200px]:absolute max-[1200px]:inset-y-0 max-[1200px]:right-0 max-[1200px]:z-30 max-[1200px]:w-[min(380px,100%)] max-[1200px]:shadow-2xl" aria-label="Task details">
     <header class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
       <button
         class="flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium {done ? 'border-success text-success' : 'border-border hover:border-border-strong'}"
@@ -163,6 +181,15 @@
     </header>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      {#if task.parent_id}
+        <nav class="mb-2 flex items-center gap-2 text-xs" aria-label="Parent task">
+          <button class="back flex min-w-0 items-center gap-1 rounded-md py-1 pr-2 pl-1 text-muted hover:bg-hover hover:text-text" onclick={back} title="Back to the parent task (Esc)">
+            <ArrowLeft size={14} class="shrink-0" />
+            <span class="truncate">{parent?.title ?? 'Parent task'}</span>
+          </button>
+          <span class="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-subtle">Subtask</span>
+        </nav>
+      {/if}
       {#key task.id}
         <textarea
           class="title-input w-full resize-none bg-transparent font-display text-[17px] leading-snug font-semibold outline-none"
@@ -182,6 +209,15 @@
       <dl class="props mt-3">
         <dt>Project</dt>
         <dd>
+          {#if task.parent_id}
+            <span class="flex min-h-[30px] items-center gap-2 px-2" title="Subtasks stay in their parent's project">
+              {#if project}
+                <span class="size-2 shrink-0 rounded-full" style="background: {swatch(project.color)}"></span>
+                <span class="truncate">{#if project.client_name}<span class="text-muted">{project.client_name} / </span>{/if}{project.name}</span>
+              {/if}
+              <button class="ml-auto shrink-0 text-xs text-muted underline-offset-2 hover:text-text hover:underline" onclick={detach}>Make separate task</button>
+            </span>
+          {:else}
           <button class="prop-btn" onclick={(e) => openMenu(e, app.projects.map((p) => ({
             label: p.client_name ? `${p.client_name} / ${p.name}` : p.name,
             color: p.color,
@@ -189,11 +225,11 @@
             run: () => void save({ project_id: p.id }),
           })))}>
             {#if project}
-              <span class="size-2 rounded-full" style="background: {swatch(project.color)}"></span>
-              {#if project.client_name}<span class="text-muted">{project.client_name} /</span>{/if}
-              {project.name}
+              <span class="size-2 shrink-0 rounded-full" style="background: {swatch(project.color)}"></span>
+              <span class="min-w-0 truncate" title="{project.client_name ? `${project.client_name} / ` : ''}{project.name}">{#if project.client_name}<span class="text-muted">{project.client_name} / </span>{/if}{project.name}</span>
             {/if}
           </button>
+          {/if}
         </dd>
 
         <dt>Status</dt>
@@ -233,6 +269,7 @@
           <input type="time" class="prop-input w-[104px]" value={task.due_time ?? ''} disabled={!task.due_date} onchange={(e) => void save({ due_time: e.currentTarget.value || null })} />
         </dd>
 
+        {#if !task.parent_id || task.recurrence_rule}
         <dt>Repeat</dt>
         <dd>
           <select
@@ -247,6 +284,7 @@
             {/if}
           </select>
         </dd>
+        {/if}
 
         <dt>Estimate</dt>
         <dd>
@@ -287,10 +325,6 @@
         </dd>
       </dl>
 
-      <h3 class="mt-5 mb-1.5 text-xs font-semibold tracking-wide text-subtle uppercase">Notes</h3>
-      {#key task.id}
-        <Notes value={task.description_md} onsave={(description_md) => void save({ description_md })} />
-      {/key}
 
       <h3 class="mt-5 mb-1.5 flex items-center justify-between text-xs font-semibold tracking-wide text-subtle uppercase">
         <span>Subtasks</span>
@@ -306,7 +340,16 @@
             >
               {#if sub.completed_at}<CheckCircle2 size={16} />{:else}<Circle size={16} />{/if}
             </button>
-            <button class="flex-1 truncate text-left {sub.completed_at ? 'text-subtle line-through' : ''}" onclick={() => (app.openTaskId = sub.id)}>{sub.title}</button>
+            <button
+              class="group flex min-w-0 flex-1 items-center gap-2 text-left"
+              aria-label="Open subtask {sub.title}"
+              onclick={() => (app.openTaskId = sub.id)}
+            >
+              <span class="flex-1 truncate {sub.completed_at ? 'text-subtle line-through' : ''}">{sub.title}</span>
+              {#if sub.subtasks_total}<span class="tabular shrink-0 text-xs text-subtle">{sub.subtasks_done}/{sub.subtasks_total}</span>{/if}
+              {#if sub.due_date}<span class="tabular shrink-0 text-xs {isOverdue(sub.due_date, !!sub.completed_at) ? 'text-danger' : 'text-subtle'}">{dueLabel(sub.due_date)}</span>{/if}
+              <ChevronRight size={14} class="shrink-0 text-subtle opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+            </button>
           </li>
         {/each}
       </ul>
@@ -319,6 +362,11 @@
           onkeydown={(e) => e.key === 'Enter' && void addSubtask()}
         />
       </div>
+
+      <h3 class="mt-5 mb-1.5 text-xs font-semibold tracking-wide text-subtle uppercase">Notes</h3>
+      {#key task.id}
+        <Notes value={task.description_md} onsave={(description_md) => void save({ description_md })} />
+      {/key}
     </div>
 
     <footer class="shrink-0 border-t border-border px-4 py-2 text-[11.5px] text-subtle">

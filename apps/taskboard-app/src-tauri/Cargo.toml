@@ -4,8 +4,8 @@ version.workspace = true
 description = "Taskboard desktop app"
 authors = ["Muneeb Ahmad"]
 edition.workspace = true
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+license.workspace = true
+publish.workspace = true
 
 [lib]
 name = "taskboard_app_lib"

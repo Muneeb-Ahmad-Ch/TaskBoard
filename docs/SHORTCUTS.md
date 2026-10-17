@@ -15,10 +15,10 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Ctrl+K | Command palette: jump to clients/projects, search tasks, run any action (works while typing) |
 | N | Focus Quick Add |
 | / or Ctrl+F | Filter tasks |
-| 1 / 2 / 3 | Table / Board / Calendar |
+| 1 / 2 / 3 | The visible view tabs, left to right (Table / Board / Calendar by default) |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z or Ctrl+Y | Redo |
-| Esc | Close the open dialog, menu or task panel |
+| Esc | Close the open dialog, menu or task panel; on a subtask, go back to its parent first |
 
 ## Quick Add syntax
 
@@ -54,6 +54,13 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Tab | Focus a card |
 | Enter | Open the task |
 | Space | Pick up the card; ← → change column, ↑ ↓ change position; Space drops, Esc cancels |
+
+## Sidebar
+
+| Keys | Action |
+|---|---|
+| Alt+↑ / Alt+↓ | Move the focused client or project up / down (also in its right-click menu) |
+| Right-click | Client / project / saved view actions; on Today, Inbox… hide the item or customize the sidebar |
 
 ## Calendar
 

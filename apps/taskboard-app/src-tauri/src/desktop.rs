@@ -69,20 +69,26 @@ pub fn build_tray(app: &AppHandle) -> tauri::Result<()> {
 
 /// Makes the OS autostart entry match the user's setting.
 pub fn sync_autostart(app: &AppHandle, enabled: bool) {
+    // Development builds and runs on another database (demos, tests) must not
+    // repoint the user's login entry at a build folder.
+    if cfg!(debug_assertions) || std::env::var_os("TASKBOARD_DB").is_some() {
+        return;
+    }
     let launcher = app.autolaunch();
-    let current = launcher.is_enabled().unwrap_or(false);
-    let result = match (enabled, current) {
-        (true, false) => launcher.enable(),
-        (false, true) => launcher.disable(),
-        _ => Ok(()),
+    let result = if enabled {
+        // Always rewrite: the entry must point at this exe even if an older
+        // install or another copy registered a different path.
+        launcher.enable()
+    } else if launcher.is_enabled().unwrap_or(false) {
+        launcher.disable()
+    } else {
+        Ok(())
     };
     if let Err(err) = result {
         tracing::warn!(%err, "could not update autostart");
     }
 }
 
-/// Polls for due reminders every 20 seconds; shows each as a Windows toast and
-/// forwards it to the window (for the in-app banner with a Join button).
 /// Startup integrity check, off the critical path (SPEC §5): delayed, and on
 /// its own read-only connection so it never holds the lock the UI needs. On
 /// damage the UI offers to restore the latest backup.
@@ -101,6 +107,8 @@ pub fn spawn_integrity_check(app: AppHandle, path: PathBuf) {
     }
 }
 
+/// Polls for due reminders every 20 seconds; shows each as a Windows toast and
+/// forwards it to the window (for the in-app banner with a Join button).
 pub fn spawn_reminders(app: AppHandle, db: Arc<Mutex<Db>>) {
     std::thread::Builder::new()
         .name("reminders".into())

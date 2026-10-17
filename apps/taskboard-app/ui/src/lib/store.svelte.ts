@@ -12,13 +12,19 @@ import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
 import { isoDate, todayIso } from './format'
 import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
+import { visibleTabs } from './layout.svelte'
 import { toast } from './toast.svelte'
 
 export type Scope =
   | { kind: 'inbox' | 'today' | 'upcoming' | 'all' | 'personal' }
   | { kind: 'client' | 'project'; id: Id }
 
-export type View = 'table' | 'board' | 'calendar' | 'dashboard'
+export type View = 'table' | 'board' | 'calendar' | 'dashboard' | 'meetings'
+
+/** Pages that are not task lists (they ignore the sidebar scope). */
+export function isPage(view: View = app.view): view is 'dashboard' | 'meetings' {
+  return view === 'dashboard' || view === 'meetings'
+}
 export type Lanes = 'none' | 'client' | 'project' | 'priority'
 
 const OPEN: Category[] = ['todo', 'active']
@@ -52,6 +58,10 @@ export const app = $state({
   projectDialog: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
   quickAddFocus: 0,
+  /** Settings section to scroll to when Settings opens (e.g. 'layout'). */
+  settingsSection: null as string | null,
+  /** Navigation drawer, used instead of the sidebar on narrow windows. */
+  sidebarOpen: false,
   views: [] as SavedView[],
   /** The saved view last opened; cleared when the scope changes. */
   activeViewId: null as Id | null,
@@ -60,7 +70,7 @@ export const app = $state({
 /** What a saved view remembers (stored as JSON in `saved_view.spec_json`). */
 export type ViewSpec = {
   scope: Scope
-  view: Exclude<View, 'dashboard'>
+  view: Exclude<View, 'dashboard' | 'meetings'>
   search: string
   showDone: boolean
   sort: TaskSort
@@ -71,7 +81,7 @@ export type ViewSpec = {
 export function currentSpec(): ViewSpec {
   return {
     scope: app.scope,
-    view: app.view === 'dashboard' ? 'table' : app.view,
+    view: isPage(app.view) ? (visibleTabs()[0] ?? 'table') : app.view,
     search: app.search,
     showDone: app.showDone,
     sort: app.sort,
@@ -167,6 +177,11 @@ export function scopeQuery(): TaskQuery {
   }
   const s = app.search.trim()
   if (s) q.search = s
+  // Lists show top-level tasks; subtasks live inside their parent. Date lists
+  // and searches include subtasks (a dated subtask must surface), marked
+  // with their parent in the table.
+  const dated = app.scope.kind === 'today' || app.scope.kind === 'upcoming'
+  if (!s && !dated) q.top_level = true
   const today = todayIso()
   switch (app.scope.kind) {
     case 'inbox': {
@@ -224,7 +239,7 @@ export function setScope(scope: Scope) {
   app.openTaskId = null
   app.activeViewId = null
   // Picking a list leaves the dashboard.
-  if (app.view === 'dashboard') app.view = 'table'
+  if (isPage(app.view)) app.view = visibleTabs()[0] ?? 'table'
 }
 
 export async function refreshMeta() {

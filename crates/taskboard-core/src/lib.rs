@@ -17,6 +17,7 @@ mod projects;
 pub mod query;
 pub mod quickadd;
 pub mod recur;
+pub mod reorder;
 pub mod rrule;
 mod sample;
 pub mod saved_views;
@@ -42,6 +43,7 @@ pub use planning::{
     Slot, SlotDay, SlotResult, TimeEntryPatch, WorkingDay,
 };
 pub use query::{TaskPage, TaskQuery, TaskRow, TaskSort};
+pub use reorder::Direction;
 pub use saved_views::{SavedView, SavedViewPatch};
 pub use statuses::{NewStatus, StatusPatch};
 pub use storage::{Db, DbInfo, HistoryState};

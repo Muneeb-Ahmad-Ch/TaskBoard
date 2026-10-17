@@ -130,6 +130,17 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   core, raw HTML is shown as text, task lists become ☐/☑, then `ammonia`
   sanitizes (links limited to http/https/mailto with `noopener noreferrer`,
   no images). The UI intercepts link clicks and opens them in the browser.
+- **Ordering**: `Db::move_client` / `move_project` swap an item with its
+  neighbour among the visible siblings (one undo step); groups with tied
+  sort keys are renumbered in the same action. A project moved to another
+  client goes last there.
+- **Layout preferences** (`ui/src/lib/layout.svelte.ts`): sidebar item order
+  and visibility, sections and view tabs, per device in `localStorage`;
+  hidden items stay in Ctrl+K. Below 1000 px the sidebar is a drawer, below
+  1200 px the task panel overlays the list; checked at 720×480 up to
+  1280×800.
+- **Subtasks in lists**: list scopes show top-level tasks; Today, Upcoming
+  and searches include subtasks with their parent's title (`parent_title`).
 - **Crash test** (`core/tests/crash.rs`): re-runs its own test binary as a
   writer, kills it 100 times at varying points, and checks `quick_check` plus
   every acknowledged write after each kill. It covers process kills; power

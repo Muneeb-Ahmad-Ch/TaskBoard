@@ -24,7 +24,8 @@ Free for personal use; commercial use needs permission (see [License](#license))
   `Send invoice fri 3pm #admin !high @website ~30m every month`.
 - **Meetings** with links, attendees, notes, reminders with a Join button,
   repeating series (edit one, this-and-following, or all), and optional
-  "counts as work time".
+  "counts as work time". A Meetings page lists what's coming up (or past),
+  by day and client, with Join buttons.
 - **Find a slot**: free time inside your working hours *and* the client's
   hours in their time zone, with buffers, meeting caps and "copy
   availability" text.
@@ -41,7 +42,9 @@ Free for personal use; commercial use needs permission (see [License](#license))
   export/import (JSON, CSV, ICS; imports from Todoist, Trello, Notion CSV).
 - **Modern Windows UI**: light and dark themes, accent colors, Mica, tray icon,
   start with Windows, Windows notifications; keyboard-first and checked with
-  axe-core against WCAG 2.2 AA.
+  axe-core against WCAG 2.2 AA. Works down to small windows (the sidebar
+  becomes a drawer). Show, hide and reorder sidebar items, sections and view
+  tabs; order clients and projects.
 
 ## Install
 

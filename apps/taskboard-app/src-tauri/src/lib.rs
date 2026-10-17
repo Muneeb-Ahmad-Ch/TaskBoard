@@ -13,8 +13,8 @@ use desktop::focus_main;
 
 use taskboard_core::{
     AppSettings, Client, ClientHours, ClientPatch, Dashboard, DayOverride, DayPlan, Db, DbInfo,
-    ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask, NewClient,
-    NewEvent, NewProject, NewStatus, NewTask, NewTimeEntry, NotifySettings, Occurrence,
+    Direction, ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask,
+    NewClient, NewEvent, NewProject, NewStatus, NewTask, NewTimeEntry, NotifySettings, Occurrence,
     OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SavedView,
     SavedViewPatch, SidebarCounts, SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch,
     TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
@@ -298,6 +298,26 @@ async fn set_client_archived(
 #[tauri::command]
 async fn delete_client(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<()> {
     write(app, state, move |db| db.delete_client(id)).await
+}
+
+#[tauri::command]
+async fn move_client(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    direction: Direction,
+) -> CmdResult<bool> {
+    write(app, state, move |db| db.move_client(id, direction)).await
+}
+
+#[tauri::command]
+async fn move_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    direction: Direction,
+) -> CmdResult<bool> {
+    write(app, state, move |db| db.move_project(id, direction)).await
 }
 
 /// Sanitized HTML for notes (task, meeting and client Markdown).
@@ -834,6 +854,8 @@ pub fn run() {
             set_client_archived,
             delete_client,
             render_markdown,
+            move_client,
+            move_project,
             saved_views,
             create_saved_view,
             update_saved_view,

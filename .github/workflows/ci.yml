@@ -55,3 +55,12 @@ jobs:
 
       - name: Generated TS bindings are up to date
         run: git diff --exit-code -- apps/taskboard-app/ui/src/lib/bindings
+
+  # Dependency audit: known vulnerabilities, licenses, sources (deny.toml).
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

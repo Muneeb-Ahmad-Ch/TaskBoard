@@ -25,6 +25,7 @@ import type { TimeEntryPatch } from './bindings/TimeEntryPatch'
 import type { WorkingDay } from './bindings/WorkingDay'
 import type { ClientPatch } from './bindings/ClientPatch'
 import type { DbInfo } from './bindings/DbInfo'
+import type { Direction } from './bindings/Direction'
 import type { ErrorInfo } from './bindings/ErrorInfo'
 import type { HistoryState } from './bindings/HistoryState'
 import type { Id } from './bindings/Id'
@@ -83,6 +84,8 @@ export const ipc = {
   setClientArchived: (id: Id, archived: boolean) =>
     invoke<Client>('set_client_archived', { id, archived }),
   deleteClient: (id: Id) => invoke<void>('delete_client', { id }),
+  moveClient: (id: Id, direction: Direction) => invoke<boolean>('move_client', { id, direction }),
+  moveProject: (id: Id, direction: Direction) => invoke<boolean>('move_project', { id, direction }),
   renderMarkdown: (source: string) => invoke<string>('render_markdown', { source }),
   savedViews: () => invoke<SavedView[]>('saved_views'),
   createSavedView: (name: string, specJson: string) =>

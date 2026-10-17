@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { CalendarRange, Eye, EyeOff, KanbanSquare, Rows3, Search, X } from '@lucide/svelte'
+  import { CalendarRange, Eye, EyeOff, KanbanSquare, PanelLeft, Rows3, Search, X } from '@lucide/svelte'
+  import { untrack } from 'svelte'
   import Board from './components/Board.svelte'
   import Calendar from './components/Calendar.svelte'
   import ClientDialog from './components/ClientDialog.svelte'
@@ -14,18 +15,31 @@
   import Progress from './components/Progress.svelte'
   import Toasts from './components/Toasts.svelte'
   import DashboardView from './components/DashboardView.svelte'
+  import EventDialog from './components/EventDialog.svelte'
+  import FindSlotDialog from './components/FindSlotDialog.svelte'
+  import MeetingsView from './components/MeetingsView.svelte'
+  import WorkingHoursDialog from './components/WorkingHoursDialog.svelte'
+  import { cal } from './lib/cal.svelte'
+  import { layout } from './lib/layout.svelte'
   import ReminderBanner from './components/ReminderBanner.svelte'
   import Welcome from './components/Welcome.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
   import { isTyping, swatch } from './lib/format'
-  import { app, redo, scopeTitle, undo, type View } from './lib/store.svelte'
+  import { app, isPage, redo, scopeTitle, undo, type View } from './lib/store.svelte'
 
   const views: { id: View; label: string; key: string; icon: typeof Rows3; milestone: string }[] = [
     { id: 'table', label: 'Table', key: '1', icon: Rows3, milestone: 'M2' },
     { id: 'board', label: 'Board', key: '2', icon: KanbanSquare, milestone: 'M3' },
     { id: 'calendar', label: 'Calendar', key: '3', icon: CalendarRange, milestone: 'M4' },
   ]
+  /** View tabs the user chose to show (Settings → Sidebar & views); keys 1–3 follow them. */
+  const shownViews = $derived(views.filter((v) => layout.tabs[v.id as 'table' | 'board' | 'calendar']))
   const current = $derived(views.find((v) => v.id === app.view) ?? views[0])
+  const pageTitle = $derived(app.view === 'dashboard' ? 'Dashboard' : app.view === 'meetings' ? 'Meetings' : null)
+  // Hiding the tab you are on moves you to the first visible one.
+  $effect(() => {
+    if (!isPage(app.view) && !shownViews.some((v) => v.id === app.view) && shownViews[0]) app.view = shownViews[0].id
+  })
 
   const subtitle = $derived.by(() => {
     const s = app.scope
@@ -80,7 +94,28 @@
     }
   }
 
+  // Narrow windows: the sidebar becomes a drawer.
+  let viewportWidth = $state(window.innerWidth)
+  const drawer = $derived(viewportWidth < 1000)
+  // Picking anything in the drawer, opening a dialog from it, or widening the
+  // window closes it.
+  $effect(() => {
+    void app.scope
+    void app.view
+    void app.activeViewId
+    void drawer
+    void app.settingsOpen
+    void app.paletteOpen
+    void app.clientDialog
+    void app.projectDialog
+    untrack(() => (app.sidebarOpen = false))
+  })
+
   function onKeydown(e: KeyboardEvent) {
+    if (e.key === 'Escape' && app.sidebarOpen) {
+      app.sidebarOpen = false
+      return
+    }
     const typing = isTyping(e)
     const ctrl = e.ctrlKey || e.metaKey
     if (ctrl && e.key.toLowerCase() === 'k') {
@@ -111,16 +146,25 @@
       e.preventDefault()
       searchInput?.focus()
     } else {
-      const match = views.find((v) => v.key === e.key)
+      const match = shownViews[Number(e.key) - 1]
       if (match) app.view = match.id
     }
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window bind:innerWidth={viewportWidth} onkeydown={onKeydown} />
 
 <div class="flex h-full">
-  <Sidebar />
+  {#if !drawer}
+    <Sidebar />
+  {:else if app.sidebarOpen}
+    <button class="fixed inset-0 z-40 bg-black/30" aria-label="Close navigation" tabindex="-1" onclick={() => (app.sidebarOpen = false)}></button>
+    <!-- Any navigation click closes the drawer, even on the item already showing. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="drawer fixed inset-y-0 left-0 z-50 shadow-2xl" onclick={(e) => (e.target as Element).closest('.nav-item') && (app.sidebarOpen = false)}>
+      <Sidebar />
+    </div>
+  {/if}
 
   <main class="panel flex min-w-0 flex-1 flex-col bg-surface-1">
     {#if app.integrityError}
@@ -130,23 +174,28 @@
         <button class="btn !h-7 text-xs" onclick={() => (app.integrityError = null)}>Dismiss</button>
       </div>
     {/if}
-    <header class="flex h-14 shrink-0 items-center gap-3 px-6">
+    <header class="flex h-14 shrink-0 items-center gap-3 px-6 max-[1000px]:gap-2 max-[1000px]:px-4">
+      {#if drawer}
+        <button class="grid size-8 shrink-0 place-items-center rounded-md text-muted hover:bg-hover hover:text-text" aria-label="Open navigation" title="Navigation" aria-expanded={app.sidebarOpen} onclick={() => (app.sidebarOpen = true)}>
+          <PanelLeft size={17} />
+        </button>
+      {/if}
       <div class="flex min-w-0 flex-1 items-baseline gap-2.5">
-        <h1 class="font-display truncate text-lg font-semibold tracking-tight">{app.view === 'dashboard' ? 'Dashboard' : (app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle())}</h1>
+        <h1 class="font-display truncate text-lg font-semibold tracking-tight">{pageTitle ?? app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle()}</h1>
         {#if subtitle}
-          <span class="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+          <span class="flex shrink-0 items-center gap-1.5 text-xs text-muted max-[1180px]:hidden">
             <span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{subtitle.text}
           </span>
         {/if}
         {#if scopeProgress}
-          <span class="flex shrink-0 items-center gap-2 self-center text-xs text-muted" title="{scopeProgress.done} of {scopeProgress.total} tasks done">
+          <span class="flex shrink-0 items-center gap-2 self-center text-xs text-muted max-[1100px]:hidden" title="{scopeProgress.done} of {scopeProgress.total} tasks done">
             <Progress value={scopeProgress.pct} width={72} label />
             <span class="tabular text-subtle">{scopeProgress.done}/{scopeProgress.total}</span>
           </span>
         {/if}
       </div>
 
-      <label class="search flex h-7 w-56 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 text-muted focus-within:border-accent">
+      <label class="search flex h-7 w-56 shrink items-center max-[1180px]:w-44 max-[820px]:w-32 gap-1.5 rounded-md border border-border bg-surface-2 px-2 text-muted focus-within:border-accent">
         <Search size={13} />
         <input bind:this={searchInput} bind:value={app.search} class="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-subtle" placeholder="Filter tasks  /" aria-label="Filter tasks" onkeydown={(e) => e.key === 'Escape' && ((app.search = ''), e.currentTarget.blur())} />
         {#if app.search}<button aria-label="Clear filter" onclick={() => (app.search = '')}><X size={13} /></button>{/if}
@@ -159,23 +208,24 @@
           title={app.showDone ? 'Hide completed' : 'Show completed'}
           onclick={() => (app.showDone = !app.showDone)}
         >
-          {#if app.showDone}<Eye size={14} />{:else}<EyeOff size={14} />{/if} Done
+          {#if app.showDone}<Eye size={14} />{:else}<EyeOff size={14} />{/if} <span class="max-[1180px]:sr-only">Done</span>
         </button>
       {/if}
 
       <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="tablist" aria-label="View">
-        {#each views as v (v.id)}
-          <button role="tab" aria-selected={app.view === v.id} title="{v.label} ({v.key})" class="view-tab" onclick={() => (app.view = v.id)}>
+        {#each shownViews as v, i (v.id)}
+          <button role="tab" aria-selected={app.view === v.id} title="{v.label} ({i + 1})" class="view-tab" onclick={() => (app.view = v.id)}>
             <v.icon size={14} />
-            {v.label}
+            <span class="max-[1180px]:sr-only">{v.label}</span>
           </button>
         {/each}
       </div>
-      <ThemeControls />
+      <!-- On narrow windows theme and accent stay available in Settings. -->
+      <div class="max-[1180px]:hidden"><ThemeControls /></div>
     </header>
 
-    <div class="flex min-h-0 flex-1">
-      <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5" role="tabpanel" aria-label={current.label}>
+    <div class="relative flex min-h-0 flex-1">
+      <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5 max-[1000px]:px-4" role="tabpanel" aria-label={current.label}>
         {#if app.view === 'table'}
           <QuickAdd />
           {#if isEmpty && !welcomeDismissed}
@@ -189,6 +239,8 @@
           <Calendar />
         {:else if app.view === 'dashboard'}
           <DashboardView />
+        {:else if app.view === 'meetings'}
+          <MeetingsView />
         {:else}
           <div class="grid flex-1 place-items-center rounded-[var(--radius)] border border-dashed border-border-strong">
             <div class="text-center">
@@ -207,6 +259,13 @@
 </div>
 
 {#if app.paletteOpen}<CommandPalette />{/if}
+{#if cal.draft}
+  {#key cal.draft}
+    <EventDialog draft={cal.draft} onclose={() => (cal.draft = null)} />
+  {/key}
+{/if}
+{#if cal.workingHoursOpen}<WorkingHoursDialog onclose={() => (cal.workingHoursOpen = false)} />{/if}
+{#if cal.findSlotOpen}<FindSlotDialog onclose={() => (cal.findSlotOpen = false)} />{/if}
 {#if app.settingsOpen}<SettingsDialog onclose={() => (app.settingsOpen = false)} />{/if}
 <ReminderBanner />
 {#if app.clientDialog}
