@@ -6,6 +6,8 @@ finder for booking meetings across time zones. Windows desktop app. No
 account, no cloud, no telemetry. Your data stays in a single SQLite file on
 your computer.
 
+Free for personal use; commercial use needs permission (see [License](#license)).
+
 ## Features
 
 - **Clients → projects → tasks → subtasks.** Sidebar grouped by client,
@@ -97,4 +99,12 @@ you click, in your browser. Your data lives in
 
 ## License
 
-[MIT](LICENSE)
+Taskboard is **free for personal use** and other noncommercial use under the
+[PolyForm Noncommercial License 1.0.0](LICENSE). That covers individuals,
+hobby projects, charities, schools and public institutions.
+
+**Commercial use needs permission.** This includes using Taskboard in or for a
+business, or selling or bundling it. Email
+muneeb.ahmad.freelancing@gmail.com to ask for a commercial license.
+
+Copyright 2026 Muneeb Ahmad.
