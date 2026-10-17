@@ -126,3 +126,12 @@ body {
     animation-duration: 0ms !important;
   }
 }
+
+/* Thin, quiet scrollbars that appear only where content actually scrolls
+   (every scroller uses overflow: auto). */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--text-subtle) 55%, transparent) transparent;
+  }
+}

@@ -6,9 +6,21 @@
     title,
     onclose,
     width = 520,
+    height,
+    bare = false,
     children,
     footer,
-  }: { title: string; onclose: () => void; width?: number; children: Snippet; footer?: Snippet } = $props()
+  }: {
+    title: string
+    onclose: () => void
+    width?: number
+    /** Fixed height (px), e.g. for multi-page dialogs that shouldn't jump. */
+    height?: number
+    /** No body padding or scrolling: the content lays out its own panes. */
+    bare?: boolean
+    children: Snippet
+    footer?: Snippet
+  } = $props()
 
   let dialog: HTMLDivElement | undefined = $state()
 
@@ -45,7 +57,7 @@
   <div
     bind:this={dialog}
     class="dialog flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface-2 shadow-2xl"
-    style="max-width: {width}px"
+    style="max-width: {width}px;{height ? ` height: min(${height}px, 90vh);` : ''}"
     role="dialog"
     aria-modal="true"
     aria-label={title}
@@ -56,7 +68,7 @@
       <h2 class="font-display flex-1 truncate text-[15px] font-semibold">{title}</h2>
       <button class="grid size-7 place-items-center rounded-md text-muted hover:bg-hover" aria-label="Close" onclick={onclose}><X size={16} /></button>
     </header>
-    <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+    <div class="min-h-0 flex-1 {bare ? 'flex flex-col' : 'overflow-y-auto px-4 py-4'}">
       {@render children()}
     </div>
     {#if footer}

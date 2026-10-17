@@ -3,7 +3,7 @@
 
 export type NavId = 'today' | 'upcoming' | 'inbox' | 'all' | 'meetings' | 'dashboard'
 export type TabId = 'table' | 'board' | 'calendar'
-export type SectionId = 'personal' | 'savedViews'
+export type SectionId = 'clients' | 'personal' | 'savedViews'
 
 export const NAV_LABELS: Record<NavId, string> = {
   today: 'Today',
@@ -14,7 +14,7 @@ export const NAV_LABELS: Record<NavId, string> = {
   dashboard: 'Dashboard',
 }
 export const TAB_LABELS: Record<TabId, string> = { table: 'Table', board: 'Board', calendar: 'Calendar' }
-export const SECTION_LABELS: Record<SectionId, string> = { personal: 'Personal projects', savedViews: 'Saved views' }
+export const SECTION_LABELS: Record<SectionId, string> = { clients: 'Clients', personal: 'Personal projects', savedViews: 'Saved views' }
 
 const NAV_ORDER: NavId[] = ['today', 'upcoming', 'inbox', 'all', 'meetings', 'dashboard']
 const TABS: TabId[] = ['table', 'board', 'calendar']
@@ -29,7 +29,7 @@ type Stored = {
 function defaults(): Stored {
   return {
     nav: NAV_ORDER.map((id) => ({ id, visible: true })),
-    sections: { personal: true, savedViews: true },
+    sections: { clients: true, personal: true, savedViews: true },
     tabs: { table: true, board: true, calendar: true },
   }
 }

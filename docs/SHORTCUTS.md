@@ -46,6 +46,7 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Delete | Delete selected tasks (undoable) |
 | Ctrl+A | Select all loaded rows |
 | Esc | Clear selection |
+| ← / → on a column's resize handle | Make the column narrower / wider (double-click the handle to reset) |
 
 ## Board
 
@@ -60,7 +61,7 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Keys | Action |
 |---|---|
 | Alt+↑ / Alt+↓ | Move the focused client or project up / down (also in its right-click menu) |
-| Right-click | Client / project / saved view actions; on Today, Inbox… hide the item or customize the sidebar |
+| Right-click | Client / project / saved view actions; on Today, Inbox… or a section header: Customize sidebar (Settings → Layout) |
 
 ## Calendar
 

@@ -14,6 +14,7 @@
   import { act, app, scopeQuery } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
+  import { COLUMN_DEFS, orderedColumns, saveTableLayout, setColumnVisible, tableLayout, type ColId, type ColumnDef } from '../lib/tableLayout.svelte'
   import Progress from './Progress.svelte'
 
   const ROW = 36
@@ -21,50 +22,23 @@
   const OVERSCAN = 12
 
   // ---------- columns ----------
-  type ColId = 'title' | 'project' | 'status' | 'priority' | 'due' | 'progress' | 'estimate' | 'tags'
-  interface Col {
-    id: ColId
-    label: string
-    width: number
-    sort?: TaskSort
-    align?: 'right'
-  }
-  const DEFAULT_COLS: Col[] = [
-    { id: 'title', label: 'Task', width: 0, sort: 'title' },
-    { id: 'project', label: 'Client / Project', width: 230 },
-    { id: 'status', label: 'Status', width: 130 },
-    { id: 'priority', label: 'Priority', width: 104, sort: 'priority' },
-    { id: 'due', label: 'Due', width: 136, sort: 'due' },
-    { id: 'progress', label: 'Progress', width: 118 },
-    { id: 'estimate', label: 'Estimate', width: 88, align: 'right' },
-    { id: 'tags', label: 'Tags', width: 150 },
-  ]
-  const LAYOUT_KEY = 'taskboard.table.layout'
-  function loadLayout(): { widths: Record<string, number>; hidden: string[] } {
-    try {
-      return JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? '') ?? { widths: {}, hidden: [] }
-    } catch {
-      return { widths: {}, hidden: [] }
-    }
-  }
-  let layout = $state(loadLayout())
-  function saveLayout() {
-    try {
-      localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout))
-    } catch {
-      // per-device convenience only
-    }
-  }
+  // Order, visibility and widths are shared with Settings → Layout.
+  type Col = ColumnDef
+  const layout = tableLayout
+  const saveLayout = saveTableLayout
   /** Auto-hidden first when the table is too narrow (user-hidden ones stay hidden). */
   const TITLE_MIN = 180
   const SQUEEZE_ORDER: ColId[] = ['tags', 'estimate', 'progress', 'priority', 'status']
   let width = $state(1200)
   const cols = $derived.by(() => {
-    let list = DEFAULT_COLS.filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map((c) => ({
+    let list = orderedColumns().filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map((c) => ({
       ...c,
       width: layout.widths[c.id] ?? c.width,
     }))
-    const need = () => 36 + TITLE_MIN + list.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0)
+    // Decide with the smaller of default and chosen width, so widening a column
+    // scrolls the table sideways instead of hiding other columns.
+    const fit = (c: Col) => Math.min(c.width, COLUMN_DEFS.find((d) => d.id === c.id)?.width ?? c.width)
+    const need = () => 36 + TITLE_MIN + list.reduce((sum, c) => sum + (c.id === 'title' ? 0 : fit(c)), 0)
     for (const id of SQUEEZE_ORDER) {
       if (need() <= width) break
       list = list.filter((c) => c.id !== id)
@@ -76,21 +50,68 @@
     `36px ${cols.map((c) => (c.id === 'title' ? `minmax(${TITLE_MIN}px, 1fr)` : `${c.width}px`)).join(' ')}`,
   )
 
+  const COL_MIN = 70
+  const COL_MAX = 600
+
+  /**
+   * The column a resize handle changes. The Task column fills the remaining
+   * space, so its handle resizes the column to its right (dragging right widens Task).
+   */
+  function resizeTarget(col: Col): { target: Col; sign: 1 | -1 } | null {
+    if (col.id !== 'title') return { target: col, sign: 1 }
+    const next = cols[cols.indexOf(col) + 1]
+    return next ? { target: next, sign: -1 } : null
+  }
+
+  function setWidth(id: ColId, w: number) {
+    layout.widths[id] = Math.round(Math.max(COL_MIN, Math.min(COL_MAX, w)))
+  }
+
   function startResize(e: PointerEvent, col: Col) {
+    if (e.button !== 0) return
+    const r = resizeTarget(col)
+    if (!r) return
     e.preventDefault()
     e.stopPropagation()
+    const handle = e.currentTarget as HTMLElement
+    handle.setPointerCapture(e.pointerId)
+    document.body.classList.add('col-resizing')
     const startX = e.clientX
-    const startW = col.width
-    const move = (ev: PointerEvent) => {
-      layout.widths[col.id] = Math.max(70, Math.min(600, startW + ev.clientX - startX))
-    }
+    const startW = r.target.width
+    const move = (ev: PointerEvent) => setWidth(r.target.id, startW + (ev.clientX - startX) * r.sign)
     const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+      document.body.classList.remove('col-resizing')
       saveLayout()
     }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
+
+  /** Keyboard: ← / → resize by 16px; Home resets. */
+  function resizeKey(e: KeyboardEvent, col: Col) {
+    const r = resizeTarget(col)
+    if (!r) return
+    const step = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0
+    // Read the saved width: repeated keys can arrive before the next render.
+    const current = layout.widths[r.target.id] ?? r.target.width
+    if (step) setWidth(r.target.id, current + step * r.sign)
+    else if (e.key === 'Home') delete layout.widths[r.target.id]
+    else return
+    e.preventDefault()
+    e.stopPropagation()
+    saveLayout()
+  }
+
+  /** Double-click a handle: back to the default width. */
+  function resetWidth(col: Col) {
+    const r = resizeTarget(col)
+    if (!r) return
+    delete layout.widths[r.target.id]
+    saveLayout()
   }
 
   // ---------- data: windowed pages ----------
@@ -481,17 +502,15 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        ...DEFAULT_COLS.filter((c) => c.id !== 'title').map((c) => ({
-          label: c.label,
-          checked: !layout.hidden.includes(c.id),
-          run: () => {
-            layout.hidden = layout.hidden.includes(c.id)
-              ? layout.hidden.filter((h) => h !== c.id)
-              : [...layout.hidden, c.id]
-            saveLayout()
-          },
-        })),
+        ...orderedColumns()
+          .filter((c) => c.id !== 'title')
+          .map((c) => ({
+            label: c.label,
+            checked: !layout.hidden.includes(c.id),
+            run: () => setColumnVisible(c.id, layout.hidden.includes(c.id)),
+          })),
         'separator',
+        { label: 'Reorder columns…', run: () => { app.settingsSection = 'layout'; app.settingsOpen = true } },
         {
           label: 'Reset widths',
           run: () => {
@@ -547,7 +566,7 @@
     <!-- header (sticky, scrolls sideways with the rows) -->
     <div class="sticky top-0 z-10 grid h-9 items-center border-b border-border bg-surface-2 text-xs text-muted select-none" style="grid-template-columns: {gridTemplate}; min-width: {minWidth}px" role="row" tabindex="-1" oncontextmenu={columnsMenu}>
       <div role="columnheader" class="h-full"><button class="grid h-full w-full place-items-center text-subtle hover:text-text" title="Columns" aria-label="Choose columns" onclick={columnsMenu}><Columns3 size={14} /></button></div>
-      {#each cols as col (col.id)}
+      {#each cols as col, ci (col.id)}
         <div class="relative flex h-full items-center px-2 {col.align === 'right' ? 'justify-end' : ''}" role="columnheader" aria-sort={app.sort === col.sort ? (app.descending ? 'descending' : 'ascending') : 'none'}>
           <button class="flex items-center gap-1 font-medium {col.sort ? 'hover:text-text' : 'cursor-default'}" onclick={() => sortBy(col)}>
             {col.label}
@@ -555,8 +574,24 @@
               {#if app.descending}<ArrowDown size={12} />{:else}<ArrowUp size={12} />{/if}
             {/if}
           </button>
-          {#if col.id !== 'title'}
-            <span class="resizer" role="separator" aria-orientation="vertical" onpointerdown={(e) => startResize(e, col)}></span>
+          {#if col.id !== 'title' || cols.length > 1}
+            <!-- Focusable splitter (ARIA window-splitter pattern): ←/→ resize. -->
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+            <span
+              class="resizer"
+              class:last={ci === cols.length - 1}
+              role="separator"
+              tabindex="0"
+              aria-orientation="vertical"
+              aria-label="Resize {col.label} column (arrow keys; double-click to reset)"
+              aria-valuemin={COL_MIN}
+              aria-valuemax={COL_MAX}
+              aria-valuenow={resizeTarget(col)?.target.width}
+              title="Drag to resize · double-click to reset"
+              onpointerdown={(e) => startResize(e, col)}
+              ondblclick={() => resetWidth(col)}
+              onkeydown={(e) => resizeKey(e, col)}
+            ></span>
           {/if}
         </div>
       {/each}
@@ -776,15 +811,40 @@
   }
   .resizer {
     position: absolute;
-    top: 6px;
-    bottom: 6px;
-    right: 0;
-    width: 6px;
+    top: 4px;
+    bottom: 4px;
+    right: -4px;
+    z-index: 1;
+    width: 9px;
     cursor: col-resize;
-    border-right: 1px solid var(--border);
+    touch-action: none;
+    outline: none;
   }
-  .resizer:hover {
-    border-right: 2px solid var(--accent);
+  /* The last column's handle stays inside the table (no sideways scroll). */
+  .resizer.last {
+    right: 0;
+  }
+  /* The visible line sits on the column edge; the 9px handle straddles it. */
+  .resizer::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 4px;
+    width: 1px;
+    background: var(--border);
+  }
+  .resizer:hover::after,
+  .resizer:focus-visible::after,
+  :global(body.col-resizing) .resizer:active::after {
+    left: 3px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--accent);
+  }
+  :global(body.col-resizing) {
+    cursor: col-resize;
+    user-select: none;
   }
   .bulk {
     display: inline-flex;

@@ -12,7 +12,7 @@
   import TaskPanel from './components/TaskPanel.svelte'
   import TaskTable from './components/TaskTable.svelte'
   import ThemeControls from './components/ThemeControls.svelte'
-  import Progress from './components/Progress.svelte'
+  import ScopeStats from './components/ScopeStats.svelte'
   import Toasts from './components/Toasts.svelte'
   import DashboardView from './components/DashboardView.svelte'
   import EventDialog from './components/EventDialog.svelte'
@@ -32,7 +32,7 @@
     { id: 'board', label: 'Board', key: '2', icon: KanbanSquare, milestone: 'M3' },
     { id: 'calendar', label: 'Calendar', key: '3', icon: CalendarRange, milestone: 'M4' },
   ]
-  /** View tabs the user chose to show (Settings → Sidebar & views); keys 1–3 follow them. */
+  /** View tabs the user chose to show (Settings → Layout); keys 1–3 follow them. */
   const shownViews = $derived(views.filter((v) => layout.tabs[v.id as 'table' | 'board' | 'calendar']))
   const current = $derived(views.find((v) => v.id === app.view) ?? views[0])
   const pageTitle = $derived(app.view === 'dashboard' ? 'Dashboard' : app.view === 'meetings' ? 'Meetings' : null)
@@ -187,10 +187,9 @@
             <span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{subtitle.text}
           </span>
         {/if}
-        {#if scopeProgress}
-          <span class="flex shrink-0 items-center gap-2 self-center text-xs text-muted max-[1100px]:hidden" title="{scopeProgress.done} of {scopeProgress.total} tasks done">
-            <Progress value={scopeProgress.pct} width={72} label />
-            <span class="tabular text-subtle">{scopeProgress.done}/{scopeProgress.total}</span>
+        {#if !isPage() && (app.scope.kind === 'client' || app.scope.kind === 'project')}
+          <span class="min-w-0 max-[1000px]:hidden">
+            <ScopeStats kind={app.scope.kind} id={app.scope.id} done={scopeProgress?.done ?? 0} total={scopeProgress?.total ?? 0} />
           </span>
         {/if}
       </div>

@@ -9,7 +9,7 @@
   import { swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
   import { act, activeViewChanged, app, applySavedView, isPage, projectsOf, saveCurrentView, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
-  import { layout, NAV_LABELS, setNavVisible, setSection, type NavId, type SectionId } from '../lib/layout.svelte'
+  import { layout, NAV_LABELS, type NavId } from '../lib/layout.svelte'
   import { startOfDay, addDays } from '../lib/cal.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
 
@@ -198,30 +198,10 @@
     app.settingsOpen = true
   }
 
-  function navMenu(e: MouseEvent, id: NavId) {
+  /** Right-click on a sidebar item or section: show, hide and order live in Settings. */
+  function customizeMenu(e: MouseEvent) {
     e.preventDefault()
-    menu = {
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        { label: `Hide “${NAV_LABELS[id]}”`, hint: 'still in Ctrl K', run: () => setNavVisible(id, false) },
-        'separator',
-        { label: 'Customize sidebar…', run: customize },
-      ],
-    }
-  }
-
-  function sectionMenu(e: MouseEvent, id: SectionId, label: string) {
-    e.preventDefault()
-    menu = {
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        { label: `Hide ${label}`, run: () => setSection(id, false) },
-        'separator',
-        { label: 'Customize sidebar…', run: customize },
-      ],
-    }
+    menu = { x: e.clientX, y: e.clientY, items: [{ label: 'Customize sidebar…', run: customize }] }
   }
 
   function viewMenu(e: MouseEvent, v: SavedView) {
@@ -295,9 +275,10 @@
   <nav class="flex flex-col gap-px" aria-label="Views">
     {#each shownNav as id (id)}
       {@const Icon = NAV_ICONS[id]}
-      <button class="nav-item" class:active={navActive(id)} onclick={() => navGo(id)} oncontextmenu={(e) => navMenu(e, id)}>
+      <button class="nav-item w-full" class:active={navActive(id)} onclick={() => navGo(id)} oncontextmenu={customizeMenu}>
         <Icon size={15} />
         <span class="flex-1 text-left">{NAV_LABELS[id]}</span>
+        <span class="counts flex items-center gap-2">
         {#if id === 'today'}
           {#if app.counts?.overdue}<span class="badge-danger tabular" title="Overdue">{app.counts.overdue}</span>{/if}
           {#if app.counts?.today}<span class="tabular text-xs text-subtle">{app.counts.today}</span>{/if}
@@ -308,12 +289,14 @@
         {:else if id === 'meetings'}
           {#if meetingsLeft}<span class="tabular text-xs text-subtle" title="Meetings left today">{meetingsLeft}</span>{/if}
         {/if}
+        </span>
       </button>
     {/each}
   </nav>
 
   <div class="-mx-1 mt-4 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1 pb-2">
-    <div class="section">
+    {#if layout.sections.clients}
+    <div class="section" role="presentation" oncontextmenu={customizeMenu}>
       <span>Clients</span>
       <button class="icon-btn" aria-label="Add client" title="Add client" onclick={() => (editing = { kind: 'new-client' })}><Plus size={14} /></button>
     </div>
@@ -365,9 +348,10 @@
         {/if}
       {/if}
     {/each}
+    {/if}
 
     {#if layout.sections.personal}
-    <div class="section mt-4" role="presentation" oncontextmenu={(e) => sectionMenu(e, 'personal', 'Personal')}>
+    <div class="section mt-4" role="presentation" oncontextmenu={customizeMenu}>
       <span>Personal</span>
       <button class="icon-btn" aria-label="Add personal project" title="Add personal project" onclick={() => (editing = { kind: 'new-project', clientId: null })}><Plus size={14} /></button>
     </div>
@@ -378,7 +362,7 @@
     {/if}
 
     {#if layout.sections.savedViews}
-    <div class="section mt-4" role="presentation" oncontextmenu={(e) => sectionMenu(e, 'savedViews', 'Saved views')}>
+    <div class="section mt-4" role="presentation" oncontextmenu={customizeMenu}>
       <span>Saved views</span>
       <button class="icon-btn" aria-label="Save current view" title="Save current filters as a view" onclick={() => (editing = { kind: 'new-view' })}><Plus size={14} /></button>
     </div>

@@ -3,7 +3,8 @@
   import { dismiss, toasts } from '../lib/toast.svelte'
 </script>
 
-<div class="pointer-events-none fixed right-4 bottom-10 z-50 flex flex-col items-end gap-2" aria-live="polite" role="status">
+<!-- Bottom-centre for short confirmations; the bottom-right corner is for reminders. -->
+<div class="pointer-events-none fixed bottom-10 left-1/2 z-50 flex w-max max-w-[calc(100vw-32px)] -translate-x-1/2 flex-col items-center gap-2" aria-live="polite" role="status">
   {#each toasts as t (t.id)}
     <div class="toast pointer-events-auto flex max-w-[420px] items-center gap-3 rounded-lg border border-border bg-surface-2 py-2 pr-2 pl-3 shadow-lg">
       {#if t.kind === 'error'}<AlertCircle size={16} class="shrink-0 text-danger" />{/if}

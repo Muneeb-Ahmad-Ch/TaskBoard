@@ -22,7 +22,8 @@
 </script>
 
 {#if items.length}
-  <div class="fixed top-14 right-4 z-50 flex w-[340px] flex-col gap-2" role="region" aria-label="Reminders" aria-live="assertive">
+  <!-- Bottom-right, like Windows notifications: never over the page header or content top. -->
+  <div class="fixed right-4 bottom-10 z-50 flex w-[min(340px,calc(100vw-32px))] flex-col-reverse gap-2" role="region" aria-label="Reminders" aria-live="assertive">
     {#each items as n (n.key)}
       <div class="card flex gap-3 rounded-xl border border-border bg-surface-2 p-3 shadow-xl">
         <span class="mt-0.5 shrink-0 text-accent">
@@ -56,7 +57,7 @@
   @keyframes in {
     from {
       opacity: 0;
-      transform: translateX(12px);
+      transform: translateY(10px);
     }
   }
   .act {

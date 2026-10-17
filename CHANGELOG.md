@@ -13,6 +13,33 @@ Download any version from the
 - The app shows its version in the status bar and in **Settings → About**;
   clicking it opens this changelog. **What's new** and **About Taskboard**
   are also in the command palette (Ctrl+K).
+- **Settings → About** lists the developer, with contact and websites.
+- **Table columns:** reorder, show and hide them in **Settings → Layout**
+  (or "Reorder columns…" in the table's column menu).
+- Client and project headers show **time left** (estimates of open tasks),
+  **meetings this week** and **overdue** tasks next to progress.
+- Calendar **+ New** menu: create a **Meeting** or a **Time block** (focus
+  time). "New time block…" is also in the command palette.
+- The **Clients** sidebar section can be hidden.
+
+### Changed
+- **Settings redesigned:** categories on the left (General, Appearance,
+  Layout, Calendar, Reminders, Data & backups, About); every change saves
+  immediately.
+- Hiding and reordering sidebar items now lives only in **Settings →
+  Layout**; right-click a sidebar item for "Customize sidebar…".
+- **Progress bars** change color with progress (blue → teal → green) and show
+  a ✓ when complete.
+- Reminders appear at the **bottom-right**; short confirmations with Undo at
+  the bottom-centre, so neither covers the page.
+- The accent color picker moved from the top bar to **Settings →
+  Appearance**; scrollbars are thinner and appear only when needed.
+
+### Fixed
+- Widening a table column no longer hides other columns (the table scrolls
+  sideways instead). The Task column can be resized; double-click a handle to
+  reset it, or use ← / → on a focused handle.
+- An empty table no longer shows a sideways scrollbar.
 
 ## [0.1.0] - 2026-10-17
 

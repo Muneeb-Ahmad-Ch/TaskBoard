@@ -18,3 +18,17 @@ export function appVersion(): Promise<string> {
 export function openChangelog() {
   void openLink(CHANGELOG_URL)
 }
+
+/** Who makes Taskboard (Settings → About). */
+export const DEVELOPER = {
+  name: 'Muneeb Ahmad',
+  email: 'muneeb.ahmad.freelancing@gmail.com',
+  github: { label: 'Muneeb-Ahmad-Ch', url: 'https://github.com/Muneeb-Ahmad-Ch' },
+  sites: [
+    { label: 'ldta.io', url: 'https://ldta.io', main: true },
+    { label: 'letsdotheautomation.com', url: 'https://letsdotheautomation.com', main: false },
+    { label: 'mpysolutions.com', url: 'https://mpysolutions.com', main: false },
+  ],
+} as const
+
+export const SHORTCUTS_URL = `${REPO_URL}/blob/main/docs/SHORTCUTS.md`

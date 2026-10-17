@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { ChevronLeft, ChevronRight, Clock, Layers, Plus, Search, Square, Timer } from '@lucide/svelte'
+  import { ChevronDown, ChevronLeft, ChevronRight, Clock, Layers, Plus, Search, Square, Timer } from '@lucide/svelte'
   import type { ClientHours } from '../lib/bindings/ClientHours'
   import type { DayPlan } from '../lib/bindings/DayPlan'
   import type { LoggedTime } from '../lib/bindings/LoggedTime'
@@ -112,10 +112,23 @@
     }
   }
 
-  function newMeeting() {
+  /** Opens the editor for a new meeting or time block, starting next hour. */
+  function newEvent(kind: 'meeting' | 'block') {
     const d = new Date()
     const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() + 1).getTime()
-    cal.draft = { kind: 'meeting', start, end: start + 3_600_000 }
+    cal.draft = { kind, start, end: start + 3_600_000 }
+  }
+
+  function newMenu(e: MouseEvent) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    menu = {
+      x: r.left,
+      y: r.bottom + 4,
+      items: [
+        { label: 'Meeting', hint: 'with others · link & reminder', run: () => newEvent('meeting') },
+        { label: 'Time block', hint: 'reserve focus time', run: () => newEvent('block') },
+      ],
+    }
   }
 
   function onKeydown(e: KeyboardEvent) {
@@ -166,7 +179,7 @@
     <button class="tb" title="Layers" onclick={layersMenu}><Layers size={14} /> <span class="max-[1180px]:sr-only">Layers</span></button>
     <button class="tb" title="Working hours" onclick={() => (cal.workingHoursOpen = true)}><Clock size={14} /> <span class="max-[1180px]:sr-only">Hours</span></button>
     <button class="tb" title="Find a meeting slot" onclick={() => (cal.findSlotOpen = true)}><Search size={14} /> <span class="max-[1180px]:sr-only">Find slot</span></button>
-    <button class="tb primary" title="New meeting" onclick={newMeeting}><Plus size={14} /> <span class="max-[820px]:sr-only">Meeting</span></button>
+    <button class="tb primary" title="New meeting or time block" aria-haspopup="menu" onclick={newMenu}><Plus size={14} /> <span class="max-[820px]:sr-only">New</span><ChevronDown size={13} class="-mr-0.5 opacity-80" /></button>
   </div>
 
   <div class="flex min-h-0 flex-1 gap-3">
