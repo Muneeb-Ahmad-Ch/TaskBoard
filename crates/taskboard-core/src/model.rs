@@ -198,6 +198,10 @@ pub struct Task {
 #[ts(export)]
 pub struct NewClient {
     pub name: String,
+    /// Section to add the group to (default: the first section).
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[ts(optional)]
     pub color: Option<String>,
     #[serde(default)]
@@ -240,6 +244,11 @@ pub struct ClientPatch {
 #[ts(export)]
 pub struct NewProject {
     pub name: String,
+    /// Section for a project without a group (default: the first section).
+    /// Ignored when `client_id` is set: the project goes to its group's section.
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[serde(default)]
     #[ts(optional)]
     pub client_id: Option<Id>,

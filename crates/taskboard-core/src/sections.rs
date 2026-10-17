@@ -2,16 +2,19 @@
 //! A section holds groups (stored in the `client` table) and projects; the
 //! Inbox belongs to no section.
 
+use rusqlite::types::Value;
 use rusqlite::{OptionalExtension, Row, Transaction};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::clock::{Hlc, now_ms};
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, invalid};
 use crate::id::Id;
-use crate::model::palette_color;
+use crate::model::{clean_color, clean_name, int, palette_color, text};
 use crate::order::key_between;
+use crate::projects::delete_project_rows;
 use crate::storage::Db;
+use crate::tx::{Table, Tx};
 
 const COLS: &str = "id, name, item_name, color, sort_key, created_at, updated_at";
 
@@ -27,6 +30,48 @@ pub struct Section {
     pub sort_key: String,
     pub created_at: i64,
     pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, TS)]
+#[ts(export)]
+pub struct NewSection {
+    pub name: String,
+    /// Singular name of one group ("team"); empty or missing means "group".
+    #[serde(default)]
+    #[ts(optional)]
+    pub item_name: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub color: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, TS)]
+#[ts(export)]
+pub struct SectionPatch {
+    #[serde(default)]
+    #[ts(optional)]
+    pub name: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub item_name: Option<String>,
+    #[serde(default)]
+    #[ts(optional)]
+    pub color: Option<String>,
+}
+
+/// What happens to a section's groups and projects when it is deleted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SectionDelete {
+    /// Move everything to another section.
+    MoveTo { section_id: Id },
+    /// Delete the groups, projects and tasks too (undoable).
+    Everything,
+}
+
+fn clean_item_name(item: Option<&str>) -> String {
+    item.map(|i| i.trim().to_owned()).unwrap_or_default()
 }
 
 fn map(r: &Row<'_>) -> rusqlite::Result<Section> {
@@ -51,6 +96,137 @@ impl Db {
         Ok(rows)
     }
 
+    pub fn create_section(&mut self, input: NewSection) -> Result<Section> {
+        let name = clean_name(&input.name, "section name")?;
+        let item = clean_item_name(input.item_name.as_deref());
+        let id = Id::new();
+        self.transact(&format!("Create section “{name}”"), |tx| {
+            let (count, last): (i64, Option<String>) = tx.conn().query_row(
+                "SELECT count(*), max(sort_key) FROM section WHERE deleted_at IS NULL",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            let color = match &input.color {
+                Some(c) => clean_color(c)?,
+                None => palette_color(count + 2),
+            };
+            tx.insert(
+                Table::Section,
+                &[
+                    ("id", id.into()),
+                    ("name", text(name.clone())),
+                    ("item_name", text(item.clone())),
+                    ("color", text(color)),
+                    ("sort_key", text(key_between(last.as_deref(), None)?)),
+                    ("created_at", int(tx.now())),
+                ],
+            )
+        })?;
+        self.section(id)
+    }
+
+    pub fn update_section(&mut self, id: Id, patch: SectionPatch) -> Result<Section> {
+        let current = self.section(id)?;
+        let mut changes: Vec<(&str, Value)> = Vec::new();
+        if let Some(name) = &patch.name {
+            changes.push(("name", text(clean_name(name, "section name")?)));
+        }
+        if let Some(item) = &patch.item_name {
+            changes.push(("item_name", text(clean_item_name(Some(item)))));
+        }
+        if let Some(color) = &patch.color {
+            changes.push(("color", text(clean_color(color)?)));
+        }
+        self.transact(&format!("Edit section “{}”", current.name), |tx| {
+            tx.update(Table::Section, &[id.into()], &changes)
+        })?;
+        self.section(id)
+    }
+
+    /// Deletes a section, moving its groups and projects to another section
+    /// or deleting them with it. One undo step either way. The last section
+    /// can't be deleted: new projects need somewhere to go.
+    pub fn delete_section(&mut self, id: Id, how: SectionDelete) -> Result<()> {
+        let section = self.section(id)?;
+        if self.sections()?.len() <= 1 {
+            return Err(invalid("Keep at least one section"));
+        }
+        if let SectionDelete::MoveTo { section_id } = how {
+            if section_id == id {
+                return Err(invalid("choose a different section to move things to"));
+            }
+            self.section(section_id)?;
+        }
+        self.transact(&format!("Delete section “{}”", section.name), |tx| {
+            let clients = ids(
+                tx,
+                "SELECT id FROM client WHERE section_id = ?1 AND deleted_at IS NULL ORDER BY sort_key, id",
+                id,
+            )?;
+            let direct = ids(
+                tx,
+                "SELECT id FROM project WHERE section_id = ?1 AND client_id IS NULL
+                   AND deleted_at IS NULL ORDER BY sort_key, id",
+                id,
+            )?;
+            let grouped = ids(
+                tx,
+                "SELECT id FROM project WHERE section_id = ?1 AND client_id IS NOT NULL
+                   AND deleted_at IS NULL",
+                id,
+            )?;
+            match how {
+                SectionDelete::MoveTo { section_id: target } => {
+                    // Appended after the target's own groups / direct projects.
+                    let mut last: Option<String> = tx.conn().query_row(
+                        "SELECT max(sort_key) FROM client WHERE section_id = ?1 AND deleted_at IS NULL",
+                        [target],
+                        |r| r.get(0),
+                    )?;
+                    for c in clients {
+                        let key = key_between(last.as_deref(), None)?;
+                        tx.update(
+                            Table::Client,
+                            &[c.into()],
+                            &[("section_id", target.into()), ("sort_key", text(key.clone()))],
+                        )?;
+                        last = Some(key);
+                    }
+                    let mut last: Option<String> = tx.conn().query_row(
+                        "SELECT max(sort_key) FROM project
+                         WHERE section_id = ?1 AND client_id IS NULL AND deleted_at IS NULL",
+                        [target],
+                        |r| r.get(0),
+                    )?;
+                    for p in direct {
+                        let key = key_between(last.as_deref(), None)?;
+                        tx.update(
+                            Table::Project,
+                            &[p.into()],
+                            &[("section_id", target.into()), ("sort_key", text(key.clone()))],
+                        )?;
+                        last = Some(key);
+                    }
+                    for p in grouped {
+                        tx.update(Table::Project, &[p.into()], &[("section_id", target.into())])?;
+                    }
+                }
+                SectionDelete::Everything => {
+                    for p in direct.into_iter().chain(grouped) {
+                        delete_project_rows(tx, p)?;
+                    }
+                    let now = tx.now();
+                    for c in clients {
+                        tx.update(Table::Client, &[c.into()], &[("deleted_at", int(now))])?;
+                    }
+                }
+            }
+            let now = tx.now();
+            tx.update(Table::Section, &[id.into()], &[("deleted_at", int(now))])?;
+            Ok(())
+        })
+    }
+
     pub fn section(&self, id: Id) -> Result<Section> {
         self.conn()
             .query_row(
@@ -61,6 +237,14 @@ impl Db {
             .optional()?
             .ok_or(Error::NotFound("section"))
     }
+}
+
+fn ids(tx: &Tx<'_>, sql: &str, section: Id) -> Result<Vec<Id>> {
+    let mut stmt = tx.conn().prepare(sql)?;
+    let rows = stmt
+        .query_map([section], |r| r.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    Ok(rows)
 }
 
 /// Migration 7 hook: databases that already have clients or projects get a

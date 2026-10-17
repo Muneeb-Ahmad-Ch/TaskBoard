@@ -46,7 +46,7 @@ pub use planning::{
 pub use query::{TaskPage, TaskQuery, TaskRow, TaskSort};
 pub use reorder::Direction;
 pub use saved_views::{SavedView, SavedViewPatch};
-pub use sections::Section;
+pub use sections::{NewSection, Section, SectionDelete, SectionPatch};
 pub use statuses::{NewStatus, StatusPatch};
 pub use storage::{Db, DbInfo, HistoryState};
 pub use tasks::MoveTask;

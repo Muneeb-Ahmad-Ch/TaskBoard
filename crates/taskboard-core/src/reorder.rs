@@ -41,6 +41,20 @@ impl Db {
         })
     }
 
+    /// Moves a section one place up or down in the sidebar.
+    pub fn move_section(&mut self, id: Id, direction: Direction) -> Result<bool> {
+        let section = self.section(id)?;
+        let label = format!("Move section “{}” {}", section.name, word(direction));
+        self.transact(&label, |tx| {
+            let siblings = siblings(
+                tx,
+                "SELECT id, sort_key FROM section WHERE deleted_at IS NULL ORDER BY sort_key, id",
+                &[],
+            )?;
+            step(tx, Table::Section, siblings, id, direction)
+        })
+    }
+
     /// Moves a project one place up or down among its client's projects (or
     /// the Personal ones). The Inbox has a fixed place and cannot move.
     pub fn move_project(&mut self, id: Id, direction: Direction) -> Result<bool> {

@@ -88,6 +88,7 @@ impl Db {
                 tx,
                 &NewClient {
                     name: "Sample Co. (example)".into(),
+                    section_id: None,
                     color: Some("190".into()),
                     contact: Some("Alex Rivera · alex@example.com".into()),
                     notes_md: Some(

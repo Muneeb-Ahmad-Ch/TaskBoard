@@ -123,3 +123,164 @@ fn migration_without_data_creates_no_sections() {
     let db = Db::open(&path).unwrap();
     assert!(db.sections().unwrap().is_empty());
 }
+
+// ---------- Task 2: create / edit / reorder / delete ----------
+
+fn section(db: &mut Db, name: &str) -> Section {
+    db.create_section(NewSection {
+        name: name.into(),
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+fn names(db: &Db) -> Vec<String> {
+    db.sections().unwrap().into_iter().map(|s| s.name).collect()
+}
+
+#[test]
+fn create_rename_recolor_and_undo() {
+    let mut db = Db::open_in_memory().unwrap();
+    let teams = section(&mut db, "  Teams ");
+    assert_eq!(teams.name, "Teams");
+    assert_eq!(teams.item_name, "");
+    let edited = db
+        .update_section(
+            teams.id,
+            SectionPatch {
+                name: Some("Departments".into()),
+                item_name: Some("department".into()),
+                color: Some("150".into()),
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        (
+            edited.name.as_str(),
+            edited.item_name.as_str(),
+            edited.color.as_str()
+        ),
+        ("Departments", "department", "150")
+    );
+    db.undo().unwrap();
+    assert_eq!(db.section(teams.id).unwrap().name, "Teams");
+}
+
+#[test]
+fn blank_name_refused_duplicates_allowed() {
+    let mut db = Db::open_in_memory().unwrap();
+    assert!(
+        db.create_section(NewSection {
+            name: "   ".into(),
+            ..Default::default()
+        })
+        .is_err()
+    );
+    section(&mut db, "Teams");
+    section(&mut db, "Teams");
+    assert_eq!(names(&db), ["Teams", "Teams"]);
+}
+
+#[test]
+fn move_section_up_down_and_ends() {
+    let mut db = Db::open_in_memory().unwrap();
+    let a = section(&mut db, "A");
+    section(&mut db, "B");
+    let c = section(&mut db, "C");
+    assert!(db.move_section(c.id, Direction::Up).unwrap());
+    assert!(db.move_section(c.id, Direction::Up).unwrap());
+    assert_eq!(names(&db), ["C", "A", "B"]);
+    let before = db.history_state().unwrap();
+    assert!(!db.move_section(c.id, Direction::Up).unwrap());
+    assert_eq!(db.history_state().unwrap().undo, before.undo);
+    assert!(db.move_section(a.id, Direction::Down).unwrap());
+    assert_eq!(names(&db), ["C", "B", "A"]);
+}
+
+#[test]
+fn delete_empty_section_is_undoable() {
+    let mut db = Db::open_in_memory().unwrap();
+    section(&mut db, "Keep");
+    let gone = section(&mut db, "Gone");
+    db.delete_section(gone.id, SectionDelete::Everything)
+        .unwrap();
+    assert_eq!(names(&db), ["Keep"]);
+    db.undo().unwrap();
+    assert_eq!(names(&db), ["Keep", "Gone"]);
+}
+
+#[test]
+fn delete_moving_contents_is_one_undo_step() {
+    let mut db = Db::open_in_memory().unwrap();
+    let s = section(&mut db, "Old");
+    let t = section(&mut db, "New");
+    let g = db
+        .create_client(NewClient {
+            name: "G".into(),
+            section_id: Some(s.id),
+            ..Default::default()
+        })
+        .unwrap();
+    let p = project(&mut db, "P", Some(g.id));
+    let q = db
+        .create_project(NewProject {
+            name: "Q".into(),
+            section_id: Some(s.id),
+            ..Default::default()
+        })
+        .unwrap();
+    db.delete_section(s.id, SectionDelete::MoveTo { section_id: t.id })
+        .unwrap();
+    assert_eq!(names(&db), ["New"]);
+    assert_eq!(db.client(g.id).unwrap().section_id, Some(t.id));
+    assert_eq!(db.project(p.id).unwrap().section_id, Some(t.id));
+    assert_eq!(db.project(q.id).unwrap().section_id, Some(t.id));
+    db.undo().unwrap();
+    assert_eq!(names(&db), ["Old", "New"]);
+    assert_eq!(db.client(g.id).unwrap().section_id, Some(s.id));
+    assert_eq!(db.project(p.id).unwrap().section_id, Some(s.id));
+    assert_eq!(db.project(q.id).unwrap().section_id, Some(s.id));
+}
+
+#[test]
+fn delete_everything_soft_deletes_contents() {
+    let mut db = Db::open_in_memory().unwrap();
+    section(&mut db, "Keep");
+    let s = section(&mut db, "Gone");
+    let g = db
+        .create_client(NewClient {
+            name: "G".into(),
+            section_id: Some(s.id),
+            ..Default::default()
+        })
+        .unwrap();
+    let p = project(&mut db, "P", Some(g.id));
+    let t = db
+        .create_task(NewTask {
+            title: "t".into(),
+            project_id: Some(p.id),
+            ..Default::default()
+        })
+        .unwrap();
+    db.delete_section(s.id, SectionDelete::Everything).unwrap();
+    assert!(db.client(g.id).is_err());
+    assert!(db.project(p.id).is_err());
+    assert!(db.task(t.id).is_err(), "task deleted with its project");
+    db.undo().unwrap();
+    assert_eq!(db.client(g.id).unwrap().name, "G");
+    assert_eq!(db.project(p.id).unwrap().name, "P");
+    assert_eq!(db.task(t.id).unwrap().title, "t");
+}
+
+#[test]
+fn cannot_delete_last_section() {
+    let mut db = Db::open_in_memory().unwrap();
+    let only = section(&mut db, "Only");
+    let err = db
+        .delete_section(only.id, SectionDelete::Everything)
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("Keep at least one section"),
+        "{err}"
+    );
+}

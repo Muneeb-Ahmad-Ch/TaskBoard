@@ -103,6 +103,15 @@ pub(crate) fn insert_project(tx: &mut Tx<'_>, input: &NewProject) -> Result<Id> 
     if let Some(client) = input.client_id {
         require_client(tx, client)?;
     }
+    // A grouped project lives in its group's section.
+    let section_id: Option<Id> = match input.client_id {
+        Some(client) => tx.conn().query_row(
+            "SELECT section_id FROM client WHERE id = ?1",
+            [client],
+            |r| r.get(0),
+        )?,
+        None => input.section_id,
+    };
     let (count, last): (i64, Option<String>) = tx.conn().query_row(
         "SELECT count(*), max(sort_key) FROM project
          WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1",
@@ -118,6 +127,7 @@ pub(crate) fn insert_project(tx: &mut Tx<'_>, input: &NewProject) -> Result<Id> 
         &[
             ("id", id.into()),
             ("client_id", opt_id(input.client_id)),
+            ("section_id", opt_id(section_id)),
             ("name", text(name)),
             (
                 "code",
@@ -320,19 +330,25 @@ impl Db {
             return Err(invalid("the Inbox cannot be deleted"));
         }
         self.transact(&format!("Delete project “{}”", project.name), |tx| {
-            let now = tx.now();
-            let tasks: Vec<Id> = {
-                let mut stmt = tx
-                    .conn()
-                    .prepare("SELECT id FROM task WHERE project_id = ?1 AND deleted_at IS NULL")?;
-                stmt.query_map([id], |r| r.get(0))?
-                    .collect::<rusqlite::Result<_>>()?
-            };
-            for task in tasks {
-                tx.update(Table::Task, &[task.into()], &[("deleted_at", int(now))])?;
-            }
-            tx.update(Table::Project, &[id.into()], &[("deleted_at", int(now))])
+            delete_project_rows(tx, id)
         })?;
         Ok(())
     }
+}
+
+/// Soft-deletes a project and its tasks inside the caller's transaction.
+pub(crate) fn delete_project_rows(tx: &mut Tx<'_>, id: Id) -> Result<()> {
+    let now = tx.now();
+    let tasks: Vec<Id> = {
+        let mut stmt = tx
+            .conn()
+            .prepare("SELECT id FROM task WHERE project_id = ?1 AND deleted_at IS NULL")?;
+        stmt.query_map([id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    for task in tasks {
+        tx.update(Table::Task, &[task.into()], &[("deleted_at", int(now))])?;
+    }
+    tx.update(Table::Project, &[id.into()], &[("deleted_at", int(now))])?;
+    Ok(())
 }

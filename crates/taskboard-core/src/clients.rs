@@ -7,7 +7,7 @@ use crate::error::{Error, Result};
 use crate::id::Id;
 use crate::model::{
     Client, ClientPatch, NewClient, boolean, clean_color, clean_name, clean_time, clean_tz, int,
-    opt_text, palette_color, text,
+    opt_id, opt_text, palette_color, text,
 };
 use crate::order::key_between;
 use crate::storage::Db;
@@ -60,6 +60,7 @@ impl Db {
                     ("notes_md", text(input.notes_md.clone().unwrap_or_default())),
                     ("contact", text(input.contact.clone().unwrap_or_default())),
                     ("time_zone", opt_text(time_zone.clone())),
+                    ("section_id", opt_id(input.section_id)),
                     ("sort_key", text(key_between(last.as_deref(), None)?)),
                     ("created_at", int(tx.now())),
                 ],
