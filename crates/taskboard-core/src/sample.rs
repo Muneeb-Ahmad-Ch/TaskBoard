@@ -12,6 +12,7 @@ use crate::id::Id;
 use crate::model::{NewClient, NewProject, NewTask, Priority, clean_tz, int, text};
 use crate::order::key_between;
 use crate::projects::insert_project;
+use crate::sections::find_or_create_section;
 use crate::storage::Db;
 use crate::tasks::insert_task;
 use crate::tx::{Table, Tx};
@@ -23,6 +24,25 @@ struct SampleIds {
     client: Option<Id>,
     projects: Vec<Id>,
     events: Vec<Id>,
+    /// Sections the sample created (removed again if they end up empty).
+    #[serde(default)]
+    sections: Vec<Id>,
+}
+
+/// A section with this name, recorded in `created` when the sample made it
+/// (removing the sample takes it away again if it's empty by then).
+fn sample_section(
+    tx: &mut Tx<'_>,
+    name: &str,
+    item: &str,
+    color: &str,
+    created: &mut Vec<Id>,
+) -> Result<Id> {
+    let (id, new) = find_or_create_section(tx, name, item, color)?;
+    if new {
+        created.push(id);
+    }
+    Ok(id)
 }
 
 fn ms(day: Date, h: i8, m: i8) -> Option<i64> {
@@ -35,14 +55,18 @@ fn ms(day: Date, h: i8, m: i8) -> Option<i64> {
 fn insert_client(tx: &mut Tx<'_>, input: &NewClient) -> Result<Id> {
     let id = Id::new();
     let last: Option<String> = tx.conn().query_row(
-        "SELECT max(sort_key) FROM client WHERE deleted_at IS NULL",
-        [],
+        "SELECT max(sort_key) FROM client WHERE deleted_at IS NULL AND section_id IS ?1",
+        [input.section_id.map_or(Value::Null, Value::from)],
         |r| r.get(0),
     )?;
     tx.insert(
         Table::Client,
         &[
             ("id", id.into()),
+            (
+                "section_id",
+                input.section_id.map_or(Value::Null, Value::from),
+            ),
             ("name", text(input.name.clone())),
             (
                 "color",
@@ -84,10 +108,14 @@ impl Db {
         let tomorrow = today.tomorrow().unwrap_or(today);
         let mut ids = SampleIds::default();
         self.transact("Add sample workspace", |tx| {
+            let clients_section =
+                sample_section(tx, "Clients", "client", "230", &mut ids.sections)?;
+            let personal_section = sample_section(tx, "Personal", "", "45", &mut ids.sections)?;
             let client = insert_client(
                 tx,
                 &NewClient {
                     name: "Sample Co. (example)".into(),
+                    section_id: Some(clients_section),
                     color: Some("190".into()),
                     contact: Some("Alex Rivera · alex@example.com".into()),
                     notes_md: Some(
@@ -119,6 +147,7 @@ impl Db {
                 tx,
                 &NewProject {
                     name: "Learning (sample)".into(),
+                    section_id: Some(personal_section),
                     color: Some("45".into()),
                     ..Default::default()
                 },
@@ -297,6 +326,17 @@ impl Db {
                 )?;
                 if others == 0 {
                     tx.update(Table::Client, &[c.into()], &[("deleted_at", int(now))])?;
+                }
+            }
+            for s in &ids.sections {
+                let used: bool = tx.conn().query_row(
+                    "SELECT EXISTS(SELECT 1 FROM client WHERE section_id = ?1 AND deleted_at IS NULL)
+                         OR EXISTS(SELECT 1 FROM project WHERE section_id = ?1 AND deleted_at IS NULL)",
+                    [s],
+                    |r| r.get(0),
+                )?;
+                if !used {
+                    tx.update(Table::Section, &[(*s).into()], &[("deleted_at", int(now))])?;
                 }
             }
             tx.delete(Table::Setting, &[text(SAMPLE_KEY)])

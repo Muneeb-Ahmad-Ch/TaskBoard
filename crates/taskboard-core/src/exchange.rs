@@ -21,12 +21,14 @@ use crate::model::{Category, NewProject, NewTask, Priority, text};
 use crate::projects::insert_project;
 use crate::query::{TaskQuery, TaskSort};
 use crate::rrule::Rule;
+use crate::sections::assign_unsectioned;
 use crate::storage::{Db, SCHEMA_VERSION};
 use crate::tasks::insert_task;
 use crate::tx::{Table, Tx};
 
 /// Export order respects foreign keys (parents first).
-const TABLES: [&str; 16] = [
+const TABLES: [&str; 17] = [
+    "section",
     "client",
     "project",
     "status",
@@ -441,6 +443,9 @@ impl Db {
                     tx.insert(table, &values)?;
                     report.created += 1;
                 }
+            }
+            if !tables.contains_key("section") {
+                assign_unsectioned(tx)?;
             }
             Ok(())
         })?;

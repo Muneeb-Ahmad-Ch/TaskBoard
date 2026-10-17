@@ -80,11 +80,11 @@
       </section>
 
       <section class="panel">
-        <h3 class="title">Clients</h3>
+        <h3 class="title">Groups</h3>
         <table class="w-full text-[13px]">
           <thead>
             <tr class="text-left text-xs text-muted">
-              <th class="pb-1 font-medium">Client</th>
+              <th class="pb-1 font-medium">Group</th>
               <th class="pb-1 text-right font-medium">Open</th>
               <th class="pb-1 text-right font-medium">Overdue</th>
               <th class="pb-1 text-right font-medium">Done (wk)</th>
@@ -92,16 +92,16 @@
             </tr>
           </thead>
           <tbody>
-            {#each d.clients as c (c.client_id ?? 'personal')}
-              <tr class="row" onclick={() => c.client_id ? setScope({ kind: 'client', id: c.client_id }) : setScope({ kind: 'personal' })}>
-                <td class="py-1"><span class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background: {swatch(c.color)}"></span>{c.name}</span></td>
+            {#each d.clients as c (c.client_id ?? `s:${c.section_id ?? ''}`)}
+              <tr class="row" onclick={() => (c.client_id ? setScope({ kind: 'client', id: c.client_id }) : c.section_id ? setScope({ kind: 'section', id: c.section_id }) : setScope({ kind: 'all' }))}>
+                <td class="py-1" title={c.section_name && c.client_id ? `${c.section_name} › ${c.name}` : c.name}><span class="flex items-center gap-1.5"><span class="size-2 rounded-full" style="background: {swatch(c.color)}"></span>{c.name}</span></td>
                 <td class="tabular text-right">{c.open}</td>
                 <td class="tabular text-right {c.overdue ? 'font-medium text-danger' : 'text-subtle'}">{c.overdue}</td>
                 <td class="tabular text-right">{c.done_this_week}</td>
                 <td class="tabular text-right text-muted">{minutes(c.logged_min_this_week) || '—'}</td>
               </tr>
             {:else}
-              <tr><td colspan="5" class="py-2 text-subtle">Add a client to see a summary here.</td></tr>
+              <tr><td colspan="5" class="py-2 text-subtle">Add a group or a project to see a summary here.</td></tr>
             {/each}
           </tbody>
         </table>

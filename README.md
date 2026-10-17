@@ -5,7 +5,7 @@
 <h1 align="center">Taskboard</h1>
 
 <p align="center">
-  <strong>A fast, local-first planner for people who juggle several clients and projects.</strong><br>
+  <strong>A fast, local-first planner for people who juggle many projects, organized your way.</strong><br>
   Tasks, a Kanban board and a calendar with meetings, working hours and a meeting-slot finder.
 </p>
 
@@ -38,14 +38,16 @@ needs permission (see [License](#license)).
 
 ## Features
 
-- **Clients → projects → tasks → subtasks.** Sidebar grouped by client,
-  per-client and per-project progress, archive and move projects between
-  clients.
+- **Your own sections → groups → projects → tasks → subtasks.** Name the
+  sidebar sections anything (Clients, Teams, Departments, Family…) and say
+  what one group in each is called. First run offers ready-made setups
+  (Freelancer, Company, Personal life) or a blank start. Click a section to
+  see all its work with progress; move groups and projects between sections.
 - **Three views of the same data.**
   - *Table*: virtualized (50,000 tasks scroll smoothly), inline editing,
     sorting, resizable columns, multi-select bulk edits.
   - *Board*: drag and drop (mouse or keyboard), custom columns per project,
-    WIP limits, swimlanes by client / project / priority.
+    WIP limits, swimlanes by group / project / priority.
   - *Calendar*: month, week, day and agenda; drag to create, move and resize;
     working hours shading and daily capacity.
 - **Quick add** from anywhere (Ctrl+Shift+Space):
@@ -53,16 +55,16 @@ needs permission (see [License](#license)).
 - **Meetings** with links, attendees, notes, reminders with a Join button,
   repeating series (edit one, this-and-following, or all), and optional
   "counts as work time". A Meetings page lists what's coming up (or past),
-  by day and client, with Join buttons.
-- **Find a slot**: free time inside your working hours *and* the client's
-  hours in their time zone, with buffers, meeting caps and "copy
+  by day and group, with Join buttons.
+- **Find a slot**: free time inside your working hours *and* the other
+  side's hours in their time zone (set per group), with buffers, meeting caps and "copy
   availability" text.
 - **Saved views**: keep any combination of scope, filter, sort and view in
   the sidebar and command palette.
-- **Markdown notes** on tasks, meetings and clients (rendered safely, links
+- **Markdown notes** on tasks, meetings and groups (rendered safely, links
   open in your browser).
-- **Time and progress**: task timer, logged hours per client, task progress
-  from subtasks (color-coded, ✓ when done), and for each client or project:
+- **Time and progress**: task timer, logged hours per group, task progress
+  from subtasks (color-coded, ✓ when done), and for each section, group or project:
   time left, meetings this week and overdue tasks. Dashboard with streaks and
   project burndown.
 - **Repeating tasks**: fixed schedules (every Friday) or after completion
@@ -75,8 +77,8 @@ needs permission (see [License](#license)).
   axe-core against WCAG 2.2 AA. Works down to small windows (the sidebar
   becomes a drawer).
 - **Make it yours** (Settings → Layout): show, hide and reorder sidebar items,
-  sections, view tabs and table columns; resize columns; order clients and
-  projects.
+  sections, view tabs and table columns; resize columns; order sections,
+  groups and projects.
 
 ## Install
 

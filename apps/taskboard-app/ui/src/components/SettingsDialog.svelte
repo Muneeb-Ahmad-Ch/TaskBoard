@@ -250,7 +250,7 @@
             <kbd class="kbd">Ctrl + Shift + Space</kbd>
           </div>
           <div class="set-row">
-            {@render row('Search and commands', 'Jump to any client, project or task, or run any action.')}
+            {@render row('Search and commands', 'Jump to any section, group, project or task, or run any action.')}
             <kbd class="kbd">Ctrl + K</kbd>
           </div>
           <div class="set-row">
@@ -372,7 +372,7 @@
         </section>
         <section class="card">
           <div class="set-row">
-            {@render row('Sample workspace', 'A small example client with projects, tasks and meetings to explore.')}
+            {@render row('Sample workspace', 'A small example client in a Clients section, with projects, tasks and meetings to explore.')}
             <button class="btn !h-7 text-xs" onclick={() => void toggleSample()}>{hasSample ? 'Remove' : 'Add'}</button>
           </div>
         </section>

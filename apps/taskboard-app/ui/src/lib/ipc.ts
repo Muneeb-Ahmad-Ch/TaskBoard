@@ -38,7 +38,12 @@ import type { Project } from './bindings/Project'
 import type { ProjectPatch } from './bindings/ProjectPatch'
 import type { ProjectSummary } from './bindings/ProjectSummary'
 import type { QuickAddPreview } from './bindings/QuickAddPreview'
+import type { NewSection } from './bindings/NewSection'
 import type { SavedView } from './bindings/SavedView'
+import type { Section } from './bindings/Section'
+import type { SectionDelete } from './bindings/SectionDelete'
+import type { SectionPatch } from './bindings/SectionPatch'
+import type { Setup } from './bindings/Setup'
 import type { SavedViewPatch } from './bindings/SavedViewPatch'
 import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
@@ -85,6 +90,12 @@ export const ipc = {
     invoke<Client>('set_client_archived', { id, archived }),
   deleteClient: (id: Id) => invoke<void>('delete_client', { id }),
   moveClient: (id: Id, direction: Direction) => invoke<boolean>('move_client', { id, direction }),
+  listSections: () => invoke<Section[]>('list_sections'),
+  createSection: (input: NewSection) => invoke<Section>('create_section', { input }),
+  updateSection: (id: Id, patch: SectionPatch) => invoke<Section>('update_section', { id, patch }),
+  moveSection: (id: Id, direction: Direction) => invoke<boolean>('move_section', { id, direction }),
+  deleteSection: (id: Id, how: SectionDelete) => invoke<void>('delete_section', { id, how }),
+  applySetup: (setup: Setup) => invoke<Section[]>('apply_setup', { setup }),
   moveProject: (id: Id, direction: Direction) => invoke<boolean>('move_project', { id, direction }),
   renderMarkdown: (source: string) => invoke<string>('render_markdown', { source }),
   savedViews: () => invoke<SavedView[]>('saved_views'),

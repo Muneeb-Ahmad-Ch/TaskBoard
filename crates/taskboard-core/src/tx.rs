@@ -16,6 +16,7 @@ use crate::id::Id;
 /// Every table the log knows how to replay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Table {
+    Section,
     Client,
     Project,
     Status,
@@ -34,7 +35,8 @@ pub enum Table {
     Setting,
 }
 
-const ALL_TABLES: [Table; 16] = [
+const ALL_TABLES: [Table; 17] = [
+    Table::Section,
     Table::Client,
     Table::Project,
     Table::Status,
@@ -59,6 +61,7 @@ const SYNC_COLS: [&str; 3] = ["updated_at", "hlc", "device_id"];
 impl Table {
     pub fn name(self) -> &'static str {
         match self {
+            Self::Section => "section",
             Self::Client => "client",
             Self::Project => "project",
             Self::Status => "status",
@@ -96,7 +99,13 @@ impl Table {
     fn syncable(self) -> bool {
         matches!(
             self,
-            Self::Client | Self::Project | Self::Status | Self::Task | Self::Tag | Self::Event
+            Self::Section
+                | Self::Client
+                | Self::Project
+                | Self::Status
+                | Self::Task
+                | Self::Tag
+                | Self::Event
         )
     }
 }

@@ -9,7 +9,28 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Your own sidebar sections.** Organize work under sections you name —
+  Clients, Teams, Departments, Family, anything — each holding groups and
+  projects. Choose what one group is called ("client", "team", "person"),
+  pick a color, reorder sections, and move groups and projects between them.
+- **First-run setups:** Freelancer (Clients, Personal), Company (Departments,
+  Clients, Internal), Personal life (Home, Family, Health, Personal), or
+  start empty.
+- Click a section's name to see **all its work**, with progress, time left,
+  meetings and overdue tasks in the header.
+- Deleting a section asks whether to move its contents to another section or
+  delete everything; either way one Undo brings it back.
+- Command palette: jump to sections, and **New section…**.
+- CLI: `taskboard section add` / `section ls`, and `client add --section`.
+
+### Changed
+- "Client" is now **group** across the app (table column "Group / Project",
+  board swimlanes by group, dashboard "Groups", meetings filter); dialogs use
+  each section's own item name.
+- Existing databases upgrade with no visible change: clients go to a
+  **Clients** section and projects without a client to **Personal**.
+  Older JSON exports still import the same way.
 
 ## [0.2.0] - 2026-10-17
 

@@ -6,18 +6,19 @@ import type { HistoryState } from './bindings/HistoryState'
 import type { Id } from './bindings/Id'
 import type { ProjectSummary } from './bindings/ProjectSummary'
 import type { SavedView } from './bindings/SavedView'
+import type { Section } from './bindings/Section'
 import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
 import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
 import { isoDate, todayIso } from './format'
 import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
-import { visibleTabs } from './layout.svelte'
+import { adoptLegacySectionPrefs, visibleTabs } from './layout.svelte'
 import { toast } from './toast.svelte'
 
 export type Scope =
-  | { kind: 'inbox' | 'today' | 'upcoming' | 'all' | 'personal' }
-  | { kind: 'client' | 'project'; id: Id }
+  | { kind: 'inbox' | 'today' | 'upcoming' | 'all' }
+  | { kind: 'section' | 'client' | 'project'; id: Id }
 
 export type View = 'table' | 'board' | 'calendar' | 'dashboard' | 'meetings'
 
@@ -56,6 +57,9 @@ export const app = $state({
   integrityError: null as string | null,
   clientDialog: null as Id | null,
   projectDialog: null as Id | null,
+  /** Section dialog: create (null id) or edit; and the section being deleted. */
+  sectionDialog: null as { id: Id | null } | null,
+  deleteSection: null as Id | null,
   /** Bumped to ask the Quick Add box to focus itself. */
   quickAddFocus: 0,
   /** Settings section to scroll to when Settings opens (e.g. 'layout'). */
@@ -63,6 +67,8 @@ export const app = $state({
   /** Navigation drawer, used instead of the sidebar on narrow windows. */
   sidebarOpen: false,
   views: [] as SavedView[],
+  /** Sidebar sections in order (data; visibility is a layout preference). */
+  sections: [] as Section[],
   /** The saved view last opened; cleared when the scope changes. */
   activeViewId: null as Id | null,
 })
@@ -101,7 +107,9 @@ function parseSpec(json: string): Partial<ViewSpec> {
 
 export function applySavedView(v: SavedView) {
   const spec = parseSpec(v.spec_json)
-  setScope(spec.scope ?? { kind: 'all' })
+  // Views saved before sections existed may point at the old "personal" list.
+  const known = ['inbox', 'today', 'upcoming', 'all', 'section', 'client', 'project']
+  setScope(spec.scope && known.includes(spec.scope.kind) ? spec.scope : { kind: 'all' })
   app.view = spec.view ?? 'table'
   app.search = spec.search ?? ''
   app.showDone = spec.showDone ?? false
@@ -145,6 +153,25 @@ export function projectsOf(clientId: Id | null): ProjectSummary[] {
   return app.projects.filter((p) => !p.is_inbox && p.client_id === clientId)
 }
 
+/** What one group in a section is called: its item name, or "group". */
+export function itemName(section: Section | undefined): string {
+  return section?.item_name.trim() || 'group'
+}
+
+export function sectionById(id: Id | null | undefined): Section | undefined {
+  return id ? app.sections.find((s) => s.id === id) : undefined
+}
+
+/** Groups (clients) in a section, in order. */
+export function groupsIn(sectionId: Id) {
+  return app.clients.filter((c) => c.section_id === sectionId)
+}
+
+/** Projects that sit directly in a section (no group). */
+export function looseProjectsIn(sectionId: Id): ProjectSummary[] {
+  return app.projects.filter((p) => !p.is_inbox && !p.client_id && p.section_id === sectionId)
+}
+
 export function scopeTitle(scope: Scope = app.scope): string {
   switch (scope.kind) {
     case 'inbox':
@@ -155,8 +182,8 @@ export function scopeTitle(scope: Scope = app.scope): string {
       return 'Upcoming'
     case 'all':
       return 'All work'
-    case 'personal':
-      return 'Personal'
+    case 'section':
+      return sectionById(scope.id)?.name ?? 'Section'
     case 'client':
       return app.clients.find((c) => c.id === scope.id)?.name ?? 'Client'
     case 'project':
@@ -203,8 +230,8 @@ export function scopeQuery(): TaskQuery {
       q.categories = OPEN
       break
     }
-    case 'personal':
-      q.personal = true
+    case 'section':
+      q.section_id = app.scope.id
       break
     case 'client':
       q.client_id = app.scope.id
@@ -225,8 +252,8 @@ export function scopeProjectIds(): Id[] {
       return [s.id]
     case 'client':
       return live.filter((p) => p.client_id === s.id).map((p) => p.id)
-    case 'personal':
-      return live.filter((p) => !p.client_id && !p.is_inbox).map((p) => p.id)
+    case 'section':
+      return live.filter((p) => !p.is_inbox && p.section_id === s.id).map((p) => p.id)
     case 'inbox':
       return live.filter((p) => p.is_inbox).map((p) => p.id)
     default:
@@ -245,14 +272,17 @@ export function setScope(scope: Scope) {
 export async function refreshMeta() {
   if (!inTauri) return
   try {
-    const [clients, projects, counts, history, statuses, views] = await Promise.all([
+    const [clients, projects, counts, history, statuses, views, sections] = await Promise.all([
       ipc.listClients(),
       ipc.listProjects(),
       ipc.sidebarCounts(),
       ipc.historyState(),
       ipc.allStatuses(),
       ipc.savedViews(),
+      ipc.listSections(),
     ])
+    app.sections = sections
+    adoptLegacySectionPrefs(sections)
     app.views = views
     if (app.activeViewId && !views.some((v) => v.id === app.activeViewId)) app.activeViewId = null
     app.clients = clients
@@ -264,6 +294,7 @@ export async function refreshMeta() {
     const s = app.scope
     if (s.kind === 'client' && !clients.some((c) => c.id === s.id)) setScope({ kind: 'all' })
     if (s.kind === 'project' && !projects.some((p) => p.id === s.id)) setScope({ kind: 'all' })
+    if (s.kind === 'section' && !sections.some((x) => x.id === s.id)) setScope({ kind: 'all' })
   } catch (err) {
     toast(errorMessage(err), { kind: 'error' })
   }

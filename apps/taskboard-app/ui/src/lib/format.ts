@@ -85,3 +85,17 @@ export const PALETTE = ['gray', '230', '262', '300', '330', '10', '45', '70', '1
 export function plural(n: number, word: string): string {
   return `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`
 }
+
+/** "group" → "Group". */
+export function cap(word: string): string {
+  return word.charAt(0).toUpperCase() + word.slice(1)
+}
+
+/** Best-guess singular of a section name, for its item name ("Teams" → "team"). */
+export function singular(name: string): string {
+  const w = name.trim().toLowerCase()
+  if (/ies$/.test(w)) return w.slice(0, -3) + 'y'
+  if (/(s|x|z|ch|sh)es$/.test(w)) return w.slice(0, -2)
+  if (/[^s]s$/.test(w)) return w.slice(0, -1)
+  return w
+}

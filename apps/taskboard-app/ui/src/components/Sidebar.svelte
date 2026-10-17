@@ -2,13 +2,14 @@
   import { untrack } from 'svelte'
   import { Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Plus, Search, Settings, Star, CalendarDays, User, Video } from '@lucide/svelte'
   import type { Client } from '../lib/bindings/Client'
+  import type { Section } from '../lib/bindings/Section'
   import type { Direction } from '../lib/bindings/Direction'
   import type { Id } from '../lib/bindings/Id'
   import type { ProjectSummary } from '../lib/bindings/ProjectSummary'
   import type { SavedView } from '../lib/bindings/SavedView'
-  import { swatch } from '../lib/format'
+  import { cap, swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
-  import { act, activeViewChanged, app, applySavedView, isPage, projectsOf, saveCurrentView, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
+  import { act, activeViewChanged, app, applySavedView, groupsIn, isPage, itemName, looseProjectsIn, projectsOf, saveCurrentView, sectionById, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
   import { layout, NAV_LABELS, type NavId } from '../lib/layout.svelte'
   import { startOfDay, addDays } from '../lib/cal.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
@@ -38,15 +39,19 @@
   $effect(() => {
     const s = app.scope
     if (s.kind !== 'project') return
-    const clientId = app.projects.find((p) => p.id === s.id)?.client_id
-    // untrack: collapsing the client by hand must not re-run this and undo it.
-    if (clientId) untrack(() => setCollapsed(clientId, false))
+    const project = app.projects.find((p) => p.id === s.id)
+    // untrack: collapsing by hand must not re-run this and undo it.
+    untrack(() => {
+      if (project?.client_id) setCollapsed(project.client_id, false)
+      if (project?.section_id) setCollapsed(project.section_id, false)
+    })
   })
 
   /** Inline editor: adding a client/project, or renaming one. */
   type Editing =
-    | { kind: 'new-client' }
-    | { kind: 'new-project'; clientId: Id | null }
+    | { kind: 'new-client'; sectionId: Id }
+    | { kind: 'new-project'; clientId: Id | null; sectionId: Id }
+    | { kind: 'rename-section'; id: Id; value: string }
     | { kind: 'rename-client'; id: Id; value: string }
     | { kind: 'rename-project'; id: Id; value: string }
     | { kind: 'new-view' }
@@ -54,7 +59,8 @@
   let editing = $state<Editing | null>(null)
   let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
 
-  const personal = $derived(projectsOf(null))
+  /** Sections shown in the sidebar (hidden ones live in Settings → Layout). */
+  const visibleSections = $derived(app.sections.filter((s) => !layout.hiddenSections.includes(s.id)))
 
   function isActive(scope: Scope): boolean {
     if (isPage(app.view) || app.activeViewId) return false
@@ -69,11 +75,13 @@
     editing = null
     if (!e || !name) return
     if (e.kind === 'new-client') {
-      const c = await act(() => ipc.createClient({ name }))
+      const c = await act(() => ipc.createClient({ name, section_id: e.sectionId }))
       if (c) setScope({ kind: 'client', id: c.id })
     } else if (e.kind === 'new-project') {
-      const p = await act(() => ipc.createProject({ name, client_id: e.clientId ?? undefined }))
+      const p = await act(() => ipc.createProject({ name, client_id: e.clientId ?? undefined, section_id: e.sectionId }))
       if (p) setScope({ kind: 'project', id: p.id })
+    } else if (e.kind === 'rename-section' && name !== e.value) {
+      await act(() => ipc.updateSection(e.id, { name }))
     } else if (e.kind === 'rename-client' && name !== e.value) {
       await act(() => ipc.updateClient(e.id, { name }))
     } else if (e.kind === 'rename-project' && name !== e.value) {
@@ -85,10 +93,42 @@
     }
   }
 
-  /** Opens the new-project editor under a client, expanding it so it is visible. */
-  function startProject(clientId: Id) {
-    setCollapsed(clientId, false)
-    editing = { kind: 'new-project', clientId }
+  /** Opens the new-project editor under a group, expanding it so it is visible. */
+  function startProject(c: Client) {
+    setCollapsed(c.id, false)
+    if (c.section_id) setCollapsed(c.section_id, false)
+    editing = { kind: 'new-project', clientId: c.id, sectionId: c.section_id ?? '' }
+  }
+
+  /** "+" on a section: add a group or a project directly in it. */
+  function addMenu(e: MouseEvent, sec: Section) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    setCollapsed(sec.id, false)
+    menu = {
+      x: r.left,
+      y: r.bottom + 4,
+      items: [
+        { label: `${cap(itemName(sec))}…`, run: () => (editing = { kind: 'new-client', sectionId: sec.id }) },
+        { label: 'Project…', run: () => (editing = { kind: 'new-project', clientId: null, sectionId: sec.id }) },
+      ],
+    }
+  }
+
+  function sectionMenu(e: MouseEvent, sec: Section) {
+    e.preventDefault()
+    menu = {
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: 'Edit section…', hint: 'name, color', run: () => (app.sectionDialog = { id: sec.id }) },
+        { label: 'Rename', run: () => (editing = { kind: 'rename-section', id: sec.id, value: sec.name }) },
+        'separator',
+        ...orderItems(app.sections, sec.id, (dir) => ipc.moveSection(sec.id, dir)),
+        'separator',
+        { label: 'Customize sidebar…', run: customize },
+        { label: 'Delete section…', danger: true, run: () => (app.deleteSection = sec.id) },
+      ],
+    }
   }
 
   function editorKeys(e: KeyboardEvent) {
@@ -98,35 +138,52 @@
 
   function clientMenu(e: MouseEvent, c: Client) {
     e.preventDefault()
+    const sec = sectionById(c.section_id)
+    const item = itemName(sec)
+    const moveTo: MenuEntry[] = app.sections
+      .filter((s) => s.id !== c.section_id)
+      .map((s) => ({
+        label: `Move to ${s.name}`,
+        color: s.color,
+        run: () => void act(() => ipc.updateClient(c.id, { section_id: s.id }), `Moved “${c.name}” to ${s.name}`),
+      }))
     menu = {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: 'New project', run: () => startProject(c.id) },
-        { label: 'Settings…', hint: 'time zone, hours', run: () => (app.clientDialog = c.id) },
+        { label: 'New project', run: () => startProject(c) },
+        { label: 'Details…', hint: 'time zone, hours', run: () => (app.clientDialog = c.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-client', id: c.id, value: c.name }) },
         'separator',
-        ...orderItems(app.clients, c.id, (dir) => ipc.moveClient(c.id, dir)),
+        ...orderItems(c.section_id ? groupsIn(c.section_id) : app.clients, c.id, (dir) => ipc.moveClient(c.id, dir)),
+        ...(moveTo.length ? (['separator', ...moveTo] as MenuEntry[]) : []),
         'separator',
-        { label: 'Archive client', run: () => void act(() => ipc.setClientArchived(c.id, true), `Archived “${c.name}”`) },
-        { label: 'Delete client', danger: true, run: () => void act(() => ipc.deleteClient(c.id), `Deleted “${c.name}”`) },
+        { label: `Archive ${item}`, run: () => void act(() => ipc.setClientArchived(c.id, true), `Archived “${c.name}”`) },
+        { label: `Delete ${item}`, danger: true, run: () => void act(() => ipc.deleteClient(c.id), `Deleted “${c.name}”`) },
       ],
     }
   }
 
   function projectMenu(e: MouseEvent, p: ProjectSummary) {
     e.preventDefault()
+    const sectionName = (id: Id | null) => sectionById(id)?.name ?? ''
     const moveTargets: MenuEntry[] = [
       ...app.clients
         .filter((c) => c.id !== p.client_id)
         .map((c) => ({
-          label: `Move to ${c.name}`,
+          label: `Move to ${sectionName(c.section_id)} › ${c.name}`,
           color: c.color,
           run: () => void act(() => ipc.updateProject(p.id, { client_id: c.id }), `Moved “${p.name}” to ${c.name}`),
         })),
       ...(p.client_id
-        ? [{ label: 'Move to Personal', run: () => void act(() => ipc.updateProject(p.id, { client_id: null }), `Moved “${p.name}” to Personal`) }]
-        : []),
+        ? [{ label: `Take out of ${p.client_name ?? 'its group'}`, run: () => void act(() => ipc.updateProject(p.id, { client_id: null }), `“${p.name}” is no longer in a group`) }]
+        : app.sections
+            .filter((s) => s.id !== p.section_id)
+            .map((s) => ({
+              label: `Move to ${s.name}`,
+              color: s.color,
+              run: () => void act(() => ipc.updateProject(p.id, { section_id: s.id }), `Moved “${p.name}” to ${s.name}`),
+            }))),
     ]
     menu = {
       x: e.clientX,
@@ -135,7 +192,7 @@
         { label: 'Settings…', run: () => (app.projectDialog = p.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-project', id: p.id, value: p.name }) },
         'separator',
-        ...orderItems(projectsOf(p.client_id), p.id, (dir) => ipc.moveProject(p.id, dir)),
+        ...orderItems(p.client_id ? projectsOf(p.client_id) : p.section_id ? looseProjectsIn(p.section_id) : [], p.id, (dir) => ipc.moveProject(p.id, dir)),
         ...(moveTargets.length ? (['separator', ...moveTargets] as MenuEntry[]) : []),
         'separator',
         { label: 'Archive project', run: () => void act(() => ipc.setProjectArchived(p.id, true), `Archived “${p.name}”`) },
@@ -295,71 +352,91 @@
   </nav>
 
   <div class="-mx-1 mt-4 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1 pb-2">
-    {#if layout.sections.clients}
-    <div class="section" role="presentation" oncontextmenu={customizeMenu}>
-      <span>Clients</span>
-      <button class="icon-btn" aria-label="Add client" title="Add client" onclick={() => (editing = { kind: 'new-client' })}><Plus size={14} /></button>
-    </div>
-    {#if editing?.kind === 'new-client'}{@render editor('Client name')}{/if}
-    {#if !app.clients.length && editing?.kind !== 'new-client'}
-      <p class="px-2 py-1 text-xs text-subtle">Add a client to group its projects.</p>
-    {/if}
-
-    {#each app.clients as client (client.id)}
-      {#if editing?.kind === 'rename-client' && editing.id === client.id}
-        {@render editor('Client name', editing.value)}
+    {#each visibleSections as sec, si (sec.id)}
+      {@const item = itemName(sec)}
+      {@const groups = groupsIn(sec.id)}
+      {@const loose = looseProjectsIn(sec.id)}
+      {#if editing?.kind === 'rename-section' && editing.id === sec.id}
+        {@render editor('Section name', editing.value)}
       {:else}
-        <div class="group relative">
+        <div class="section-head group relative" class:mt-4={si > 0}>
           <button
             class="absolute top-[3px] left-0 z-[1] grid size-6 place-items-center rounded text-subtle hover:bg-hover hover:text-text"
-            aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
-            aria-expanded={!collapsed[client.id]}
-            onclick={() => toggle(client.id)}
+            aria-label="{collapsed[sec.id] ? 'Expand' : 'Collapse'} {sec.name}"
+            aria-expanded={!collapsed[sec.id]}
+            onclick={() => toggle(sec.id)}
           >
-            <ChevronRight size={13} class="transition-transform {collapsed[client.id] ? '' : 'rotate-90'}" />
+            <ChevronRight size={12} class="transition-transform {collapsed[sec.id] ? '' : 'rotate-90'}" />
           </button>
           <button
-            class="nav-item client-row w-full"
-            class:active={isActive({ kind: 'client', id: client.id })}
-            onclick={() => setScope({ kind: 'client', id: client.id })}
-            oncontextmenu={(e) => clientMenu(e, client)}
-            onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveClient(client.id, dir))}
-            ondblclick={() => (editing = { kind: 'rename-client', id: client.id, value: client.name })}
+            class="section-name"
+            class:active={isActive({ kind: 'section', id: sec.id })}
+            title="Show all work in {sec.name}"
+            onclick={() => setScope({ kind: 'section', id: sec.id })}
+            oncontextmenu={(e) => sectionMenu(e, sec)}
+            onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveSection(sec.id, dir))}
+            ondblclick={() => (editing = { kind: 'rename-section', id: sec.id, value: sec.name })}
           >
-
-            <span class="grid size-[16px] shrink-0 place-items-center rounded text-[9.5px] font-bold text-white" style="background: {swatch(client.color, 0.6)}">
-              {client.name.charAt(0).toUpperCase()}
-            </span>
-            <span class="flex-1 truncate text-left font-medium">{client.name}</span>
+            <span class="size-1.5 shrink-0 rounded-full" style="background: {swatch(sec.color)}"></span>
+            <span class="truncate">{sec.name}</span>
           </button>
-          <button
-            class="icon-btn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
-            aria-label="Client actions"
-            onclick={(e) => clientMenu(e, client)}
-          ><MoreHorizontal size={14} /></button>
+          <button class="icon-btn" aria-label="Add to {sec.name}" title="Add a {item} or a project" aria-haspopup="menu" onclick={(e) => addMenu(e, sec)}><Plus size={14} /></button>
         </div>
       {/if}
-      {#if !collapsed[client.id]}
-        {#each projectsOf(client.id) as p (p.id)}
-          {@render projectRow(p, true)}
+      {#if !collapsed[sec.id]}
+        {#if editing?.kind === 'new-client' && editing.sectionId === sec.id}{@render editor(`${cap(item)} name`)}{/if}
+        {#each groups as client (client.id)}
+          {#if editing?.kind === 'rename-client' && editing.id === client.id}
+            {@render editor(`${cap(item)} name`, editing.value)}
+          {:else}
+            <div class="group relative">
+              <button
+                class="absolute top-[3px] left-0 z-[1] grid size-6 place-items-center rounded text-subtle hover:bg-hover hover:text-text"
+                aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
+                aria-expanded={!collapsed[client.id]}
+                onclick={() => toggle(client.id)}
+              >
+                <ChevronRight size={13} class="transition-transform {collapsed[client.id] ? '' : 'rotate-90'}" />
+              </button>
+              <button
+                class="nav-item client-row w-full"
+                class:active={isActive({ kind: 'client', id: client.id })}
+                onclick={() => setScope({ kind: 'client', id: client.id })}
+                oncontextmenu={(e) => clientMenu(e, client)}
+                onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveClient(client.id, dir))}
+                ondblclick={() => (editing = { kind: 'rename-client', id: client.id, value: client.name })}
+              >
+                <span class="grid size-[16px] shrink-0 place-items-center rounded text-[9.5px] font-bold text-white" style="background: {swatch(client.color, 0.6)}">
+                  {client.name.charAt(0).toUpperCase()}
+                </span>
+                <span class="flex-1 truncate text-left font-medium">{client.name}</span>
+              </button>
+              <button
+                class="icon-btn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                aria-label="{cap(item)} actions"
+                onclick={(e) => clientMenu(e, client)}
+              ><MoreHorizontal size={14} /></button>
+            </div>
+          {/if}
+          {#if !collapsed[client.id]}
+            {#each projectsOf(client.id) as p (p.id)}
+              {@render projectRow(p, true)}
+            {/each}
+            {#if editing?.kind === 'new-project' && editing.clientId === client.id}
+              <div class="pl-[22px]">{@render editor('Project name')}</div>
+            {/if}
+          {/if}
         {/each}
-        {#if editing?.kind === 'new-project' && editing.clientId === client.id}
-          <div class="pl-[22px]">{@render editor('Project name')}</div>
+        {#each loose as p (p.id)}
+          {@render projectRow(p, false)}
+        {/each}
+        {#if editing?.kind === 'new-project' && editing.clientId === null && editing.sectionId === sec.id}{@render editor('Project name')}{/if}
+        {#if !groups.length && !loose.length && editing?.kind !== 'new-client' && editing?.kind !== 'new-project'}
+          <p class="px-2 py-1 text-xs text-subtle">Add a {item} or a project.</p>
         {/if}
       {/if}
     {/each}
-    {/if}
-
-    {#if layout.sections.personal}
-    <div class="section mt-4" role="presentation" oncontextmenu={customizeMenu}>
-      <span>Personal</span>
-      <button class="icon-btn" aria-label="Add personal project" title="Add personal project" onclick={() => (editing = { kind: 'new-project', clientId: null })}><Plus size={14} /></button>
-    </div>
-    {#each personal as p (p.id)}
-      {@render projectRow(p, false)}
-    {/each}
-    {#if editing?.kind === 'new-project' && editing.clientId === null}{@render editor('Project name')}{/if}
-    {/if}
+    <button class="new-section" onclick={() => (app.sectionDialog = { id: null })}><Plus size={13} /> New section</button>
 
     {#if layout.sections.savedViews}
     <div class="section mt-4" role="presentation" oncontextmenu={customizeMenu}>
@@ -419,6 +496,54 @@
      under the client's badge. */
   .nav-item.client-row {
     padding-left: 26px;
+  }
+  .section-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 30px;
+    padding-left: 22px;
+    padding-right: 0.25rem;
+  }
+  .section-name {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    min-height: 24px;
+    padding-inline: 4px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-subtle);
+    text-align: left;
+  }
+  .section-name:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .section-name.active {
+    background: var(--accent-soft);
+    color: var(--accent-soft-text);
+  }
+  .new-section {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+    margin-top: 10px;
+    padding-inline: 0.5rem;
+    border-radius: 6px;
+    font-size: 12.5px;
+    color: var(--text-subtle);
+    flex-shrink: 0;
+  }
+  .new-section:hover {
+    background: var(--hover);
+    color: var(--text);
   }
   .nav-item.in-client {
     padding-left: 30px;

@@ -12,7 +12,7 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 
 | Keys | Action |
 |---|---|
-| Ctrl+K | Command palette: jump to clients/projects, search tasks, run any action (works while typing) |
+| Ctrl+K | Command palette: jump to sections/groups/projects, search tasks, run any action (works while typing) |
 | N | Focus Quick Add |
 | / or Ctrl+F | Filter tasks |
 | 1 / 2 / 3 | The visible view tabs, left to right (Table / Board / Calendar by default) |
@@ -60,8 +60,9 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 
 | Keys | Action |
 |---|---|
-| Alt+↑ / Alt+↓ | Move the focused client or project up / down (also in its right-click menu) |
-| Right-click | Client / project / saved view actions; on Today, Inbox… or a section header: Customize sidebar (Settings → Layout) |
+| Alt+↑ / Alt+↓ | Move the focused section, group or project up / down (also in its right-click menu) |
+| Right-click | Section / group / project / saved view actions (edit, rename, move, delete); on Today, Inbox…: Customize sidebar (Settings → Layout) |
+| Double-click | Rename a section, group or project |
 
 ## Calendar
 

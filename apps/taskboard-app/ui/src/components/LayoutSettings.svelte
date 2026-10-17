@@ -10,6 +10,7 @@
     SECTION_LABELS,
     setNavVisible,
     setSection,
+    setSectionHidden,
     setTab,
     TAB_LABELS,
     type SectionId,
@@ -18,6 +19,9 @@
   import { toast } from '../lib/toast.svelte'
   import { moveColumn, orderedColumns, resetTableLayout, setColumnVisible, tableLayout } from '../lib/tableLayout.svelte'
   import Switch from './Switch.svelte'
+  import { swatch } from '../lib/format'
+  import { ipc } from '../lib/ipc'
+  import { act, app } from '../lib/store.svelte'
 
   let { onchange = () => {} }: { onchange?: () => void } = $props()
 
@@ -51,6 +55,16 @@
 <section class="card">
   <h4 class="card-title">Sidebar sections</h4>
   <ul aria-label="Sidebar sections">
+    {#each app.sections as sec, i (sec.id)}
+      {@const shown = !layout.hiddenSections.includes(sec.id)}
+      <li class="item">
+        <span class="size-2 shrink-0 rounded-full" style="background: {swatch(sec.color)}"></span>
+        <span class="flex-1 text-[13px] {shown ? '' : 'text-subtle'}">{sec.name}</span>
+        <button class="order" aria-label="Move {sec.name} up" title="Move up" disabled={i === 0} onclick={() => void act(() => ipc.moveSection(sec.id, 'up')).then(onchange)}><ArrowUp size={14} /></button>
+        <button class="order" aria-label="Move {sec.name} down" title="Move down" disabled={i === app.sections.length - 1} onclick={() => void act(() => ipc.moveSection(sec.id, 'down')).then(onchange)}><ArrowDown size={14} /></button>
+        <Switch label="Show {sec.name}" checked={shown} onchange={(v) => { setSectionHidden(sec.id, !v); onchange() }} />
+      </li>
+    {/each}
     {#each SECTIONS as id (id)}
       <li class="item">
         <span class="flex-1 text-[13px] {layout.sections[id] ? '' : 'text-subtle'}">{SECTION_LABELS[id]}</span>

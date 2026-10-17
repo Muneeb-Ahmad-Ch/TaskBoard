@@ -14,10 +14,10 @@ use desktop::focus_main;
 use taskboard_core::{
     AppSettings, Client, ClientHours, ClientPatch, Dashboard, DayOverride, DayPlan, Db, DbInfo,
     Direction, ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask,
-    NewClient, NewEvent, NewProject, NewStatus, NewTask, NewTimeEntry, NotifySettings, Occurrence,
-    OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SavedView,
-    SavedViewPatch, SidebarCounts, SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch,
-    TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
+    NewClient, NewEvent, NewProject, NewSection, NewStatus, NewTask, NewTimeEntry, NotifySettings,
+    Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SavedView,
+    SavedViewPatch, Section, SectionDelete, SectionPatch, Setup, SidebarCounts, SlotResult, Status,
+    StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -298,6 +298,61 @@ async fn set_client_archived(
 #[tauri::command]
 async fn delete_client(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<()> {
     write(app, state, move |db| db.delete_client(id)).await
+}
+
+// ---------- sections ----------
+
+#[tauri::command]
+async fn list_sections(state: State<'_, AppState>) -> CmdResult<Vec<Section>> {
+    read(state, Db::sections).await
+}
+
+#[tauri::command]
+async fn create_section(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: NewSection,
+) -> CmdResult<Section> {
+    write(app, state, move |db| db.create_section(input)).await
+}
+
+#[tauri::command]
+async fn update_section(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    patch: SectionPatch,
+) -> CmdResult<Section> {
+    write(app, state, move |db| db.update_section(id, patch)).await
+}
+
+#[tauri::command]
+async fn move_section(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    direction: Direction,
+) -> CmdResult<bool> {
+    write(app, state, move |db| db.move_section(id, direction)).await
+}
+
+#[tauri::command]
+async fn delete_section(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    how: SectionDelete,
+) -> CmdResult<()> {
+    write(app, state, move |db| db.delete_section(id, how)).await
+}
+
+#[tauri::command]
+async fn apply_setup(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    setup: Setup,
+) -> CmdResult<Vec<Section>> {
+    write(app, state, move |db| db.apply_setup(setup)).await
 }
 
 #[tauri::command]
@@ -856,6 +911,12 @@ pub fn run() {
             render_markdown,
             move_client,
             move_project,
+            list_sections,
+            create_section,
+            update_section,
+            move_section,
+            delete_section,
+            apply_setup,
             saved_views,
             create_saved_view,
             update_saved_view,

@@ -1,16 +1,16 @@
 <script lang="ts">
-  // Header summary for a client or project: progress, estimated time left,
+  // Header summary for a section, group or project: progress, estimated time left,
   // meetings in the next 7 days and overdue tasks.
   import { AlertTriangle, CalendarClock, Clock } from '@lucide/svelte'
   import type { Id } from '../lib/bindings/Id'
   import type { Occurrence } from '../lib/bindings/Occurrence'
   import type { TaskQuery } from '../lib/bindings/TaskQuery'
-  import { isoDate, minutes } from '../lib/format'
+  import { cap, isoDate, minutes } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
-  import { app } from '../lib/store.svelte'
+  import { app, itemName, sectionById } from '../lib/store.svelte'
   import Progress from './Progress.svelte'
 
-  let { kind, id, done, total }: { kind: 'client' | 'project'; id: Id; done: number; total: number } = $props()
+  let { kind, id, done, total }: { kind: 'section' | 'client' | 'project'; id: Id; done: number; total: number } = $props()
 
   let estimateLeft = $state(0)
   let overdue = $state(0)
@@ -19,7 +19,7 @@
   $effect(() => {
     void app.dataVersion
     if (!inTauri) return
-    const scope: TaskQuery = kind === 'client' ? { client_id: id } : { project_id: id }
+    const scope: TaskQuery = kind === 'section' ? { section_id: id } : kind === 'client' ? { client_id: id } : { project_id: id }
     const yesterday = new Date()
     yesterday.setDate(yesterday.getDate() - 1)
     const now = Date.now()
@@ -33,7 +33,7 @@
         if (stale) return
         estimateLeft = summary.estimate_minutes
         overdue = late.total
-        meetings = occ.filter((o) => o.kind === 'meeting' && o.status !== 'cancelled' && (kind === 'client' ? o.client_id === id : o.project_id === id))
+        meetings = occ.filter((o) => o.kind === 'meeting' && o.status !== 'cancelled' && inScope(o))
       })
       .catch(() => {})
     return () => {
@@ -41,6 +41,21 @@
     }
   })
 
+  function inScope(o: Occurrence): boolean {
+    if (kind === 'client') return o.client_id === id
+    if (kind === 'project') return o.project_id === id
+    const project = o.project_id ? app.projects.find((p) => p.id === o.project_id) : undefined
+    if (project) return project.section_id === id
+    return !!o.client_id && app.clients.some((c) => c.id === o.client_id && c.section_id === id)
+  }
+
+  const progressName = $derived(
+    kind === 'section'
+      ? 'Section progress'
+      : kind === 'client'
+        ? `${cap(itemName(sectionById(app.clients.find((c) => c.id === id)?.section_id)))} progress`
+        : 'Project progress',
+  )
   const pct = $derived(total ? (done / total) * 100 : 0)
   const next = $derived(meetings.length ? meetings.reduce((a, b) => (a.start_at <= b.start_at ? a : b)) : null)
   const nextFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })
@@ -49,7 +64,7 @@
 <span class="flex min-w-0 items-center gap-3 self-center text-xs text-muted">
   {#if total}
     <span class="flex shrink-0 items-center gap-2" title="{done} of {total} tasks done">
-      <Progress value={pct} width={72} label name="{kind === 'client' ? 'Client' : 'Project'} progress" />
+      <Progress value={pct} width={72} label name={progressName} />
       <span class="tabular text-subtle">{done}/{total}</span>
     </span>
   {/if}

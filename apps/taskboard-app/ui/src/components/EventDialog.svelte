@@ -26,7 +26,7 @@
   import { fromIso, HOUR, MINUTE, repeatOptions } from '../lib/cal.svelte'
   import { isoDate } from '../lib/format'
   import { errorMessage, ipc, openLink } from '../lib/ipc'
-  import { app, projectsOf } from '../lib/store.svelte'
+  import { app, groupsIn, looseProjectsIn, projectsOf } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
   import Notes from './Notes.svelte'
@@ -269,20 +269,22 @@
         </select>
       </label>
       <label>
-        <span class="field-label">Client / project</span>
+        <span class="field-label">Group / project</span>
         <select class="field" bind:value={f.owner}>
           <option value="">None</option>
-          {#each app.clients as c (c.id)}
-            <optgroup label={c.name}>
-              <option value="c:{c.id}">{c.name} (no project)</option>
-              {#each projectsOf(c.id) as p (p.id)}<option value="p:{p.id}">{p.name}</option>{/each}
-            </optgroup>
+          {#each app.sections as s (s.id)}
+            {#each groupsIn(s.id) as c (c.id)}
+              <optgroup label={app.sections.length > 1 ? `${s.name} › ${c.name}` : c.name}>
+                <option value="c:{c.id}">{c.name} (no project)</option>
+                {#each projectsOf(c.id) as p (p.id)}<option value="p:{p.id}">{p.name}</option>{/each}
+              </optgroup>
+            {/each}
+            {#if looseProjectsIn(s.id).length}
+              <optgroup label={s.name}>
+                {#each looseProjectsIn(s.id) as p (p.id)}<option value="p:{p.id}">{p.name}</option>{/each}
+              </optgroup>
+            {/if}
           {/each}
-          {#if projectsOf(null).length}
-            <optgroup label="Personal">
-              {#each projectsOf(null) as p (p.id)}<option value="p:{p.id}">{p.name}</option>{/each}
-            </optgroup>
-          {/if}
         </select>
       </label>
     </div>

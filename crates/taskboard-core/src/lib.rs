@@ -21,6 +21,7 @@ pub mod reorder;
 pub mod rrule;
 mod sample;
 pub mod saved_views;
+pub mod sections;
 pub mod slots;
 mod statuses;
 pub mod storage;
@@ -45,6 +46,7 @@ pub use planning::{
 pub use query::{TaskPage, TaskQuery, TaskRow, TaskSort};
 pub use reorder::Direction;
 pub use saved_views::{SavedView, SavedViewPatch};
+pub use sections::{NewSection, Section, SectionDelete, SectionPatch, Setup};
 pub use statuses::{NewStatus, StatusPatch};
 pub use storage::{Db, DbInfo, HistoryState};
 pub use tasks::MoveTask;

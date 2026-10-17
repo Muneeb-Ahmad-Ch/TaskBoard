@@ -10,11 +10,12 @@ use crate::model::{
     opt_text, palette_color, text,
 };
 use crate::order::key_between;
+use crate::sections::{default_section, require_section};
 use crate::storage::Db;
 use crate::tx::Table;
 
 const COLS: &str = "id, name, color, icon, notes_md, contact, time_zone, work_start, work_end,
-                    meetings_count_as_time, sort_key, archived_at, created_at, updated_at";
+                    meetings_count_as_time, sort_key, archived_at, created_at, updated_at, section_id";
 
 fn map(r: &Row<'_>) -> rusqlite::Result<Client> {
     Ok(Client {
@@ -32,6 +33,7 @@ fn map(r: &Row<'_>) -> rusqlite::Result<Client> {
         archived_at: r.get(11)?,
         created_at: r.get(12)?,
         updated_at: r.get(13)?,
+        section_id: r.get(14)?,
     })
 }
 
@@ -41,6 +43,13 @@ impl Db {
         let time_zone = input.time_zone.as_deref().map(clean_tz).transpose()?;
         let id = Id::new();
         self.transact(&format!("Create client “{name}”"), |tx| {
+            let section_id = match input.section_id {
+                Some(section) => {
+                    require_section(tx, section)?;
+                    section
+                }
+                None => default_section(tx)?,
+            };
             let (count, last): (i64, Option<String>) = tx.conn().query_row(
                 "SELECT count(*), max(sort_key) FROM client WHERE deleted_at IS NULL",
                 [],
@@ -59,6 +68,7 @@ impl Db {
                     ("notes_md", text(input.notes_md.clone().unwrap_or_default())),
                     ("contact", text(input.contact.clone().unwrap_or_default())),
                     ("time_zone", opt_text(time_zone.clone())),
+                    ("section_id", section_id.into()),
                     ("sort_key", text(key_between(last.as_deref(), None)?)),
                     ("created_at", int(tx.now())),
                 ],
@@ -129,6 +139,35 @@ impl Db {
             changes.push(("meetings_count_as_time", boolean(b)));
         }
         self.transact(&format!("Edit client “{}”", current.name), |tx| {
+            // Moving a group to another section takes its projects along;
+            // it goes last among the target section's groups.
+            if let Some(section) = patch.section_id
+                && Some(section) != current.section_id
+            {
+                require_section(tx, section)?;
+                let last: Option<String> = tx.conn().query_row(
+                    "SELECT max(sort_key) FROM client
+                     WHERE deleted_at IS NULL AND section_id = ?1 AND id <> ?2",
+                    rusqlite::params![section, id],
+                    |r| r.get(0),
+                )?;
+                changes.push(("section_id", section.into()));
+                changes.push(("sort_key", text(key_between(last.as_deref(), None)?)));
+                let projects: Vec<Id> = {
+                    let mut stmt = tx.conn().prepare(
+                        "SELECT id FROM project WHERE client_id = ?1 AND deleted_at IS NULL",
+                    )?;
+                    stmt.query_map([id], |r| r.get(0))?
+                        .collect::<rusqlite::Result<_>>()?
+                };
+                for p in projects {
+                    tx.update(
+                        Table::Project,
+                        &[p.into()],
+                        &[("section_id", section.into())],
+                    )?;
+                }
+            }
             tx.update(Table::Client, &[id.into()], &changes)
         })?;
         self.client(id)

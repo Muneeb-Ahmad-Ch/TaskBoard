@@ -10,11 +10,13 @@ use crate::model::{
     clean_color, clean_date, clean_name, int, opt_id, opt_text, palette_color, text,
 };
 use crate::order::key_between;
+use crate::sections::{default_section, require_section};
 use crate::storage::Db;
 use crate::tx::{Table, Tx};
 
 const COLS: &str = "p.id, p.client_id, p.name, p.code, p.color, p.icon, p.state, p.start_date,
-                    p.deadline, p.is_inbox, p.sort_key, p.archived_at, p.created_at, p.updated_at";
+                    p.deadline, p.is_inbox, p.sort_key, p.archived_at, p.created_at, p.updated_at,
+                    p.section_id";
 
 /// Default workflow for new projects (SPEC §4.2).
 const DEFAULT_STATUSES: [(&str, &str, Category); 5] = [
@@ -41,6 +43,7 @@ fn map(r: &Row<'_>) -> rusqlite::Result<Project> {
         archived_at: r.get(11)?,
         created_at: r.get(12)?,
         updated_at: r.get(13)?,
+        section_id: r.get(14)?,
     })
 }
 
@@ -101,10 +104,23 @@ pub(crate) fn insert_project(tx: &mut Tx<'_>, input: &NewProject) -> Result<Id> 
     if let Some(client) = input.client_id {
         require_client(tx, client)?;
     }
+    // A grouped project lives in its group's section.
+    let section_id: Option<Id> = match (input.client_id, input.section_id) {
+        (Some(client), _) => tx.conn().query_row(
+            "SELECT section_id FROM client WHERE id = ?1",
+            [client],
+            |r| r.get(0),
+        )?,
+        (None, Some(section)) => {
+            require_section(tx, section)?;
+            Some(section)
+        }
+        (None, None) => Some(default_section(tx)?),
+    };
     let (count, last): (i64, Option<String>) = tx.conn().query_row(
         "SELECT count(*), max(sort_key) FROM project
-         WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1",
-        [opt_id(input.client_id)],
+         WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1 AND section_id IS ?2",
+        [opt_id(input.client_id), opt_id(section_id)],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
     let color = match &input.color {
@@ -116,6 +132,7 @@ pub(crate) fn insert_project(tx: &mut Tx<'_>, input: &NewProject) -> Result<Id> 
         &[
             ("id", id.into()),
             ("client_id", opt_id(input.client_id)),
+            ("section_id", opt_id(section_id)),
             ("name", text(name)),
             (
                 "code",
@@ -222,10 +239,10 @@ impl Db {
             .query_map([], |r| {
                 Ok(ProjectSummary {
                     project: map(r)?,
-                    client_name: r.get(14)?,
-                    open_tasks: r.get(15)?,
-                    total_tasks: r.get(16)?,
-                    done_tasks: r.get(17)?,
+                    client_name: r.get(15)?,
+                    open_tasks: r.get(16)?,
+                    total_tasks: r.get(17)?,
+                    done_tasks: r.get(18)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -276,19 +293,41 @@ impl Db {
                 opt_text(d.as_deref().map(clean_date).transpose()?),
             ));
         }
+        let new_client = patch.client_id.unwrap_or(current.client_id);
+        if patch.section_id.is_some() && (current.is_inbox || new_client.is_some()) {
+            return Err(invalid(
+                "a project in a group moves with its group; move the group instead",
+            ));
+        }
         self.transact(&format!("Edit project “{}”", current.name), |tx| {
             if let Some(Some(client)) = patch.client_id {
                 require_client(tx, client)?;
             }
-            // Moving to another client (or Personal) puts it last there,
+            // Grouped projects live in their group's section; leaving a group
+            // keeps the section the project was in.
+            let new_section: Option<Id> = match (new_client, patch.section_id) {
+                (Some(client), _) => tx.conn().query_row(
+                    "SELECT section_id FROM client WHERE id = ?1",
+                    [client],
+                    |r| r.get(0),
+                )?,
+                (None, Some(section)) => {
+                    require_section(tx, section)?;
+                    Some(section)
+                }
+                (None, None) => current.section_id,
+            };
+            if new_section != current.section_id {
+                changes.push(("section_id", opt_id(new_section)));
+            }
+            // A project that changes group or section goes last there,
             // instead of keeping a key that may tie with the new siblings.
-            if let Some(client) = patch.client_id
-                && client != current.client_id
-            {
+            if (new_client, new_section) != (current.client_id, current.section_id) {
                 let last: Option<String> = tx.conn().query_row(
                     "SELECT max(sort_key) FROM project
-                     WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1 AND id <> ?2",
-                    rusqlite::params![client, id],
+                     WHERE deleted_at IS NULL AND is_inbox = 0 AND client_id IS ?1
+                       AND section_id IS ?2 AND id <> ?3",
+                    rusqlite::params![new_client, new_section, id],
                     |r| r.get(0),
                 )?;
                 changes.push(("sort_key", text(key_between(last.as_deref(), None)?)));
@@ -318,19 +357,25 @@ impl Db {
             return Err(invalid("the Inbox cannot be deleted"));
         }
         self.transact(&format!("Delete project “{}”", project.name), |tx| {
-            let now = tx.now();
-            let tasks: Vec<Id> = {
-                let mut stmt = tx
-                    .conn()
-                    .prepare("SELECT id FROM task WHERE project_id = ?1 AND deleted_at IS NULL")?;
-                stmt.query_map([id], |r| r.get(0))?
-                    .collect::<rusqlite::Result<_>>()?
-            };
-            for task in tasks {
-                tx.update(Table::Task, &[task.into()], &[("deleted_at", int(now))])?;
-            }
-            tx.update(Table::Project, &[id.into()], &[("deleted_at", int(now))])
+            delete_project_rows(tx, id)
         })?;
         Ok(())
     }
+}
+
+/// Soft-deletes a project and its tasks inside the caller's transaction.
+pub(crate) fn delete_project_rows(tx: &mut Tx<'_>, id: Id) -> Result<()> {
+    let now = tx.now();
+    let tasks: Vec<Id> = {
+        let mut stmt = tx
+            .conn()
+            .prepare("SELECT id FROM task WHERE project_id = ?1 AND deleted_at IS NULL")?;
+        stmt.query_map([id], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?
+    };
+    for task in tasks {
+        tx.update(Table::Task, &[task.into()], &[("deleted_at", int(now))])?;
+    }
+    tx.update(Table::Project, &[id.into()], &[("deleted_at", int(now))])?;
+    Ok(())
 }

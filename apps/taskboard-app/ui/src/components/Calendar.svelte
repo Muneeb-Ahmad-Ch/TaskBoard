@@ -38,7 +38,11 @@
     const s = app.scope
     if (s.kind === 'client') return o.client_id === s.id
     if (s.kind === 'project') return o.project_id === s.id
-    if (s.kind === 'personal') return !o.client_id && !!o.project_id
+    if (s.kind === 'section') {
+      const project = o.project_id ? app.projects.find((p) => p.id === o.project_id) : undefined
+      const group = o.client_id ? app.clients.find((c) => c.id === o.client_id) : undefined
+      return (project?.section_id ?? group?.section_id) === s.id
+    }
     return true
   }
 
@@ -205,7 +209,7 @@
         {/if}
 
         <section class="box">
-          <h3 class="box-title">This week by client</h3>
+          <h3 class="box-title">Hours per group this week</h3>
           {#each hours as h (h.client_id ?? 'none')}
             <div class="mb-2">
               <div class="flex items-center gap-1.5 text-[12.5px]">

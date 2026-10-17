@@ -101,6 +101,8 @@ impl ProjectState {
 #[ts(export)]
 pub struct Client {
     pub id: Id,
+    /// The sidebar section this group belongs to.
+    pub section_id: Option<Id>,
     pub name: String,
     pub color: String,
     pub icon: Option<String>,
@@ -121,6 +123,8 @@ pub struct Client {
 pub struct Project {
     pub id: Id,
     pub client_id: Option<Id>,
+    /// The sidebar section (None only for the Inbox).
+    pub section_id: Option<Id>,
     pub name: String,
     pub code: Option<String>,
     pub color: String,
@@ -194,6 +198,10 @@ pub struct Task {
 #[ts(export)]
 pub struct NewClient {
     pub name: String,
+    /// Section to add the group to (default: the first section).
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[ts(optional)]
     pub color: Option<String>,
     #[serde(default)]
@@ -213,6 +221,10 @@ pub struct NewClient {
 pub struct ClientPatch {
     #[ts(optional)]
     pub name: Option<String>,
+    /// Move the group (and its projects) to another section.
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[ts(optional)]
     pub color: Option<String>,
     #[ts(optional)]
@@ -236,6 +248,11 @@ pub struct ClientPatch {
 #[ts(export)]
 pub struct NewProject {
     pub name: String,
+    /// Section for a project without a group (default: the first section).
+    /// Ignored when `client_id` is set: the project goes to its group's section.
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[serde(default)]
     #[ts(optional)]
     pub client_id: Option<Id>,
@@ -255,6 +272,11 @@ pub struct NewProject {
 pub struct ProjectPatch {
     #[ts(optional)]
     pub name: Option<String>,
+    /// Move a project without a group to another section (grouped projects
+    /// move with their group).
+    #[serde(default)]
+    #[ts(optional)]
+    pub section_id: Option<Id>,
     #[ts(optional)]
     pub color: Option<String>,
     #[serde(default, deserialize_with = "nullable")]

@@ -99,8 +99,8 @@
       <button role="radio" aria-checked={range === 'past'} class="seg" onclick={() => (range = 'past')}>Past</button>
     </div>
     {#if clientsWithMeetings.length}
-      <select class="h-7 rounded-md border border-border bg-surface-2 px-2 text-[12.5px]" aria-label="Client" bind:value={clientFilter}>
-        <option value="">All clients</option>
+      <select class="h-7 rounded-md border border-border bg-surface-2 px-2 text-[12.5px]" aria-label="Group" bind:value={clientFilter}>
+        <option value="">All groups</option>
         {#each clientsWithMeetings as c (c.id)}<option value={c.id}>{c.name}</option>{/each}
       </select>
     {/if}
@@ -117,7 +117,7 @@
         <div>
           <Video size={28} class="mx-auto mb-2 text-subtle" />
           <p class="font-medium">{range === 'upcoming' ? 'No meetings in the next 30 days' : 'No meetings in the last 30 days'}</p>
-          <p class="text-muted">{range === 'upcoming' ? 'Add one, or find a slot that suits you and the client.' : ''}</p>
+          <p class="text-muted">{range === 'upcoming' ? 'Add one, or find a slot that suits everyone.' : ''}</p>
         </div>
       </div>
     {:else}
