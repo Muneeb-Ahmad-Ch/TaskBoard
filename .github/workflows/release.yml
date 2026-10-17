@@ -41,8 +41,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          projectPath: apps/taskboard-app/ui
-          tauriScript: pnpm tauri
+          # The action looks for tauri.conf.json inside projectPath, so point it
+          # at the app folder (holds src-tauri/) and run the UI's tauri script.
+          projectPath: apps/taskboard-app
+          tauriScript: pnpm -C ui tauri
           tagName: ${{ github.ref_name }}
           releaseName: Taskboard ${{ github.ref_name }}
           releaseBody: See the commit history for changes. Installers are not code-signed yet.
