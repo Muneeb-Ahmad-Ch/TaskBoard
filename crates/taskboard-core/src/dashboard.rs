@@ -26,7 +26,11 @@ pub struct DayCount {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct ClientSummary {
+    /// The group, or None for a section's projects that have no group.
     pub client_id: Option<Id>,
+    pub section_id: Option<Id>,
+    /// The section's name (the row's own name for section rows).
+    pub section_name: String,
     pub name: String,
     pub color: String,
     pub open: i64,
@@ -164,46 +168,59 @@ impl Db {
             ws,
             start_of(week_start.checked_add(7.days()).unwrap_or(week_start)),
         )?;
-        let logged_by_client: HashMap<Option<Id>, i64> =
-            hours.iter().map(|h| (h.client_id, h.logged_min)).collect();
+        // Rows are keyed by group, or by section for projects without a group.
+        let logged_by_client: HashMap<Option<Id>, i64> = hours
+            .iter()
+            .map(|h| (h.client_id.or(h.section_id), h.logged_min))
+            .collect();
 
-        // Per client (and Personal): open / overdue / done this week, top-level tasks.
+        // Per group (and per section for projects without a group): open /
+        // overdue / done this week, top-level tasks.
         let today_s = today.to_string();
         let mut clients: Vec<ClientSummary> = Vec::new();
         {
             let mut stmt = self.conn().prepare(
-                "SELECT p.client_id, coalesce(c.name, 'Personal'), coalesce(c.color, 'gray'),
+                "SELECT p.client_id, p.section_id, coalesce(s.name, ''),
+                        coalesce(c.name, s.name, 'Other'), coalesce(c.color, s.color, 'gray'),
                         count(CASE WHEN t.completed_at IS NULL THEN 1 END),
                         count(CASE WHEN t.completed_at IS NULL AND t.due_date < ?1 THEN 1 END),
                         count(CASE WHEN t.completed_at >= ?2 THEN 1 END)
                  FROM task t JOIN project p ON p.id = t.project_id
                  LEFT JOIN client c ON c.id = p.client_id
+                 LEFT JOIN section s ON s.id = p.section_id
                  WHERE t.deleted_at IS NULL AND t.archived_at IS NULL AND t.parent_id IS NULL
                    AND p.deleted_at IS NULL AND p.archived_at IS NULL AND p.is_inbox = 0
                    AND (c.id IS NULL OR c.archived_at IS NULL)
-                 GROUP BY p.client_id
-                 ORDER BY c.sort_key IS NULL, c.sort_key",
+                 GROUP BY p.client_id, p.section_id
+                 ORDER BY s.sort_key, c.sort_key IS NULL, c.sort_key",
             )?;
             let rows = stmt.query_map(rusqlite::params![today_s, ws], |r| {
                 Ok((
-                    r.get::<_, Option<Id>>(0)?,
-                    r.get::<_, String>(1)?,
+                    (r.get::<_, Option<Id>>(0)?, r.get::<_, Option<Id>>(1)?),
                     r.get::<_, String>(2)?,
-                    r.get::<_, i64>(3)?,
-                    r.get::<_, i64>(4)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
                     r.get::<_, i64>(5)?,
+                    r.get::<_, i64>(6)?,
+                    r.get::<_, i64>(7)?,
                 ))
             })?;
             for row in rows {
-                let (client_id, name, color, open, overdue, done) = row?;
+                let ((client_id, section_id), section_name, name, color, open, overdue, done) =
+                    row?;
                 clients.push(ClientSummary {
                     client_id,
+                    section_id,
+                    section_name,
                     name,
                     color,
                     open,
                     overdue,
                     done_this_week: done,
-                    logged_min_this_week: logged_by_client.get(&client_id).copied().unwrap_or(0),
+                    logged_min_this_week: logged_by_client
+                        .get(&client_id.or(section_id))
+                        .copied()
+                        .unwrap_or(0),
                 });
             }
         }

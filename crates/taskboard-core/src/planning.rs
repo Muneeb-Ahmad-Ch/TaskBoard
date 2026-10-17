@@ -136,7 +136,12 @@ pub struct DayPlan {
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
 #[ts(export)]
 pub struct ClientHours {
+    /// The group, or None for a section's projects without a group (and for
+    /// time not linked to any project or group).
     pub client_id: Option<Id>,
+    pub section_id: Option<Id>,
+    /// The section's name (the row's own name for section rows).
+    pub section_name: String,
     pub client_name: String,
     pub color: String,
     /// Meetings + time blocks.
@@ -763,13 +768,56 @@ impl Db {
 
     /// Planned (meetings + blocks) vs logged minutes per client in `[from, to)`.
     pub fn hours_by_client(&self, from: i64, to: i64) -> Result<Vec<ClientHours>> {
+        // Time on a project without a group counts toward its section.
+        let sections: HashMap<Id, (String, String)> = self
+            .sections()?
+            .into_iter()
+            .map(|s| (s.id, (s.name, s.color)))
+            .collect();
+        let section_of = |sql: &str| -> Result<HashMap<Id, Id>> {
+            let mut stmt = self.conn().prepare(sql)?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get::<_, Id>(0)?, r.get::<_, Id>(1)?)))?
+                .collect::<rusqlite::Result<_>>()?;
+            Ok(rows)
+        };
+        let client_section =
+            section_of("SELECT id, section_id FROM client WHERE section_id IS NOT NULL")?;
+        let project_section = section_of(
+            "SELECT id, section_id FROM project WHERE client_id IS NULL AND section_id IS NOT NULL",
+        )?;
         let mut map: BTreeMap<String, ClientHours> = BTreeMap::new();
-        let mut entry = |id: Option<Id>, name: Option<String>, color: &str| -> String {
-            let key = id.map(|i| i.to_string()).unwrap_or_default();
+        let mut entry = |client: Option<Id>,
+                         project: Option<Id>,
+                         name: Option<String>,
+                         color: &str|
+         -> String {
+            let section = match client {
+                Some(c) => client_section.get(&c).copied(),
+                None => project.and_then(|p| project_section.get(&p).copied()),
+            };
+            let (section_name, section_color) = section
+                .and_then(|s| sections.get(&s).cloned())
+                .unwrap_or_default();
+            let key = match (client, section) {
+                (Some(c), _) => c.to_string(),
+                (None, Some(s)) => format!("s:{s}"),
+                (None, None) => String::new(),
+            };
             map.entry(key.clone()).or_insert_with(|| ClientHours {
-                client_id: id,
-                client_name: name.unwrap_or_else(|| "No client".into()),
-                color: color.to_owned(),
+                client_id: client,
+                section_id: section,
+                client_name: match client {
+                    Some(_) => name.unwrap_or_default(),
+                    None if section.is_some() => section_name.clone(),
+                    None => "No group".into(),
+                },
+                section_name,
+                color: if client.is_none() && section.is_some() {
+                    section_color
+                } else {
+                    color.to_owned()
+                },
                 planned_min: 0,
                 logged_min: 0,
             });
@@ -780,7 +828,7 @@ impl Db {
             if o.all_day || o.status == EventStatus::Cancelled {
                 continue;
             }
-            let key = entry(o.client_id, o.client_name.clone(), &o.color);
+            let key = entry(o.client_id, o.project_id, o.client_name.clone(), &o.color);
             planned.push((
                 key,
                 (o.end_at.min(to) - o.start_at.max(from)).max(0) / MINUTE,
@@ -789,7 +837,7 @@ impl Db {
         let now = crate::clock::now_ms();
         let mut logged: Vec<(String, i64)> = Vec::new();
         for l in self.logged_time(from, to)? {
-            let key = entry(l.client_id, l.client_name.clone(), &l.color);
+            let key = entry(l.client_id, l.project_id, l.client_name.clone(), &l.color);
             logged.push((
                 key,
                 (l.ended_at.unwrap_or(now).min(to) - l.started_at.max(from)).max(0) / MINUTE,

@@ -70,6 +70,38 @@ pub enum SectionDelete {
     Everything,
 }
 
+/// Ready-made starting points offered on first run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum Setup {
+    Freelancer,
+    Company,
+    PersonalLife,
+    Blank,
+}
+
+impl Setup {
+    /// (name, item name) of each section, in sidebar order.
+    fn sections(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Self::Freelancer => &[("Clients", "client"), ("Personal", "")],
+            Self::Company => &[
+                ("Departments", "department"),
+                ("Clients", "client"),
+                ("Internal", ""),
+            ],
+            Self::PersonalLife => &[
+                ("Home", ""),
+                ("Family", ""),
+                ("Health", ""),
+                ("Personal", ""),
+            ],
+            Self::Blank => &[("My work", "")],
+        }
+    }
+}
+
 fn clean_item_name(item: Option<&str>) -> String {
     item.map(|i| i.trim().to_owned()).unwrap_or_default()
 }
@@ -225,6 +257,38 @@ impl Db {
             tx.update(Table::Section, &[id.into()], &[("deleted_at", int(now))])?;
             Ok(())
         })
+    }
+
+    /// Adds a setup's sections after any existing ones (never removes any).
+    /// One undo step.
+    pub fn apply_setup(&mut self, setup: Setup) -> Result<Vec<Section>> {
+        let ids: Vec<Id> = self.transact("Choose a starting setup", |tx| {
+            let (count, mut last): (i64, Option<String>) = tx.conn().query_row(
+                "SELECT count(*), max(sort_key) FROM section WHERE deleted_at IS NULL",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            let mut ids = Vec::new();
+            for (i, (name, item)) in setup.sections().iter().enumerate() {
+                let id = Id::new();
+                let key = key_between(last.as_deref(), None)?;
+                tx.insert(
+                    Table::Section,
+                    &[
+                        ("id", id.into()),
+                        ("name", text(*name)),
+                        ("item_name", text(*item)),
+                        ("color", text(palette_color(count + 2 + i as i64))),
+                        ("sort_key", text(key.clone())),
+                        ("created_at", int(tx.now())),
+                    ],
+                )?;
+                last = Some(key);
+                ids.push(id);
+            }
+            Ok(ids)
+        })?;
+        ids.into_iter().map(|id| self.section(id)).collect()
     }
 
     pub fn section(&self, id: Id) -> Result<Section> {

@@ -459,3 +459,112 @@ fn sample_workspace_uses_or_creates_clients_and_personal() {
     assert_eq!(names, ["Family"], "only the sample's empty sections go");
     assert!(db.section(mine.id).is_ok());
 }
+
+// ---------- Task 4: roll-ups and first-run setups ----------
+
+#[test]
+fn dashboard_rolls_up_groupless_projects_per_section() {
+    let mut db = Db::open_in_memory().unwrap();
+    let work = section(&mut db, "Work");
+    let family = section(&mut db, "Family");
+    let g = client(&mut db, "Acme");
+    let gp = project(&mut db, "Site", Some(g.id));
+    let home = in_section(&mut db, "Home", family.id);
+    let side = in_section(&mut db, "Side", work.id);
+    for (title, p) in [("a", gp.id), ("b", home.id), ("c", side.id)] {
+        db.create_task(NewTask {
+            title: title.into(),
+            project_id: Some(p),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    let today = jiff::civil::date(2026, 10, 17);
+    let rows = db.dashboard(today).unwrap().clients;
+    let find = |name: &str| rows.iter().find(|r| r.name == name).unwrap();
+    let acme = find("Acme");
+    assert_eq!(
+        (acme.client_id, acme.section_id),
+        (Some(g.id), Some(work.id))
+    );
+    assert_eq!(acme.section_name, "Work");
+    let fam = find("Family");
+    assert_eq!(
+        (fam.client_id, fam.section_id, fam.open),
+        (None, Some(family.id), 1)
+    );
+    let loose = rows
+        .iter()
+        .find(|r| r.client_id.is_none() && r.section_id == Some(work.id))
+        .unwrap();
+    assert_eq!((loose.name.as_str(), loose.open), ("Work", 1));
+    assert!(
+        !rows.iter().any(|r| r.name == "Personal"),
+        "no fixed Personal row"
+    );
+}
+
+#[test]
+fn hours_by_group_include_section_rows() {
+    let mut db = Db::open_in_memory().unwrap();
+    let family = section(&mut db, "Family");
+    let home = in_section(&mut db, "Home", family.id);
+    let start = 1_800_000_000_000_i64;
+    db.log_time(NewTimeEntry {
+        project_id: Some(home.id),
+        started_at: start,
+        ended_at: Some(start + 30 * 60_000),
+        ..Default::default()
+    })
+    .unwrap();
+    let hours = db.hours_by_client(start - 1, start + 3_600_000).unwrap();
+    let row = hours
+        .iter()
+        .find(|h| h.section_id == Some(family.id))
+        .unwrap();
+    assert_eq!(
+        (row.client_id, row.client_name.as_str(), row.logged_min),
+        (None, "Family", 30)
+    );
+}
+
+#[test]
+fn apply_setup_creates_exact_sections() {
+    let cases = [
+        (
+            Setup::Freelancer,
+            vec![("Clients", "client"), ("Personal", "")],
+        ),
+        (
+            Setup::Company,
+            vec![
+                ("Departments", "department"),
+                ("Clients", "client"),
+                ("Internal", ""),
+            ],
+        ),
+        (
+            Setup::PersonalLife,
+            vec![
+                ("Home", ""),
+                ("Family", ""),
+                ("Health", ""),
+                ("Personal", ""),
+            ],
+        ),
+        (Setup::Blank, vec![("My work", "")]),
+    ];
+    for (setup, want) in cases {
+        let mut db = Db::open_in_memory().unwrap();
+        let made = db.apply_setup(setup).unwrap();
+        let got: Vec<(String, String)> = made.into_iter().map(|s| (s.name, s.item_name)).collect();
+        let want: Vec<(String, String)> = want
+            .iter()
+            .map(|(n, i)| ((*n).to_owned(), (*i).to_owned()))
+            .collect();
+        assert_eq!(got, want, "{setup:?}");
+        assert_eq!(db.sections().unwrap().len(), got.len());
+        db.undo().unwrap();
+        assert!(db.sections().unwrap().is_empty(), "one undo step");
+    }
+}
