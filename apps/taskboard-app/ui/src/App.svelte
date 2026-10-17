@@ -78,7 +78,7 @@
 
   let searchInput: HTMLInputElement | undefined = $state()
 
-  // First run: no clients, no projects with tasks, nothing in the Inbox.
+  // First run: no sections or groups, no projects with tasks, nothing in the Inbox.
   let welcomeDismissed = $state(
     (() => {
       try {
@@ -91,6 +91,7 @@
   const isEmpty = $derived(
     app.counts !== null &&
       app.clients.length === 0 &&
+      app.sections.length === 0 &&
       app.projects.every((p) => p.total_tasks === 0) &&
       (app.counts?.inbox ?? 0) === 0,
   )

@@ -1,6 +1,6 @@
 # Taskboard — Data Model
 
-Status: implemented in M1 as migrations 2 and 3 (`crates/taskboard-core/src/migrations/`); those files are the exact schema. Differences from the sketch below: `task.rid INTEGER PRIMARY KEY` (FTS rowid), `op_log.kind` + `key_json` (append-only log), a `history` table for the undo stack, `created_at` on status/tag/saved_view, and sort-order partial indexes (migration 3). Later migrations: 4 adds `task.progress`, 5 adds `notification_log` (which reminders have fired; local, not synced), 6 adds `task_top_counts` and `op_log_hlc` indexes for the startup queries.
+Status: implemented in M1 as migrations 2 and 3 (`crates/taskboard-core/src/migrations/`); those files are the exact schema. Differences from the sketch below: `task.rid INTEGER PRIMARY KEY` (FTS rowid), `op_log.kind` + `key_json` (append-only log), a `history` table for the undo stack, `created_at` on status/tag/saved_view, and sort-order partial indexes (migration 3). Later migrations: 4 adds `task.progress`, 5 adds `notification_log` (which reminders have fired; local, not synced), 6 adds `task_top_counts` and `op_log_hlc` indexes for the startup queries, 7 adds user-named `section`s (`client.section_id`, `project.section_id`; existing clients go to a "Clients" section and groupless projects to "Personal", created only when needed).
 Conventions: all tables `STRICT`; ids are UUIDv7 stored as 16-byte `BLOB`;
 instants are UTC milliseconds (`INTEGER`); plan dates are civil `TEXT`
 (`YYYY-MM-DD`, no time zone); every syncable row has `hlc` + `device_id`.
@@ -8,6 +8,8 @@ instants are UTC milliseconds (`INTEGER`); plan dates are civil `TEXT`
 ## 1. Hierarchy
 
 ```
+Section ──< Client (shown as a "group") ──< Project
+Section ──< Project (directly, no group)
 Client ──< Project ──< Task ──< Task (subtasks, any depth, no cycles)
                 │         └──< task_tag >── Tag
                 └──< Status (per-project workflow)
@@ -25,8 +27,15 @@ doesn't move when you travel). Events use *anchored* instants plus an IANA
 zone: a 15:00 call with a London client is a fixed moment, and recurring
 events expand in their own zone so DST shifts are correct.
 
-- **Client**: a customer or employer. Optional for a project.
-- **Project**: a job / engagement. `client_id IS NULL` → shown under **Personal**.
+- **Section**: a user-named sidebar heading (Clients, Teams, Family…) with an
+  `item_name` for what one group in it is called and a color. At least one
+  always exists once there is data; the first is where new work goes by
+  default.
+- **Client** (a *group* in the UI): a customer, team, department, person…
+  Lives in exactly one section. Optional for a project.
+- **Project**: a job / engagement. A project in a group lives in that group's
+  section (`project.section_id` follows the group); a project without a group
+  sits directly in a section.
 - **Inbox**: a built-in project (`is_inbox = 1`, no client) that cannot be
   deleted. Quick-added tasks without `@Project` land here, so
   `task.project_id` is never NULL.

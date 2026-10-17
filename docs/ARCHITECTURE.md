@@ -130,7 +130,12 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   core, raw HTML is shown as text, task lists become ☐/☑, then `ammonia`
   sanitizes (links limited to http/https/mailto with `noopener noreferrer`,
   no images). The UI intercepts link clicks and opens them in the browser.
-- **Ordering**: `Db::move_client` / `move_project` swap an item with its
+- **Sections** (`sections.rs`): user-named sidebar sections holding groups
+  (the `client` table) and projects. `delete_section` moves contents to
+  another section or deletes everything in one undo step and refuses the
+  last section; `apply_setup` adds a first-run setup's sections. Section
+  scope queries use `TaskQuery.section_id`.
+- **Ordering**: `Db::move_section` / `move_client` / `move_project` swap an item with its
   neighbour among the visible siblings (one undo step); groups with tied
   sort keys are renumbered in the same action. A project moved to another
   client goes last there.
@@ -290,6 +295,7 @@ start to the first themed frame with sidebar data loaded.
 |---|---|---|---|
 | Cold start to first paint | < 400 ms | 357–371 ms | 358–386 ms |
 | First launch after a rebuild (exe not cached) | — | ≈ 790 ms | — |
+| First launch after upgrading to schema 7 (one time; includes the pre-migration backup) | — | — | ≈ 2.5 s; later launches 354–383 ms (2026-10-17) |
 | Idle memory, all 7 processes, private working set (Task Manager) | < 150 MB | 112 MB | 125 MB |
 | Installer size | < 25 MB | NSIS 4.6 MB, MSI 7.8 MB | |
 
