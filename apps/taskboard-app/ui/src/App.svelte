@@ -251,13 +251,14 @@
     <div class="relative flex min-h-0 flex-1">
       <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5 max-[1000px]:px-4" role="tabpanel" aria-label={current.label}>
         {#if app.view === 'table'}
+          {#if layout.quickAdd === 'top'}<QuickAdd placement="top" />{/if}
           {#if isEmpty && !welcomeDismissed}
             <Welcome ondismiss={dismissWelcome} />
           {:else}
             <TaskTable />
           {/if}
-          <!-- Quick add sits under the list, like a chat box. -->
-          <div class="mt-auto"><QuickAdd /></div>
+          <!-- At the bottom (default) quick add sits under the list, like a chat box. -->
+          {#if layout.quickAdd === 'bottom'}<div class="mt-auto"><QuickAdd placement="bottom" /></div>{/if}
         {:else if app.view === 'board'}
           <Board />
         {:else if app.view === 'calendar'}

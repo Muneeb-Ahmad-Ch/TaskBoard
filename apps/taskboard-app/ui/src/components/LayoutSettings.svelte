@@ -10,6 +10,8 @@
     resetLayout,
     SECTION_LABELS,
     setCount,
+    setQuickAddPlacement,
+    setSectionDots,
     setNavVisible,
     setSection,
     setSectionHidden,
@@ -87,8 +89,15 @@
 </section>
 
 <section class="card">
-  <h4 class="card-title">Sidebar counts</h4>
-  <ul aria-label="Sidebar counts">
+  <h4 class="card-title">Sidebar details</h4>
+  <ul aria-label="Sidebar details">
+    <li class="item">
+      <span class="flex min-w-0 flex-1 flex-col">
+        <span class="text-[13px] {layout.sectionDots ? '' : 'text-subtle'}">Section color dot</span>
+        <span class="text-xs text-muted">The colored dot before each section name</span>
+      </span>
+      <Switch label="Show section color dot" checked={layout.sectionDots} onchange={(v) => { setSectionDots(v); onchange() }} />
+    </li>
     {#each COUNTS as id (id)}
       <li class="item">
         <span class="flex min-w-0 flex-1 flex-col">
@@ -99,6 +108,21 @@
       </li>
     {/each}
   </ul>
+</section>
+
+<section class="card">
+  <h4 class="card-title">Add-a-task box</h4>
+  <div class="item">
+    <span class="flex min-w-0 flex-1 flex-col">
+      <span class="text-[13px]">Position in the Table view</span>
+      <span class="text-xs text-muted">Press N to jump to it from anywhere</span>
+    </span>
+    <div class="seg-group" role="radiogroup" aria-label="Add-a-task box position">
+      {#each [['top', 'Top'], ['bottom', 'Bottom']] as [value, label] (value)}
+        <button role="radio" aria-checked={layout.quickAdd === value} class="seg" onclick={() => { setQuickAddPlacement(value as 'top' | 'bottom'); onchange() }}>{label}</button>
+      {/each}
+    </div>
+  </div>
 </section>
 
 <section class="card">
@@ -155,6 +179,25 @@
   }
   .item + .item {
     border-top: 1px solid var(--border);
+  }
+  .seg-group {
+    display: flex;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-2);
+  }
+  .seg {
+    height: 24px;
+    padding-inline: 10px;
+    border-radius: 5px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .seg[aria-checked='true'] {
+    background: var(--accent-soft);
+    color: var(--accent-soft-text);
+    font-weight: 500;
   }
   .order {
     display: grid;

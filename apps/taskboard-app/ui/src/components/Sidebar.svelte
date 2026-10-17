@@ -321,16 +321,19 @@
       onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveProject(p.id, dir))}
       ondblclick={() => (editing = { kind: 'rename-project', id: p.id, value: p.name })}
     >
-      <span
-        class="ring"
-        style="--c: {swatch(p.color)}; --p: {pct}%"
-        title={p.total_tasks ? `${p.done_tasks} of ${p.total_tasks} done` : 'No tasks yet'}
-      ></span>
+      <span class="grid shrink-0 place-items-center" title={p.total_tasks ? `${p.done_tasks} of ${p.total_tasks} done` : 'No tasks yet'}>
+        <svg class="progress-ring" viewBox="0 0 16 16" aria-hidden="true" style="--c: {swatch(p.color, 0.68, 0.16)}">
+          <circle class="track" cx="8" cy="8" r="5.75" />
+          {#if pct > 0}
+            <circle class="arc" cx="8" cy="8" r="5.75" pathLength="100" stroke-dasharray="{pct} 100" transform="rotate(-90 8 8)" />
+          {/if}
+        </svg>
+      </span>
       <span class="flex-1 truncate text-left">{p.name}</span>
       {#if p.open_tasks && layout.counts.projects}<span class="tabular text-xs text-subtle group-hover:invisible group-focus-within:invisible">{p.open_tasks}</span>{/if}
     </button>
     <button
-      class="icon-btn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
+      class="icon-btn absolute top-[3px] right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
       aria-label="Add a task to {p.name}"
       title="Add a task"
       onclick={() => addTaskTo(p)}
@@ -372,7 +375,7 @@
       </button>
       {#if id === 'meetings'}
         <button
-          class="icon-btn absolute top-1 right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
+          class="icon-btn absolute top-[3px] right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
           aria-label="New meeting"
           title="New meeting"
           onclick={newMeeting}
@@ -400,7 +403,7 @@
             onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveSection(sec.id, dir))}
             ondblclick={() => (editing = { kind: 'rename-section', id: sec.id, value: sec.name })}
           >
-            <span class="size-1.5 shrink-0 rounded-full" style="background: {swatch(sec.color)}"></span>
+            {#if layout.sectionDots}<span class="size-2 shrink-0 rounded-full" style="background: {swatch(sec.color)}"></span>{/if}
             <span class="truncate">{sec.name}</span>
             {#if layout.counts.sections}<span class="shrink-0 font-normal text-subtle tabular">· {groups.length + loose.length}</span>{/if}
           </button>
@@ -436,18 +439,18 @@
                 <span class="flex-1 truncate text-left font-medium">{client.name}</span>
               </button>
               <button
-                class="icon-btn absolute top-1 right-[49px] opacity-0 group-hover:opacity-100 focus:opacity-100"
+                class="icon-btn absolute top-[3px] right-[54px] opacity-0 group-hover:opacity-100 focus:opacity-100"
                 aria-label="New project in {client.name}"
                 title="New project"
                 onclick={() => startProject(client)}
               ><Plus size={14} /></button>
               <button
-                class="icon-btn absolute top-1 right-[26px] opacity-0 group-hover:opacity-100 focus:opacity-100"
+                class="icon-btn absolute top-[3px] right-[29px] opacity-0 group-hover:opacity-100 focus:opacity-100"
                 aria-label="{cap(item)} actions"
                 onclick={(e) => clientMenu(e, client)}
               ><MoreHorizontal size={14} /></button>
               <button
-                class="icon-btn absolute top-1 right-1"
+                class="icon-btn absolute top-[3px] right-1"
                 aria-label="{collapsed[client.id] ? 'Expand' : 'Collapse'} {client.name}"
                 aria-expanded={!collapsed[client.id]}
                 onclick={() => toggle(client.id)}
@@ -533,7 +536,7 @@
   /* Groups keep room on the right for the actions button and fold arrow;
      their projects line up under the group's name. */
   .nav-item.client-row {
-    padding-right: 76px;
+    padding-right: 82px;
   }
   .section-head {
     display: flex;
@@ -551,9 +554,9 @@
     min-height: 24px;
     padding-inline: 4px;
     border-radius: 5px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--text);
     text-align: left;
   }
   .section-name:hover {
@@ -583,15 +586,20 @@
   .nav-item.in-client {
     padding-left: 32px;
   }
-  /* Project progress ring in the project's color; the faint track keeps the
-     color visible before any task is done. */
-  .ring {
-    width: 13px;
-    height: 13px;
-    flex-shrink: 0;
-    border-radius: 999px;
-    background: conic-gradient(var(--c) var(--p), color-mix(in oklch, var(--c) 28%, transparent) 0);
-    mask: radial-gradient(circle, transparent 3.5px, #000 4px);
+  /* Project progress ring in the project's color (SVG, so it stays crisp);
+     the faint track keeps the color visible before any task is done. */
+  .progress-ring {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke-width: 2.5;
+  }
+  .progress-ring .track {
+    stroke: color-mix(in oklch, var(--c) 30%, transparent);
+  }
+  .progress-ring .arc {
+    stroke: var(--c);
+    stroke-linecap: round;
   }
   .nav-item:hover {
     background: var(--hover);
@@ -614,8 +622,8 @@
   .icon-btn {
     display: grid;
     place-items: center;
-    width: 22px;
-    height: 22px;
+    width: 24px;
+    height: 24px;
     border-radius: 5px;
     color: var(--text-subtle);
   }

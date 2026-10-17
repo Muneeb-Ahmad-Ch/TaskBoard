@@ -73,7 +73,9 @@
 </script>
 
 <Modal title="Keyboard shortcuts" {onclose} width={680}>
-  <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+  <!-- Focusable so the list can be scrolled with the keyboard in small windows. -->
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="grid gap-x-6 gap-y-4 rounded sm:grid-cols-2" tabindex="0" role="region" aria-label="Shortcut list">
     {#each GROUPS as g (g.title)}
       <section>
         <h3 class="mb-1.5 text-xs font-semibold text-muted">{g.title}</h3>

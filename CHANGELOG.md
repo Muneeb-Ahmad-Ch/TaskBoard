@@ -24,10 +24,18 @@ Download any version from the
 
 ### Changed
 - **Sidebar redesign:** section names in normal case with a count
-  ("Clients · 2"), fold arrows on the right, and each project shows a small
-  **progress ring** in its color.
-- **Quick add moved to the bottom** of the Table view; what it will create
-  shows just above it.
+  ("Clients · 2") that stand out more, fold arrows on the right, and each
+  project shows a small **progress ring** in its color. The dot before a
+  section name can be hidden in Settings → Layout.
+- **Quick add moved to the bottom** of the Table view (choose Top or Bottom
+  in Settings → Layout); what it will create shows next to it. Typing `@`
+  opens a **project dropdown** (Tab inserts, or ↑ ↓ then Enter).
+
+### Fixed
+- **Column resizing:** every column edge now follows the mouse. Before, edges
+  right of the Task column moved the wrong edge, and some stopped early.
+- Quick add highlights (dates, tags, `@project`) no longer sit offset from
+  the text.
 
 ## [0.3.0] - 2026-10-17
 
