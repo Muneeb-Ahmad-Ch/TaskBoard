@@ -268,6 +268,87 @@ async fn bulk_delete(app: AppHandle, state: State<'_, AppState>, ids: Vec<Id>) -
     .await
 }
 
+/// Archives (or restores) a task with its subtasks.
+#[tauri::command]
+async fn set_task_archived(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    archived: bool,
+) -> CmdResult<Task> {
+    write(app, state, move |db| db.set_task_archived(id, archived)).await
+}
+
+#[tauri::command]
+async fn bulk_set_archived(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<Id>,
+    archived: bool,
+) -> CmdResult<usize> {
+    let verb = if archived { "Archive" } else { "Restore" };
+    write(app, state, move |db| {
+        db.batch(&tasks_label(verb, ids.len()), |db| {
+            for id in &ids {
+                db.set_task_archived(*id, archived)?;
+            }
+            Ok(ids.len())
+        })
+    })
+    .await
+}
+
+/// Archives every completed top-level task the query matches; returns how many.
+#[tauri::command]
+async fn archive_completed(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    query: TaskQuery,
+) -> CmdResult<usize> {
+    write(app, state, move |db| db.archive_completed(&query)).await
+}
+
+#[tauri::command]
+async fn pinned_projects(state: State<'_, AppState>) -> CmdResult<Vec<Id>> {
+    read(state, Db::pinned_projects).await
+}
+
+#[tauri::command]
+async fn pin_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    before: Option<Id>,
+) -> CmdResult<Vec<Id>> {
+    write(app, state, move |db| db.pin_project(id, before)).await
+}
+
+#[tauri::command]
+async fn unpin_project(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<Vec<Id>> {
+    write(app, state, move |db| db.unpin_project(id)).await
+}
+
+#[tauri::command]
+async fn set_pinned_projects(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<Id>,
+) -> CmdResult<Vec<Id>> {
+    write(app, state, move |db| db.set_pinned_projects(ids)).await
+}
+
+/// An error the UI caught (render failure, unhandled rejection), for the log
+/// file. Text only, trimmed; nothing leaves the computer.
+#[tauri::command]
+fn log_ui_error(message: String, detail: Option<String>) {
+    let cut = |s: &str| s.chars().take(2000).collect::<String>();
+    tracing::error!(
+        message = %cut(&message),
+        detail = %cut(detail.as_deref().unwrap_or("")),
+        "ui error"
+    );
+}
+
 #[tauri::command]
 async fn create_client(
     app: AppHandle,
@@ -957,6 +1038,14 @@ pub fn run() {
             bulk_update_tasks,
             bulk_set_done,
             bulk_delete,
+            set_task_archived,
+            bulk_set_archived,
+            archive_completed,
+            pinned_projects,
+            pin_project,
+            unpin_project,
+            set_pinned_projects,
+            log_ui_error,
             create_client,
             update_client,
             set_client_archived,

@@ -3,8 +3,7 @@
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { swatch } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
-  import { activeViewChanged, app, applySavedView, redo, setScope, undo, updateActiveView } from '../lib/store.svelte'
-  import { layout, pinProject, unpinProject } from '../lib/layout.svelte'
+  import { activeViewChanged, app, applySavedView, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
   import { openChangelog } from '../lib/about'
   import { cal, newMeeting } from '../lib/cal.svelte'
@@ -40,9 +39,9 @@
       { id: 'shortcuts', group: 'Actions', label: 'Keyboard shortcuts', hint: '?', run: () => (app.shortcutsOpen = true) },
       ...(app.scope.kind === 'project'
         ? [
-            layout.pinned.includes(app.scope.id)
-              ? { id: 'unpin', group: 'Actions', label: 'Unpin this project', run: () => app.scope.kind === 'project' && unpinProject(app.scope.id) }
-              : { id: 'pin', group: 'Actions', label: 'Pin this project to the top', run: () => app.scope.kind === 'project' && pinProject(app.scope.id) },
+            app.pinned.includes(app.scope.id)
+              ? { id: 'unpin', group: 'Actions', label: 'Unpin this project', run: () => void (app.scope.kind === 'project' && unpinProject(app.scope.id)) }
+              : { id: 'pin', group: 'Actions', label: 'Pin this project to the top', run: () => void (app.scope.kind === 'project' && pinProject(app.scope.id)) },
           ]
         : []),
       { id: 'changelog', group: 'Actions', label: "What's new (changelog)", run: openChangelog },

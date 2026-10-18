@@ -9,8 +9,9 @@
   import type { SavedView } from '../lib/bindings/SavedView'
   import { cap, plural, swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
-  import { act, activeViewChanged, app, applySavedView, groupsIn, inboxId, isPage, itemName, looseProjectsIn, projectsOf, saveCurrentView, sectionById, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
-  import { layout, NAV_LABELS, pinProject, unpinProject, type NavId } from '../lib/layout.svelte'
+  import { act, activeViewChanged, app, applySavedView, groupsIn, inboxId, isPage, itemName, looseProjectsIn, pinProject, projectsOf, saveCurrentView, sectionById, setScope, unpinProject, updateActiveView, type Scope } from '../lib/store.svelte'
+  import { layout, NAV_LABELS, setSidebarWidth, SIDEBAR, type NavId } from '../lib/layout.svelte'
+  import Splitter from './Splitter.svelte'
   import { beginDrag, dropClass, setDropResolver, type DragItem, type DropTarget } from '../lib/dnd.svelte'
   import { startOfDay, addDays, newMeeting } from '../lib/cal.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
@@ -197,9 +198,9 @@
       x: e.clientX,
       y: e.clientY,
       items: [
-        layout.pinned.includes(p.id)
-          ? { label: 'Unpin', run: () => unpinProject(p.id) }
-          : { label: 'Pin to top', run: () => pinProject(p.id) },
+        app.pinned.includes(p.id)
+          ? { label: 'Unpin', run: () => void unpinProject(p.id) }
+          : { label: 'Pin to top', run: () => void pinProject(p.id) },
         { label: 'Settings…', run: () => (app.projectDialog = p.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-project', id: p.id, value: p.name }) },
         'separator',
@@ -295,7 +296,7 @@
 
   // ---------- pinned projects ----------
   const pinnedProjects = $derived(
-    layout.pinned.map((id) => app.projects.find((p) => p.id === id)).filter((p): p is ProjectSummary => !!p && !p.is_inbox),
+    app.pinned.map((id) => app.projects.find((p) => p.id === id)).filter((p): p is ProjectSummary => !!p && !p.is_inbox),
   )
 
   // ---------- drag and drop ----------
@@ -371,11 +372,11 @@
     }
 
     // Projects. Pinned rows only reorder or extend the pinned list.
-    if (kind === 'pins') return at('inside', () => pinProject(item.id))
+    if (kind === 'pins') return at('inside', () => void pinProject(item.id))
     if (kind === 'pin') {
       if (id === item.id) return null
-      const before = half === 'before' ? id : nextAfter(layout.pinned, id, item.id)
-      return at(half, () => pinProject(item.id, before))
+      const before = half === 'before' ? id : nextAfter(app.pinned, id, item.id)
+      return at(half, () => void pinProject(item.id, before))
     }
     if (item.pinned) return null
     const moveTo = (to: { kind: 'group' | 'section'; id: Id }, before: Id | null) => () =>
@@ -451,7 +452,8 @@
   {/if}
 {/snippet}
 
-<aside class="flex h-full w-[264px] shrink-0 flex-col bg-[var(--sidebar-bg)] px-2.5 pt-3 pb-2" aria-label="Navigation">
+<aside class="relative flex h-full shrink-0 flex-col bg-[var(--sidebar-bg)] px-2.5 pt-3 pb-2" style="width: min({layout.sidebarWidth}px, 85vw)" aria-label="Navigation">
+  <Splitter value={layout.sidebarWidth} min={SIDEBAR.min} max={SIDEBAR.max} initial={SIDEBAR.default} edge="right" label="Resize the sidebar" onchange={setSidebarWidth} />
   <button
     class="mb-3 flex h-8 items-center gap-2 rounded-md border border-border bg-surface-1 px-2.5 text-muted transition-colors hover:border-border-strong"
     onclick={() => (app.paletteOpen = true)}

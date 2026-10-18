@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ArrowLeft, CheckCircle2, ChevronRight, Circle, Copy, Plus, Timer, Trash2, X } from '@lucide/svelte'
+  import { Archive, ArchiveRestore, ArrowLeft, CheckCircle2, ChevronRight, Circle, Copy, Plus, Timer, Trash2, X } from '@lucide/svelte'
   import type { Priority } from '../lib/bindings/Priority'
   import type { Status } from '../lib/bindings/Status'
   import type { Task } from '../lib/bindings/Task'
@@ -13,6 +13,8 @@
   import Notes from './Notes.svelte'
   import DateField from './DateField.svelte'
   import Progress from './Progress.svelte'
+  import Splitter from './Splitter.svelte'
+  import { layout, PANEL, setPanelWidth } from '../lib/layout.svelte'
   import { fromIso, repeatOptions } from '../lib/cal.svelte'
 
   let task = $state<Task | null>(null)
@@ -161,7 +163,8 @@
 
 {#if task}
   <!-- Docked beside the list on wide windows; overlays it on narrow ones. -->
-  <aside class="panel flex w-[380px] shrink-0 flex-col border-l border-border bg-surface-1 max-[1200px]:absolute max-[1200px]:inset-y-0 max-[1200px]:right-0 max-[1200px]:z-30 max-[1200px]:w-[min(380px,100%)] max-[1200px]:shadow-2xl" aria-label="Task details">
+  <aside class="panel relative flex w-[var(--panel-w)] shrink-0 flex-col border-l border-border bg-surface-1 max-[1200px]:absolute max-[1200px]:inset-y-0 max-[1200px]:right-0 max-[1200px]:z-30 max-[1200px]:w-[min(var(--panel-w),100%)] max-[1200px]:shadow-2xl" style="--panel-w: {layout.panelWidth}px" aria-label="Task details">
+    <Splitter value={layout.panelWidth} min={PANEL.min} max={PANEL.max} initial={PANEL.default} edge="left" label="Resize the task panel" onchange={setPanelWidth} />
     <header class="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
       <button
         class="flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs font-medium {done ? 'border-success text-success' : 'border-border hover:border-border-strong'}"
@@ -177,11 +180,21 @@
         onclick={() => task && void act(() => ipc.logTime({ task_id: task!.id, started_at: Date.now() }), 'Timer started — see Calendar')}
       ><Timer size={15} /></button>
       <button class="icon" title="Duplicate" aria-label="Duplicate task" onclick={() => task && void act(() => ipc.duplicateTask(task!.id), 'Task duplicated')}><Copy size={15} /></button>
+      {#if task.archived_at}
+        <button class="icon" title="Restore from the archive" aria-label="Restore task" onclick={() => task && void act(() => ipc.setTaskArchived(task!.id, false), 'Task restored')}><ArchiveRestore size={15} /></button>
+      {:else}
+        <button class="icon" title="Archive (hide it, keep it)" aria-label="Archive task" onclick={() => task && void act(() => ipc.setTaskArchived(task!.id, true), 'Task archived').then(close)}><Archive size={15} /></button>
+      {/if}
       <button class="icon hover:text-danger" title="Delete" aria-label="Delete task" onclick={() => task && void act(() => ipc.deleteTask(task!.id), 'Task deleted').then(close)}><Trash2 size={15} /></button>
       <button class="icon" title="Close (Esc)" aria-label="Close details" onclick={close}><X size={16} /></button>
     </header>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      {#if task.archived_at}
+        <p class="mb-3 flex items-center gap-2 rounded-md bg-surface-2 px-3 py-2 text-xs text-muted" role="status">
+          <Archive size={13} class="shrink-0" /> Archived. It stays out of your lists until you restore it.
+        </p>
+      {/if}
       {#if task.parent_id}
         <nav class="mb-2 flex items-center gap-2 text-xs" aria-label="Parent task">
           <button class="back flex min-w-0 items-center gap-1 rounded-md py-1 pr-2 pl-1 text-muted hover:bg-hover hover:text-text" onclick={back} title="Back to the parent task (Esc)">

@@ -13,7 +13,7 @@ import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
 import { isoDate, todayIso } from './format'
 import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
-import { adoptLegacySectionPrefs, visibleTabs } from './layout.svelte'
+import { adoptLegacySectionPrefs, takeLegacyPins, visibleTabs } from './layout.svelte'
 import { toast } from './toast.svelte'
 
 export type Scope =
@@ -95,6 +95,8 @@ export const app = $state({
   views: [] as SavedView[],
   /** Sidebar sections in order (data; visibility is a layout preference). */
   sections: [] as Section[],
+  /** Pinned project ids, in order (stored in the database). */
+  pinned: [] as Id[],
   /** The saved view last opened; cleared when the scope changes. */
   activeViewId: null as Id | null,
 })
@@ -295,10 +297,32 @@ export function setScope(scope: Scope) {
   if (isPage(app.view)) app.view = visibleTabs()[0] ?? 'table'
 }
 
+/** Pins made before they moved into the database (once, then gone). */
+async function migrateLegacyPins(current: Id[]) {
+  const legacy = takeLegacyPins()
+  if (!legacy.length) return
+  try {
+    app.pinned = await ipc.setPinnedProjects([...current, ...legacy.filter((id) => !current.includes(id))])
+  } catch {
+    // Projects that no longer exist are dropped by the core; nothing else to do.
+  }
+}
+
+/** Pins a project (last, or before another pinned one); pinning a pinned one moves it. */
+export async function pinProject(id: Id, before: Id | null = null) {
+  const next = await act(() => ipc.pinProject(id, before))
+  if (next) app.pinned = next
+}
+
+export async function unpinProject(id: Id) {
+  const next = await act(() => ipc.unpinProject(id))
+  if (next) app.pinned = next
+}
+
 export async function refreshMeta() {
   if (!inTauri) return
   try {
-    const [clients, projects, counts, history, statuses, views, sections] = await Promise.all([
+    const [clients, projects, counts, history, statuses, views, sections, pinned] = await Promise.all([
       ipc.listClients(),
       ipc.listProjects(),
       ipc.sidebarCounts(),
@@ -306,7 +330,10 @@ export async function refreshMeta() {
       ipc.allStatuses(),
       ipc.savedViews(),
       ipc.listSections(),
+      ipc.pinnedProjects(),
     ])
+    app.pinned = pinned
+    void migrateLegacyPins(pinned)
     app.sections = sections
     adoptLegacySectionPrefs(sections)
     app.views = views

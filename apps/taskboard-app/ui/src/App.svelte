@@ -64,21 +64,6 @@
     }
     return null
   })
-  /** Done / total top-level tasks (cancelled excluded) for a project, group or section scope. */
-  const scopeProgress = $derived.by(() => {
-    const s = app.scope
-    const list =
-      s.kind === 'project'
-        ? app.projects.filter((p) => p.id === s.id)
-        : s.kind === 'client'
-          ? app.projects.filter((p) => p.client_id === s.id)
-          : s.kind === 'section'
-            ? app.projects.filter((p) => !p.is_inbox && p.section_id === s.id)
-            : []
-    const total = list.reduce((n, p) => n + p.total_tasks, 0)
-    const done = list.reduce((n, p) => n + p.done_tasks, 0)
-    return total ? { done, total, pct: (done / total) * 100 } : null
-  })
   const canHideDone = $derived(
     app.view === 'table' && app.scope.kind !== 'today' && app.scope.kind !== 'upcoming',
   )
@@ -218,9 +203,10 @@
             {#if layout.headerDot}<span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{/if}{subtitle.text}
           </span>
         {/if}
-        {#if !isPage() && (app.scope.kind === 'client' || app.scope.kind === 'project' || app.scope.kind === 'section')}
+        {#if !isPage()}
+          <!-- Progress, time left, meetings and overdue for the list on screen. -->
           <span class="min-w-0 max-[1000px]:hidden">
-            <ScopeStats kind={app.scope.kind} id={app.scope.id} done={scopeProgress?.done ?? 0} total={scopeProgress?.total ?? 0} />
+            {#key JSON.stringify(app.scope)}<ScopeStats scope={app.scope} />{/key}
           </span>
         {/if}
       </div>

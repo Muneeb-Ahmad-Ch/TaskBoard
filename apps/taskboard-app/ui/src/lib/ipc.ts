@@ -81,6 +81,15 @@ export const ipc = {
   moveTask: (id: Id, to: MoveTask) => invoke<Task>('move_task', { id, to }),
   deleteTask: (id: Id) => invoke<void>('delete_task', { id }),
   duplicateTask: (id: Id) => invoke<Task>('duplicate_task', { id }),
+  setTaskArchived: (id: Id, archived: boolean) => invoke<Task>('set_task_archived', { id, archived }),
+  bulkSetArchived: (ids: Id[], archived: boolean) => invoke<number>('bulk_set_archived', { ids, archived }),
+  /** Archives the completed top-level tasks a list query matches; returns how many. */
+  archiveCompleted: (query: TaskQuery) => invoke<number>('archive_completed', { query }),
+  pinnedProjects: () => invoke<Id[]>('pinned_projects'),
+  pinProject: (id: Id, before: Id | null = null) => invoke<Id[]>('pin_project', { id, before }),
+  unpinProject: (id: Id) => invoke<Id[]>('unpin_project', { id }),
+  setPinnedProjects: (ids: Id[]) => invoke<Id[]>('set_pinned_projects', { ids }),
+  logUiError: (message: string, detail?: string) => invoke<void>('log_ui_error', { message, detail }),
   bulkUpdateTasks: (ids: Id[], patch: TaskPatch) =>
     invoke<number>('bulk_update_tasks', { ids, patch }),
   bulkSetDone: (ids: Id[], done: boolean) => invoke<number>('bulk_set_done', { ids, done }),
