@@ -12,6 +12,7 @@ use crate::model::{
     clean_time, int, opt_id, opt_int, opt_text, text,
 };
 use crate::order::key_between;
+use crate::query::TaskQuery;
 use crate::recur::TaskRule;
 use crate::storage::Db;
 use crate::tx::{Table, Tx};
@@ -230,6 +231,48 @@ fn descendants(tx: &Tx<'_>, id: Id) -> Result<Vec<Id>> {
         .query_map([id], |r| r.get(0))?
         .collect::<rusqlite::Result<_>>()?;
     Ok(ids)
+}
+
+/// Stamps a task and its live, not-yet-archived subtasks as archived.
+fn archive_rows(tx: &mut Tx<'_>, id: Id) -> Result<()> {
+    let now = tx.now();
+    for child in descendants(tx, id)? {
+        let t = load(tx, child)?;
+        if t.deleted_at.is_none() && t.archived_at.is_none() {
+            tx.update(Table::Task, &[child.into()], &[("archived_at", int(now))])?;
+        }
+    }
+    tx.update(Table::Task, &[id.into()], &[("archived_at", int(now))])?;
+    Ok(())
+}
+
+/// Un-archives a task, the subtasks archived in the same action, and any
+/// archived ancestors.
+fn restore_rows(tx: &mut Tx<'_>, task: &Task) -> Result<()> {
+    let stamp = task.archived_at;
+    for child in descendants(tx, task.id)? {
+        if load(tx, child)?.archived_at == stamp {
+            tx.update(
+                Table::Task,
+                &[child.into()],
+                &[("archived_at", Value::Null)],
+            )?;
+        }
+    }
+    tx.update(
+        Table::Task,
+        &[task.id.into()],
+        &[("archived_at", Value::Null)],
+    )?;
+    let mut parent = task.parent_id;
+    while let Some(p) = parent {
+        let up = load(tx, p)?;
+        if up.archived_at.is_some() {
+            tx.update(Table::Task, &[p.into()], &[("archived_at", Value::Null)])?;
+        }
+        parent = up.parent_id;
+    }
+    Ok(())
 }
 
 fn normalize_tags(names: &[String]) -> Result<Vec<String>> {
@@ -710,6 +753,65 @@ impl Db {
             },
         )?;
         Ok(())
+    }
+
+    /// Archives a task with its subtasks, or restores it: the subtasks archived
+    /// with it come back, and so does an archived parent (so the task can be
+    /// seen again). One undoable action; nothing happens when the task is
+    /// already archived / active.
+    pub fn set_task_archived(&mut self, id: Id, archived: bool) -> Result<Task> {
+        let current = self.task(id)?;
+        if current.archived_at.is_some() == archived {
+            return Ok(current);
+        }
+        let verb = if archived { "Archive" } else { "Restore" };
+        self.transact(
+            &format!("{verb} “{}”", label_title(&current.title)),
+            |tx| {
+                if archived {
+                    archive_rows(tx, id)
+                } else {
+                    restore_rows(tx, &current)
+                }
+            },
+        )?;
+        self.task(id)
+    }
+
+    /// Archives every completed (or cancelled) top-level task the query
+    /// matches, with their subtasks, as one undoable action. Returns how many
+    /// tasks were archived; with none there is no action to undo.
+    pub fn archive_completed(&mut self, q: &TaskQuery) -> Result<usize> {
+        let scope = TaskQuery {
+            categories: vec![Category::Done, Category::Cancelled],
+            top_level: true,
+            parent_id: None,
+            include_archived: false,
+            archived_only: false,
+            ..q.clone()
+        };
+        let (where_sql, args) = self.task_filter(&scope)?;
+        let ids: Vec<Id> = {
+            let mut stmt = self
+                .conn()
+                .prepare(&format!("SELECT t.id FROM task t WHERE {where_sql}"))?;
+            stmt.query_map(rusqlite::params_from_iter(args.iter()), |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let label = match ids.len() {
+            1 => "Archive 1 completed task".to_owned(),
+            n => format!("Archive {n} completed tasks"),
+        };
+        self.transact(&label, |tx| {
+            for id in &ids {
+                archive_rows(tx, *id)?;
+            }
+            Ok(())
+        })?;
+        Ok(ids.len())
     }
 
     /// Restores a soft-deleted task and the subtasks deleted with it.
