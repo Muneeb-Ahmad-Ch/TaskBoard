@@ -54,7 +54,8 @@
       rows: [
         ['Alt+↑ / Alt+↓', 'Move the focused section, group or project'],
         ['Double-click', 'Rename'],
-        ['Right-click', 'More actions'],
+        ['Right-click', 'More actions (pin, move, archive…)'],
+        ['Drag', 'Reorder sections, groups and projects; drop tasks on a project'],
       ],
     },
     {

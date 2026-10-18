@@ -4,7 +4,7 @@
 export type NavId = 'today' | 'upcoming' | 'inbox' | 'all' | 'meetings' | 'dashboard'
 export type TabId = 'table' | 'board' | 'calendar'
 /** Fixed sidebar sections (user sections are hidden by id, see `hiddenSections`). */
-export type SectionId = 'savedViews'
+export type SectionId = 'pinned' | 'savedViews'
 
 export const NAV_LABELS: Record<NavId, string> = {
   today: 'Today',
@@ -15,7 +15,7 @@ export const NAV_LABELS: Record<NavId, string> = {
   dashboard: 'Dashboard',
 }
 export const TAB_LABELS: Record<TabId, string> = { table: 'Table', board: 'Board', calendar: 'Calendar' }
-export const SECTION_LABELS: Record<SectionId, string> = { savedViews: 'Saved views' }
+export const SECTION_LABELS: Record<SectionId, string> = { pinned: 'Pinned projects', savedViews: 'Saved views' }
 
 /** Numbers the sidebar can show next to items; each can be turned off. */
 export type CountId = 'views' | 'overdue' | 'sections' | 'projects'
@@ -33,6 +33,8 @@ const KEY = 'taskboard.layout'
 type Stored = {
   nav: { id: NavId; visible: boolean }[]
   sections: Record<SectionId, boolean>
+  /** Pinned project ids, in the order shown at the top of the sidebar. */
+  pinned: string[]
   /** User sections hidden from the sidebar (ids). */
   hiddenSections: string[]
   /** Section names hidden before sections were user-defined ("Clients",
@@ -42,6 +44,8 @@ type Stored = {
   counts: Record<CountId, boolean>
   /** The colored dot before each section name. */
   sectionDots: boolean
+  /** The colored dot before the header's "Section › Group" line. */
+  headerDot: boolean
   /** Where the Table view's add-a-task box sits. */
   quickAdd: 'top' | 'bottom'
 }
@@ -49,12 +53,14 @@ type Stored = {
 function defaults(): Stored {
   return {
     nav: NAV_ORDER.map((id) => ({ id, visible: true })),
-    sections: { savedViews: true },
+    sections: { pinned: true, savedViews: true },
+    pinned: [],
     hiddenSections: [],
     legacyHidden: [],
     tabs: { table: true, board: true, calendar: true },
     counts: { views: true, overdue: true, sections: true, projects: true },
     sectionDots: true,
+    headerDot: false,
     quickAdd: 'bottom',
   }
 }
@@ -78,12 +84,14 @@ function load(): Stored {
     ]
     return {
       nav,
-      sections: { savedViews: old.savedViews ?? true },
+      sections: { pinned: old.pinned ?? true, savedViews: old.savedViews ?? true },
+      pinned: Array.isArray(saved.pinned) ? saved.pinned : [],
       hiddenSections: saved.hiddenSections ?? [],
       legacyHidden,
       tabs,
       counts: { ...base.counts, ...saved.counts },
       sectionDots: saved.sectionDots ?? true,
+      headerDot: saved.headerDot ?? false,
       quickAdd: saved.quickAdd === 'top' ? 'top' : 'bottom',
     }
   } catch {
@@ -116,6 +124,20 @@ export function moveNav(id: NavId, dir: -1 | 1) {
   save()
 }
 
+/** Pins a project (at the end, or before another pinned one). */
+export function pinProject(id: string, before: string | null = null) {
+  const list = layout.pinned.filter((p) => p !== id)
+  const at = before ? list.indexOf(before) : -1
+  list.splice(at < 0 ? list.length : at, 0, id)
+  layout.pinned = list
+  save()
+}
+
+export function unpinProject(id: string) {
+  layout.pinned = layout.pinned.filter((p) => p !== id)
+  save()
+}
+
 export function setSection(id: SectionId, visible: boolean) {
   layout.sections[id] = visible
   save()
@@ -128,6 +150,11 @@ export function setCount(id: CountId, shown: boolean) {
 
 export function setQuickAddPlacement(where: 'top' | 'bottom') {
   layout.quickAdd = where
+  save()
+}
+
+export function setHeaderDot(shown: boolean) {
+  layout.headerDot = shown
   save()
 }
 
@@ -165,6 +192,7 @@ export function visibleTabs(): TabId[] {
 }
 
 export function resetLayout() {
-  Object.assign(layout, defaults())
+  // Pins are the user's picks, not layout: they survive a reset.
+  Object.assign(layout, { ...defaults(), pinned: layout.pinned })
   save()
 }

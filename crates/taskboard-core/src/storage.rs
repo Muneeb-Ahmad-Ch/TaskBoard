@@ -363,6 +363,15 @@ impl Db {
         Ok(HistoryState { undo, redo })
     }
 
+    /// SQLite's `data_version`: changes whenever *another* connection (the
+    /// MCP server, the CLI) commits. Writes through this connection don't
+    /// move it, so polling it finds outside changes only.
+    pub fn data_version(&self) -> Result<i64> {
+        Ok(self
+            .conn()
+            .query_row("PRAGMA data_version", [], |r| r.get(0))?)
+    }
+
     pub fn info(&self) -> Result<DbInfo> {
         let sqlite_version = rusqlite::version().to_owned();
         let journal_mode: String = self
@@ -437,6 +446,29 @@ fn quick_check(conn: &Connection) -> Result<()> {
     } else {
         Err(Error::Integrity(result))
     }
+}
+
+/// Where the desktop app keeps its database when `TASKBOARD_DB` is not set:
+/// `%APPDATA%\app.taskboard.desktop\taskboard.db` on Windows (Tauri's app
+/// data dir), `$XDG_DATA_HOME/app.taskboard.desktop/taskboard.db` elsewhere.
+pub fn default_db_path() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("TASKBOARD_DB") {
+        return Some(PathBuf::from(p));
+    }
+    Some(default_data_dir()?.join("taskboard.db"))
+}
+
+/// The app's data directory (see [`default_db_path`]).
+pub fn default_data_dir() -> Option<PathBuf> {
+    let base = if cfg!(windows) {
+        PathBuf::from(std::env::var_os("APPDATA")?)
+    } else {
+        match std::env::var_os("XDG_DATA_HOME") {
+            Some(d) => PathBuf::from(d),
+            None => PathBuf::from(std::env::var_os("HOME")?).join(".local/share"),
+        }
+    };
+    Some(base.join("app.taskboard.desktop"))
 }
 
 #[cfg(test)]

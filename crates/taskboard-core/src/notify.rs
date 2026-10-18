@@ -56,6 +56,8 @@ pub struct AppSettings {
     pub close_to_tray: bool,
     /// Start with Windows, minimized to the tray.
     pub autostart: bool,
+    /// AI assistants connected over MCP may read and change data.
+    pub ai_access: bool,
 }
 
 impl Default for AppSettings {
@@ -63,6 +65,7 @@ impl Default for AppSettings {
         Self {
             close_to_tray: true,
             autostart: true,
+            ai_access: true,
         }
     }
 }

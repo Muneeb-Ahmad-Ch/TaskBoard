@@ -42,7 +42,9 @@ needs permission (see [License](#license)).
   sidebar sections anything (Clients, Teams, Departments, Family…) and say
   what one group in each is called. First run offers ready-made setups
   (Freelancer, Company, Personal life) or a blank start. Click a section to
-  see all its work with progress; move groups and projects between sections.
+  see all its work with progress; drag sections, groups and projects to
+  reorder or move them, drop tasks onto a project, and pin the projects you
+  use daily.
 - **Three views of the same data.**
   - *Table*: virtualized (50,000 tasks scroll smoothly), inline editing,
     sorting, resizable columns, multi-select bulk edits.
@@ -79,6 +81,19 @@ needs permission (see [License](#license)).
 - **Make it yours** (Settings → Layout): show, hide and reorder sidebar items,
   sections, view tabs and table columns; resize columns; order sections,
   groups and projects.
+
+## Work with an AI assistant
+
+Taskboard is an **MCP server**, the standard Claude, Codex, Cursor and other
+assistants use to work with apps. Open **Settings → AI assistants**, copy the
+ready-made config for your assistant, and it can read, add, change and remove
+sections, groups, projects, tasks, meetings and logged time, using the same
+rules as the app. Everything it changes is undoable and appears in the app as
+it happens. A switch turns access off at any time, and the page shows which
+assistants have connected.
+
+Under the hood: `taskboard-app.exe --mcp` (or `taskboard mcp` from the CLI)
+speaks JSON-RPC over stdio against the same database file.
 
 ## Install
 

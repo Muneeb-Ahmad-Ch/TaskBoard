@@ -11,4 +11,8 @@ close_to_tray: boolean,
 /**
  * Start with Windows, minimized to the tray.
  */
-autostart: boolean, };
+autostart: boolean, 
+/**
+ * AI assistants connected over MCP may read and change data.
+ */
+ai_access: boolean, };

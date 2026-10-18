@@ -39,6 +39,7 @@ import type { ProjectPatch } from './bindings/ProjectPatch'
 import type { ProjectSummary } from './bindings/ProjectSummary'
 import type { QuickAddPreview } from './bindings/QuickAddPreview'
 import type { NewSection } from './bindings/NewSection'
+import type { ProjectPlace } from './bindings/ProjectPlace'
 import type { SavedView } from './bindings/SavedView'
 import type { Section } from './bindings/Section'
 import type { SectionDelete } from './bindings/SectionDelete'
@@ -94,6 +95,10 @@ export const ipc = {
   createSection: (input: NewSection) => invoke<Section>('create_section', { input }),
   updateSection: (id: Id, patch: SectionPatch) => invoke<Section>('update_section', { id, patch }),
   moveSection: (id: Id, direction: Direction) => invoke<boolean>('move_section', { id, direction }),
+  /** Drag and drop placement; `before` null = last. */
+  placeSection: (id: Id, before: Id | null) => invoke<boolean>('place_section', { id, before }),
+  placeClient: (id: Id, sectionId: Id, before: Id | null) => invoke<boolean>('place_client', { id, sectionId, before }),
+  placeProject: (id: Id, to: ProjectPlace, before: Id | null) => invoke<boolean>('place_project', { id, to, before }),
   deleteSection: (id: Id, how: SectionDelete) => invoke<void>('delete_section', { id, how }),
   applySetup: (setup: Setup) => invoke<Section[]>('apply_setup', { setup }),
   moveProject: (id: Id, direction: Direction) => invoke<boolean>('move_project', { id, direction }),
@@ -146,6 +151,9 @@ export const ipc = {
   notifySettings: () => invoke<NotifySettings>('notify_settings'),
   setNotifySettings: (settings: NotifySettings) => invoke<NotifySettings>('set_notify_settings', { settings }),
   appSettings: () => invoke<AppSettings>('app_settings'),
+  /** Settings → AI assistants: how to connect, and who has. */
+  mcpInfo: () => invoke<McpInfo>('mcp_info'),
+  mcpSelfTest: () => invoke<McpTest>('mcp_self_test'),
   setAppSettings: (settings: AppSettings) => invoke<AppSettings>('set_app_settings', { settings }),
   testNotification: () => invoke<void>('test_notification'),
   startHidden: () => invoke<boolean>('start_hidden'),
@@ -200,4 +208,23 @@ export function errorMessage(err: unknown): string {
     return msg.charAt(0).toUpperCase() + msg.slice(1)
   }
   return String(err)
+}
+
+/** An assistant that has connected over MCP (from the server's connection log). */
+export interface McpConnection {
+  name: string
+  version: string
+  last_seen: number
+  connections: number
+}
+export interface McpInfo {
+  command: string
+  args: string[]
+  db_path: string
+  connections: McpConnection[]
+}
+export interface McpTest {
+  ok: boolean
+  message: string
+  tools: number
 }

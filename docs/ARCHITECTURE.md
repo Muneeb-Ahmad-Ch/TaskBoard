@@ -154,6 +154,28 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   every acknowledged write after each kill. It covers process kills; power
   loss relies on `synchronous=FULL`.
 
+## 3b. AI assistants (MCP)
+
+`crates/taskboard-mcp` makes the core available to any MCP client (Claude
+Desktop, Claude Code, Codex, Cursor…) over the stdio transport: newline
+delimited JSON-RPC 2.0, hand-written (no async runtime; the core is
+synchronous). `Server::handle` is pure (message in, response out) so the
+whole protocol is tested against an in-memory database. Tool arguments are
+checked against each tool's schema before deserializing into the core's own
+`New*` / `*Patch` types, so a misspelled field comes back as a tool error the
+assistant can read, not a silent no-op. Writes go through the same `transact`
+path as the app, so they are undoable from either side.
+
+Entry points: `taskboard-app.exe --mcp` (checked before Tauri starts, so the
+single-instance plugin never forwards it to a running app) and `taskboard mcp`.
+Both open the app's database (`storage::default_db_path`); SQLite WAL plus the
+busy timeout handle the two processes. The app notices outside commits by
+polling `PRAGMA data_version` every 1.2 s (`mcp::spawn_change_watcher`) and
+emits the same `data-changed` event its own writes do. Connections are logged
+to `mcp-connections.json` in the data folder for Settings → AI assistants,
+which also runs a self-test (spawns the exe, handshake, `tools/list`).
+`AppSettings.ai_access` is a kill switch the server checks on every call.
+
 ## 4. Storage
 
 - SQLite bundled via `rusqlite` (`bundled` feature) — currently **3.53.2** with
@@ -245,7 +267,12 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
   `unimplemented`, `dbg_macro`; `unsafe_code` is forbidden. Test modules opt
   out locally with `#[allow]`.
 - Every change: `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`,
-  `cargo test --workspace`, `pnpm check`, `pnpm build`.
+  `cargo test --workspace` (core, CLI and MCP protocol tests), `pnpm check`,
+  `pnpm test` (vitest on the pure UI modules), `pnpm build`; `cargo deny` in CI.
+- Before a release: the CDP-driven QA flows, real-mouse drag tests (column
+  resize, sidebar drag and drop), an end-to-end MCP run against the release
+  exe, axe-core (WCAG 2.2 AA) light/dark at 1280 and 720 px, and the
+  window-size checks down to 720×480.
 
 ## 10. Developer commands
 
@@ -255,6 +282,7 @@ pnpm install
 pnpm app:dev          # run the desktop app (Vite + Tauri)
 pnpm app:build        # NSIS + MSI installers
 pnpm check            # svelte-check + tsc
+pnpm test             # vitest (src/lib/*.test.ts)
 
 # from repo root
 cargo test --workspace            # also regenerates TS bindings

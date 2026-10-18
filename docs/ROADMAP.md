@@ -54,14 +54,23 @@ Small, high value (done after 0.3.0):
 - [x] **Shortcut cheat sheet**: press `?` to see every keyboard shortcut in the
       app (N, Space, F2, Alt+↑/↓…), not only in SHORTCUTS.md.
 
-Bigger (a release of their own):
+Bigger (done after 0.3.1):
 
-- [ ] **Drag and drop in the sidebar**: reorder sections, groups and projects;
+- [x] **Drag and drop in the sidebar**: reorder sections, groups and projects;
       drag a project into another group or section.
-- [ ] **Drop tasks on the sidebar**: drag tasks from the table or board onto a
+- [x] **Drop tasks on the sidebar**: drag tasks from the table or board onto a
       project to move them.
-- [ ] **Pinned projects**: a short "Pinned" list at the top of the sidebar for
+- [x] **Pinned projects**: a short "Pinned" list at the top of the sidebar for
       the projects used daily.
+
+## AI assistants (done after 0.3.1)
+
+- [x] MCP server (`taskboard-app.exe --mcp`, `taskboard mcp`): 25 tools over
+      sections, groups, projects, tasks, events, time, undo/redo.
+- [x] App refreshes on outside commits (SQLite `data_version` watcher).
+- [x] Settings → AI assistants: switch, configs, self-test, connection log.
+- [ ] MCP resources (read-only views of today / a project) and prompts.
+- [ ] Per-assistant permissions (read-only assistants).
 
 ## Next improvements
 

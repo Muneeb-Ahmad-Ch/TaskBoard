@@ -4122,6 +4122,7 @@ dependencies = [
  "serde",
  "serde_json",
  "taskboard-core",
+ "taskboard-mcp",
  "tauri",
  "tauri-build",
  "tauri-plugin-autostart",
@@ -4147,6 +4148,7 @@ dependencies = [
  "jiff",
  "serde_json",
  "taskboard-core",
+ "taskboard-mcp",
  "tracing",
  "tracing-subscriber",
 ]
@@ -4169,6 +4171,18 @@ dependencies = [
  "tracing",
  "ts-rs",
  "uuid",
+]
+
+[[package]]
+name = "taskboard-mcp"
+version = "0.3.1"
+dependencies = [
+ "jiff",
+ "serde",
+ "serde_json",
+ "taskboard-core",
+ "tempfile",
+ "tracing",
 ]
 
 [[package]]

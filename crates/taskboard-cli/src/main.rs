@@ -72,6 +72,9 @@ enum Command {
     /// Manage projects.
     #[command(subcommand)]
     Project(ProjectCmd),
+    /// Serve the database to an AI assistant over MCP (stdio), until the
+    /// assistant closes the connection.
+    Mcp,
     /// Fill the database with realistic sample data (for benchmarks).
     Seed {
         #[arg(long, default_value_t = 50_000)]
@@ -353,6 +356,11 @@ fn main() -> Result<()> {
             }
         }
         Command::Seed { tasks, clients } => seed(&mut db, tasks, clients)?,
+        Command::Mcp => {
+            let server =
+                taskboard_mcp::Server::new(db, taskboard_core::storage::default_data_dir());
+            taskboard_mcp::serve(server, std::io::stdin().lock(), std::io::stdout().lock())?;
+        }
     }
     Ok(())
 }

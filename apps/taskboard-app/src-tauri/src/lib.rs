@@ -6,6 +6,7 @@
 
 mod data;
 mod desktop;
+mod mcp;
 
 use std::sync::{Arc, Mutex};
 
@@ -15,9 +16,10 @@ use taskboard_core::{
     AppSettings, Client, ClientHours, ClientPatch, Dashboard, DayOverride, DayPlan, Db, DbInfo,
     Direction, ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask,
     NewClient, NewEvent, NewProject, NewSection, NewStatus, NewTask, NewTimeEntry, NotifySettings,
-    Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SavedView,
-    SavedViewPatch, Section, SectionDelete, SectionPatch, Setup, SidebarCounts, SlotResult, Status,
-    StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
+    Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectPlace, ProjectSummary,
+    QuickAddPreview, SavedView, SavedViewPatch, Section, SectionDelete, SectionPatch, Setup,
+    SidebarCounts, SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery,
+    TaskSummary, TimeEntryPatch, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -334,6 +336,44 @@ async fn move_section(
     direction: Direction,
 ) -> CmdResult<bool> {
     write(app, state, move |db| db.move_section(id, direction)).await
+}
+
+/// Drag and drop: section before `before` (None = last).
+#[tauri::command]
+async fn place_section(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    before: Option<Id>,
+) -> CmdResult<bool> {
+    write(app, state, move |db| db.place_section(id, before)).await
+}
+
+/// Drag and drop: group into `section_id`, before `before` (None = last).
+#[tauri::command]
+async fn place_client(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    section_id: Id,
+    before: Option<Id>,
+) -> CmdResult<bool> {
+    write(app, state, move |db| {
+        db.place_client(id, section_id, before)
+    })
+    .await
+}
+
+/// Drag and drop: project into a group or section, before `before`.
+#[tauri::command]
+async fn place_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    to: ProjectPlace,
+    before: Option<Id>,
+) -> CmdResult<bool> {
+    write(app, state, move |db| db.place_project(id, to, before)).await
 }
 
 #[tauri::command]
@@ -804,6 +844,16 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 }
 
 pub fn run() {
+    // `taskboard-app.exe --mcp`: be the MCP server for an AI assistant instead
+    // of opening a window. Checked before the single-instance plugin, which
+    // would otherwise hand these arguments to the running app and exit.
+    if std::env::args().any(|a| a == mcp::FLAG) {
+        if let Err(err) = mcp::run_server() {
+            eprintln!("taskboard mcp: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let started = std::time::Instant::now();
     let _log_guard = init_logging();
 
@@ -873,7 +923,8 @@ pub fn run() {
             }
             desktop::sync_autostart(app.handle(), settings.autostart);
             desktop::spawn_integrity_check(app.handle().clone(), path);
-            desktop::spawn_reminders(app.handle().clone(), db);
+            desktop::spawn_reminders(app.handle().clone(), Arc::clone(&db));
+            mcp::spawn_change_watcher(app.handle().clone(), db);
             // Another app may own the shortcut; Taskboard still works without it.
             if let Err(err) = app.global_shortcut().register(quick_add_shortcut()) {
                 tracing::warn!(%err, "quick-add shortcut unavailable");
@@ -884,6 +935,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db_info,
             history_state,
+            mcp::mcp_info,
+            mcp::mcp_self_test,
             list_clients,
             list_projects,
             list_statuses,
@@ -915,6 +968,9 @@ pub fn run() {
             create_section,
             update_section,
             move_section,
+            place_section,
+            place_client,
+            place_project,
             delete_section,
             apply_setup,
             saved_views,

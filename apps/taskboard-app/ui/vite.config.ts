@@ -1,6 +1,6 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 // Tauri expects a fixed dev port and must see its own errors in the terminal.
 export default defineConfig({
@@ -15,5 +15,10 @@ export default defineConfig({
     // WebView2 is evergreen Chromium.
     target: 'chrome120',
     sourcemap: false,
+  },
+  // Unit tests for the pure modules in src/lib (`pnpm test`).
+  test: {
+    include: ['src/**/*.test.ts'],
+    environment: 'node',
   },
 })
