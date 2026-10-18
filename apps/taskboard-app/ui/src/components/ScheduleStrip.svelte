@@ -262,7 +262,16 @@
       padding-block: 4px;
     }
     .item {
-      width: 260px;
+      width: 280px;
+    }
+    /* The time stays on one line; the title gives way. */
+    .body > :first-child {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .body > :last-child {
+      min-width: 0;
+      flex: 1;
     }
   }
 </style>
