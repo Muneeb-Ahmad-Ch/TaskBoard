@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>A fast, local-first planner for people who juggle many projects, organized your way.</strong><br>
-  Tasks, a Kanban board and a calendar with meetings, working hours and a meeting-slot finder.
+  Tasks, a Kanban board and a calendar with meetings, working hours and a meeting-slot finder.<br>
+  Works with Claude, Codex and other AI assistants over MCP.
 </p>
 
 <p align="center">
@@ -19,6 +20,7 @@
 <p align="center">
   <a href="#install">Download</a> ·
   <a href="#features">Features</a> ·
+  <a href="#work-with-an-ai-assistant">AI assistants</a> ·
   <a href="docs/SHORTCUTS.md">Shortcuts</a> ·
   <a href="CHANGELOG.md">Changelog</a> ·
   <a href="#build-from-source">Build</a> ·
@@ -84,16 +86,26 @@ needs permission (see [License](#license)).
 
 ## Work with an AI assistant
 
-Taskboard is an **MCP server**, the standard Claude, Codex, Cursor and other
-assistants use to work with apps. Open **Settings → AI assistants**, copy the
-ready-made config for your assistant, and it can read, add, change and remove
-sections, groups, projects, tasks, meetings and logged time, using the same
-rules as the app. Everything it changes is undoable and appears in the app as
-it happens. A switch turns access off at any time, and the page shows which
-assistants have connected.
+Taskboard is an **MCP server**, the standard that Claude Desktop, Claude Code,
+Codex, Cursor and other assistants use to work with apps. Once connected, an
+assistant can read, add, change and remove sections, groups, projects, tasks,
+meetings and logged time, using the same rules as the app. Everything it
+changes is undoable (Ctrl+Z) and appears in the app within a second.
+
+1. Open **Settings → AI assistants** (or Ctrl+K → "Connect an AI assistant…").
+2. Click **Copy config** next to your assistant and paste it where that
+   assistant keeps its MCP servers (the page says where). For Claude Code it
+   is one command: `claude mcp add taskboard -- "<path to taskboard-app.exe>" --mcp`.
+3. Click **Run test** to check the connection, then ask your assistant to
+   "list my open tasks" or "add a task to Website: ship the homepage Friday".
+
+The same page has an **on/off switch** and shows which assistants have
+connected and when. Nothing leaves your computer unless the assistant you
+connect sends it.
 
 Under the hood: `taskboard-app.exe --mcp` (or `taskboard mcp` from the CLI)
-speaks JSON-RPC over stdio against the same database file.
+speaks JSON-RPC over stdio against the same database file; the tool list and
+protocol tests live in `crates/taskboard-mcp`.
 
 ## Install
 
@@ -124,13 +136,13 @@ Checks:
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace              # also regenerates TypeScript bindings
-cd apps/taskboard-app/ui && pnpm check && pnpm build
+cargo test --workspace              # core, CLI and MCP tests; regenerates TypeScript bindings
+cd apps/taskboard-app/ui && pnpm check && pnpm test && pnpm build
 ```
 
 The `taskboard` CLI (`cargo run -p taskboard-cli -- --help`) works on the same
-database: add tasks with Quick Add syntax, list, undo, and `seed` a large demo
-database for benchmarks.
+database: add tasks with Quick Add syntax, list, undo, serve an AI assistant
+with `taskboard mcp`, and `seed` a large demo database for benchmarks.
 
 ## Project layout
 
@@ -138,6 +150,7 @@ database for benchmarks.
 crates/taskboard-core   domain logic, SQLite storage, queries, recurrence,
                         reminders, backups, import/export (no UI code)
 crates/taskboard-cli    command-line tool over the core
+crates/taskboard-mcp    MCP server for AI assistants (stdio JSON-RPC over the core)
 apps/taskboard-app      Tauri 2 shell (src-tauri) + Svelte 5 UI (ui)
 docs/                   SPEC, ARCHITECTURE, DATA_MODEL, SHORTCUTS, RELEASING, ROADMAP
 ```
@@ -145,7 +158,9 @@ docs/                   SPEC, ARCHITECTURE, DATA_MODEL, SHORTCUTS, RELEASING, RO
 ## Privacy
 
 Taskboard makes no network requests of its own. It only opens meeting links
-you click, in your browser. Your data lives in
+you click, in your browser. An AI assistant you connect runs on your computer
+and talks to Taskboard locally; what it sends to its own service is up to that
+assistant, and you can turn its access off in Settings → AI assistants. Your data lives in
 `%APPDATA%\app.taskboard.desktop\taskboard.db`, with backups in the
 `backups` folder next to it.
 
