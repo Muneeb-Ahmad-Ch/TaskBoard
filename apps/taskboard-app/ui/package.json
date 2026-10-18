@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test": "vitest run",
     "tauri": "TAURI_APP_PATH=../src-tauri TAURI_FRONTEND_PATH=. tauri",
     "app:dev": "pnpm tauri dev",
     "app:build": "pnpm tauri build"
@@ -23,7 +24,8 @@
     "svelte-check": "^4.7.6",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "vitest": "5.0.5"
   },
   "dependencies": {
     "@lucide/svelte": "^1.57.0",

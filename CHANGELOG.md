@@ -18,6 +18,16 @@ Download any version from the
 - **Pinned projects:** right-click a project → **Pin to top** (or drag it onto
   Pinned) for a short list at the top of the sidebar; drag to reorder. Pins are
   kept per device and can be hidden in Settings → Layout.
+- **AI assistants (MCP):** Taskboard is now an MCP server. **Settings → AI
+  assistants** has copyable configs for Claude Desktop, Claude Code, Codex and
+  other MCP clients, a self-test, an on/off switch, and a list of assistants
+  that have connected. An assistant can read, add, change and remove sections,
+  groups, projects, tasks, meetings and logged time; every change is undoable
+  and the app refreshes within a second. CLI: `taskboard mcp`.
+
+### Fixed
+- **Column resizing** keeps following the mouse once the columns to the right
+  are at their minimum: the table scrolls sideways instead of the edge stopping.
 
 ## [0.3.1] - 2026-10-17
 

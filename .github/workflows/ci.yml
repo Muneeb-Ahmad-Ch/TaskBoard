@@ -38,10 +38,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # The Tauri crate embeds ui/dist at compile time, so build the UI first.
-      - name: UI type-check and build
+      - name: UI type-check, unit tests and build
         working-directory: apps/taskboard-app/ui
         run: |
           pnpm check
+          pnpm test
           pnpm build
 
       - name: rustfmt

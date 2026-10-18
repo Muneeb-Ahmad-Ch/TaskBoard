@@ -63,6 +63,15 @@ Bigger (done after 0.3.1):
 - [x] **Pinned projects**: a short "Pinned" list at the top of the sidebar for
       the projects used daily.
 
+## AI assistants (done after 0.3.1)
+
+- [x] MCP server (`taskboard-app.exe --mcp`, `taskboard mcp`): 25 tools over
+      sections, groups, projects, tasks, events, time, undo/redo.
+- [x] App refreshes on outside commits (SQLite `data_version` watcher).
+- [x] Settings → AI assistants: switch, configs, self-test, connection log.
+- [ ] MCP resources (read-only views of today / a project) and prompts.
+- [ ] Per-assistant permissions (read-only assistants).
+
 ## Next improvements
 
 - Table: group by client / project / status; drag column headers to reorder
