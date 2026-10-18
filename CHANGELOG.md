@@ -28,6 +28,8 @@ Download any version from the
 ### Fixed
 - **Column resizing** keeps following the mouse once the columns to the right
   are at their minimum: the table scrolls sideways instead of the edge stopping.
+- The colored dot before "Section › Group" in the page header is hidden by
+  default; Settings → Layout can show it (and the section dots).
 
 ## [0.3.1] - 2026-10-17
 

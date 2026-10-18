@@ -44,6 +44,8 @@ type Stored = {
   counts: Record<CountId, boolean>
   /** The colored dot before each section name. */
   sectionDots: boolean
+  /** The colored dot before the header's "Section › Group" line. */
+  headerDot: boolean
   /** Where the Table view's add-a-task box sits. */
   quickAdd: 'top' | 'bottom'
 }
@@ -58,6 +60,7 @@ function defaults(): Stored {
     tabs: { table: true, board: true, calendar: true },
     counts: { views: true, overdue: true, sections: true, projects: true },
     sectionDots: true,
+    headerDot: false,
     quickAdd: 'bottom',
   }
 }
@@ -88,6 +91,7 @@ function load(): Stored {
       tabs,
       counts: { ...base.counts, ...saved.counts },
       sectionDots: saved.sectionDots ?? true,
+      headerDot: saved.headerDot ?? false,
       quickAdd: saved.quickAdd === 'top' ? 'top' : 'bottom',
     }
   } catch {
@@ -146,6 +150,11 @@ export function setCount(id: CountId, shown: boolean) {
 
 export function setQuickAddPlacement(where: 'top' | 'bottom') {
   layout.quickAdd = where
+  save()
+}
+
+export function setHeaderDot(shown: boolean) {
+  layout.headerDot = shown
   save()
 }
 

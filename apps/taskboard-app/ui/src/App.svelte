@@ -210,7 +210,7 @@
         <h1 class="font-display truncate text-lg font-semibold tracking-tight">{pageTitle ?? app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle()}</h1>
         {#if subtitle}
           <span class="flex shrink-0 items-center gap-1.5 text-xs text-muted max-[1180px]:hidden">
-            <span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{subtitle.text}
+            {#if layout.headerDot}<span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{/if}{subtitle.text}
           </span>
         {/if}
         {#if !isPage() && (app.scope.kind === 'client' || app.scope.kind === 'project' || app.scope.kind === 'section')}

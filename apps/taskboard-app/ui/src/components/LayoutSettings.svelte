@@ -11,6 +11,7 @@
     SECTION_LABELS,
     setCount,
     setQuickAddPlacement,
+    setHeaderDot,
     setSectionDots,
     setNavVisible,
     setSection,
@@ -97,6 +98,13 @@
         <span class="text-xs text-muted">The colored dot before each section name</span>
       </span>
       <Switch label="Show section color dot" checked={layout.sectionDots} onchange={(v) => { setSectionDots(v); onchange() }} />
+    </li>
+    <li class="item">
+      <span class="flex min-w-0 flex-1 flex-col">
+        <span class="text-[13px] {layout.headerDot ? '' : 'text-subtle'}">Header color dot</span>
+        <span class="text-xs text-muted">The colored dot before "Section › Group" in the page header</span>
+      </span>
+      <Switch label="Show header color dot" checked={layout.headerDot} onchange={(v) => { setHeaderDot(v); onchange() }} />
     </li>
     {#each COUNTS as id (id)}
       <li class="item">
