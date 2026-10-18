@@ -11,6 +11,7 @@
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import Notes from './Notes.svelte'
+  import DateField from './DateField.svelte'
   import Progress from './Progress.svelte'
   import { fromIso, repeatOptions } from '../lib/cal.svelte'
 
@@ -260,13 +261,15 @@
 
         <dt>Start</dt>
         <dd>
-          <input type="date" class="prop-input" aria-label="Start date" value={task.start_date ?? ''} onchange={(e) => void save({ start_date: e.currentTarget.value || null })} />
+          <DateField label="Start date" placeholder="Add start date" value={task.start_date} onchange={(v) => void save({ start_date: v })} />
         </dd>
 
         <dt>Due</dt>
         <dd class="flex gap-1.5">
-          <input type="date" class="prop-input" aria-label="Due date" value={task.due_date ?? ''} onchange={(e) => void save({ due_date: e.currentTarget.value || null })} />
-          <input type="time" class="prop-input w-[104px]" aria-label="Due time" value={task.due_time ?? ''} disabled={!task.due_date} onchange={(e) => void save({ due_time: e.currentTarget.value || null })} />
+          <DateField label="Due date" placeholder="Add due date" value={task.due_date} onchange={(v) => void save(v ? { due_date: v } : { due_date: null, due_time: null })} />
+          {#if task.due_date}
+            <DateField kind="time" label="Due time" placeholder="Add time" value={task.due_time} onchange={(v) => void save({ due_time: v })} />
+          {/if}
         </dd>
 
         {#if !task.parent_id || task.recurrence_rule}

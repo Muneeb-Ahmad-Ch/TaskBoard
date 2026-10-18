@@ -14,7 +14,6 @@
   import StatusBar from './components/StatusBar.svelte'
   import TaskPanel from './components/TaskPanel.svelte'
   import TaskTable from './components/TaskTable.svelte'
-  import ThemeControls from './components/ThemeControls.svelte'
   import ScopeStats from './components/ScopeStats.svelte'
   import Toasts from './components/Toasts.svelte'
   import DashboardView from './components/DashboardView.svelte'
@@ -56,6 +55,12 @@
     if (s.kind === 'client') {
       const c = app.clients.find((x) => x.id === s.id)
       return c ? { text: sectionById(c.section_id)?.name ?? '', color: c.color } : null
+    }
+    if (s.kind === 'today' && app.counts) {
+      // Overdue rows carry a red rail in the table; say how many of each.
+      const { overdue, today } = app.counts
+      const parts = [overdue ? `${overdue} overdue` : '', today ? `${today} due today` : ''].filter(Boolean)
+      return parts.length ? { text: parts.join(' · '), color: overdue ? '10' : 'gray', warn: overdue > 0 } : null
     }
     return null
   })
@@ -209,7 +214,7 @@
       <div class="flex min-w-0 flex-1 items-baseline gap-2.5">
         <h1 class="font-display truncate text-lg font-semibold tracking-tight">{pageTitle ?? app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle()}</h1>
         {#if subtitle}
-          <span class="flex shrink-0 items-center gap-1.5 text-xs text-muted max-[1180px]:hidden">
+          <span class="flex shrink-0 items-center gap-1.5 text-xs max-[1180px]:hidden {'warn' in subtitle && subtitle.warn ? 'font-medium text-danger' : 'text-muted'}">
             {#if layout.headerDot}<span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{/if}{subtitle.text}
           </span>
         {/if}
@@ -233,7 +238,7 @@
           title={app.showDone ? 'Hide completed' : 'Show completed'}
           onclick={() => (app.showDone = !app.showDone)}
         >
-          {#if app.showDone}<Eye size={14} />{:else}<EyeOff size={14} />{/if} <span class="max-[1180px]:sr-only">Done</span>
+          {#if app.showDone}<Eye size={14} />{:else}<EyeOff size={14} />{/if} <span class="max-[1180px]:sr-only">{app.showDone ? 'Hide completed' : 'Show completed'}</span>
         </button>
       {/if}
 
@@ -245,8 +250,6 @@
           </button>
         {/each}
       </div>
-      <!-- On narrow windows theme and accent stay available in Settings. -->
-      <div class="max-[1180px]:hidden"><ThemeControls /></div>
     </header>
 
     <div class="relative flex min-h-0 flex-1">

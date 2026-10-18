@@ -105,7 +105,7 @@
         <div class="text-[13px] font-medium">{s.name}</div>
         <div class="mt-0.5 text-xs text-muted">{s.hint}</div>
       </div>
-      <button class="btn !h-7 text-xs" onclick={() => void copy(s.id, s.text)}>
+      <button class="btn !h-7 min-w-[132px] justify-center text-xs" onclick={() => void copy(s.id, s.text)}>
         {#if copied === s.id}<Check size={13} /> Copied{:else}<Copy size={13} /> {s.label}{/if}
       </button>
     </div>
@@ -121,7 +121,7 @@
         {/if}
       </div>
     </div>
-    <button class="btn !h-7 text-xs" disabled={testing} onclick={() => void runTest()}><PlugZap size={13} /> {testing ? 'Testing…' : 'Run test'}</button>
+    <button class="btn !h-7 min-w-[132px] justify-center text-xs" disabled={testing} onclick={() => void runTest()}><PlugZap size={13} /> {testing ? 'Testing…' : 'Run test'}</button>
   </div>
   {#if info}
     <p class="px-4 pb-3 text-xs text-subtle break-all">Server: <code>{info.command} {info.args.join(' ')}</code></p>

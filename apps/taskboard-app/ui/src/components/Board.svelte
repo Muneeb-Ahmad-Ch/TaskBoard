@@ -2,7 +2,7 @@
   import { endExternal, hoverExternal } from '../lib/dnd.svelte'
   import { untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import { ChevronDown, ChevronRight, ChevronsLeftRight, CheckCircle2, Circle, MoreHorizontal, Plus, Repeat } from '@lucide/svelte'
+  import { ChevronDown, ChevronRight, ChevronsLeft, CheckCircle2, Circle, MoreHorizontal, Plus, Repeat } from '@lucide/svelte'
   import type { Category } from '../lib/bindings/Category'
   import type { Id } from '../lib/bindings/Id'
   import type { Priority } from '../lib/bindings/Priority'
@@ -638,7 +638,7 @@
       Subtasks
     </label>
     {#if !singleProject && columns.length}
-      <span class="min-w-0 truncate text-subtle" title="Columns combine same-named statuses across {scopeProjectIds().length} projects">Merged across {scopeProjectIds().length} projects</span>
+      <span class="min-w-0 truncate text-subtle" title="Columns combine same-named statuses across {scopeProjectIds().length} projects">Columns from {scopeProjectIds().length} projects</span>
     {/if}
     <span class="ml-auto hidden shrink-0 whitespace-nowrap text-subtle 2xl:inline">Drag cards, or Space to pick up · arrows · Space to drop</span>
   </div>
@@ -677,7 +677,7 @@
                 {count}{wip ? ` / ${wip}` : ''}
               </span>
               <span class="flex-1"></span>
-              <button class="icon" aria-label="Collapse {col.name}" title="Collapse" onclick={() => toggleColumn(col.key)}><ChevronsLeftRight size={13} /></button>
+              <button class="icon" aria-label="Collapse {col.name}" title="Collapse column" onclick={() => toggleColumn(col.key)}><ChevronsLeft size={13} /></button>
               {#if col.status}
                 <button class="icon" aria-label="{col.name} column actions" onclick={(e) => columnMenu(e, col)}><MoreHorizontal size={14} /></button>
               {/if}
@@ -728,7 +728,7 @@
         <div class="flex gap-3">
           {#each columns as col (col.key)}
             {@const d = data.get(col.key)}
-            <div class="w-[284px] shrink-0 {collapsed[col.key] ? '!w-11' : ''}">
+            <div class="w-[var(--col-w)] shrink-0 {collapsed[col.key] ? '!w-11' : ''}">
               {#if d && d.total > d.rows.length && !collapsed[col.key]}
                 <button class="add-btn" onclick={() => loadMore(col)}>Show {Math.min(CARD_LIMIT, d.total - d.rows.length)} more of {d.total - d.rows.length}</button>
               {/if}
@@ -756,12 +756,19 @@
 <style>
   .board {
     scroll-padding: 8px;
+    /* Five columns fit beside the sidebar at 1440 px. */
+    --col-w: 236px;
+  }
+  @media (min-width: 1680px) {
+    .board {
+      --col-w: 268px;
+    }
   }
   .col-head {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    width: 284px;
+    width: var(--col-w);
     flex-shrink: 0;
     height: 36px;
     padding-inline: 0.6rem 0.25rem;
@@ -784,7 +791,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    width: 284px;
+    width: var(--col-w);
     flex-shrink: 0;
     min-height: 64px;
     padding: 6px;

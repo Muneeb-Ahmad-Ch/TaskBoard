@@ -9,6 +9,26 @@ Download any version from the
 
 ## [Unreleased]
 
+### Changed
+- **Calmer table:** empty cells stay blank (a dash appears only on the row you
+  point at), and progress shows only for tasks with subtasks or set progress.
+- **Today** says how many tasks are overdue and due today, and overdue rows
+  carry a thin red rail.
+- **Board** columns are narrower so five fit beside the sidebar at 1440 px;
+  "Columns from N projects"; a clearer collapse arrow.
+- **Task panel** dates read like the rest of the app ("Fri, 23 Oct") with the
+  system picker behind them and a clear button; the time appears once a due
+  date is set.
+- **Meetings:** only the next meeting's Join button is highlighted.
+- **Dashboard:** "Due today" with overdue underneath, a friendly empty chart,
+  trend lines only once there is history, and spacing fixes ("0 days").
+- The header no longer carries theme icons (Settings → Appearance, Ctrl+K);
+  the completed-tasks toggle says "Show completed" / "Hide completed".
+- The status bar shows the version and Undo / Redo only (database details are
+  in Settings → About); larger Undo / Redo buttons.
+- Group names in the sidebar use the full row until you hover it.
+- Dialogs open without a focus ring on Close; AI assistant buttons line up.
+
 ### Fixed
 - Right-clicking no longer shows the browser's menu (Back, Refresh, Save as,
   Print, Share), and browser shortcuts (F5, Ctrl+R, Ctrl+P, Ctrl+S, Alt+←/→,
