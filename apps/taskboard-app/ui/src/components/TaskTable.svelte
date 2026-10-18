@@ -43,9 +43,10 @@
       return orderedColumns().filter((c) => ids.includes(c.id)).map(withWidth)
     }
     let list = orderedColumns().filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map(withWidth)
-    // Decide with the smaller of default and chosen width, so widening a column
-    // scrolls the table sideways instead of hiding other columns.
-    const fit = (c: Col) => Math.min(c.width, COLUMN_DEFS.find((d) => d.id === c.id)?.width ?? c.width)
+    // Decide with default widths: which columns fit depends on the window, never
+    // on how the user sized them, so resizing a column can't make another one
+    // appear or vanish (a wider column scrolls the table; room freed goes to Task).
+    const fit = (c: Col) => COLUMN_DEFS.find((d) => d.id === c.id)?.width ?? c.width
     const need = () => 36 + TITLE_MIN + list.reduce((sum, c) => sum + (c.id === 'title' ? 0 : fit(c)), 0)
     for (const id of SQUEEZE_ORDER) {
       if (need() <= width) break

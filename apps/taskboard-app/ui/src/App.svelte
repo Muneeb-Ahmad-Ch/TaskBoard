@@ -242,7 +242,7 @@
         </button>
       {/if}
       <div class="@container flex min-w-0 flex-1 items-baseline gap-2.5">
-        <h1 class="font-display shrink truncate text-lg font-semibold tracking-tight">{pageTitle ?? app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle()}</h1>
+        <h1 class="font-display shrink-[0.25] truncate text-lg font-semibold tracking-tight">{pageTitle ?? app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle()}</h1>
         {#if subtitle}
           <span class="flex shrink-0 items-center gap-1.5 text-xs @max-[520px]:hidden {'warn' in subtitle && subtitle.warn ? 'font-medium text-danger' : 'text-muted'}">
             {#if layout.headerDot}<span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{/if}{subtitle.text}

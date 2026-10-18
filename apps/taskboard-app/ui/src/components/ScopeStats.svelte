@@ -155,17 +155,17 @@
     </span>
   {/if}
   {#if estimateLeft}
-    <span class="stat @max-[480px]:hidden" title="Estimated time for open tasks">
+    <span class="stat flex @max-[480px]:hidden" title="Estimated time for open tasks">
       <Clock size={13} /><span class="tabular">{minutes(estimateLeft)} left</span>
     </span>
   {/if}
   {#if meetings.length}
-    <span class="stat @max-[600px]:hidden" title={next ? `Next: ${next.title}, ${nextFmt.format(next.start_at)}` : ''}>
+    <span class="stat flex @max-[600px]:hidden" title={next ? `Next: ${next.title}, ${nextFmt.format(next.start_at)}` : ''}>
       <CalendarClock size={13} /><span class="tabular">{meetings.length} {meetings.length === 1 ? 'meeting' : 'meetings'} {meetingWord}</span>
     </span>
   {/if}
   {#if overdue}
-    <span class="stat text-danger @max-[360px]:hidden" title="Open tasks past their due date">
+    <span class="stat flex text-danger @max-[360px]:hidden" title="Open tasks past their due date">
       <AlertTriangle size={13} /><span class="tabular">{overdue} overdue</span>
     </span>
   {/if}
@@ -173,7 +173,6 @@
 
 <style>
   .stat {
-    display: flex;
     flex-shrink: 0;
     align-items: center;
     gap: 0.3rem;
