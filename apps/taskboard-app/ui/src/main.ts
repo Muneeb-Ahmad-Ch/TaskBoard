@@ -55,7 +55,7 @@ async function boot() {
     startUpdateChecks()
     // First launch after an in-app update: say so, with a way to see what changed.
     const from = await ipc.updatedFrom().catch(() => null)
-    if (from) toast(`Updated to Taskboard ${await appVersion()}`, { action: { label: "What's new", run: openChangelog } })
+    if (from) toast(`Updated to Taskboard ${await appVersion()}`, { action: { label: "What's new", run: openChangelog }, duration: 12_000 })
   }
 }
 

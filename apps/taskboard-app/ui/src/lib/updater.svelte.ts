@@ -82,7 +82,7 @@ export async function checkForUpdates(quiet = false): Promise<void> {
     updates.phase = info ? 'available' : 'none'
     updates.error = ''
     if (info && quiet && isNew && updates.skipped !== info.version)
-      toast(`Taskboard ${info.version} is available`, { action: { label: 'View', run: openUpdates } })
+      toast(`Taskboard ${info.version} is available`, { action: { label: 'View', run: openUpdates }, duration: 10_000 })
   } catch (err) {
     if (quiet) {
       updates.phase = before === 'checking' ? 'idle' : before

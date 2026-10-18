@@ -15,9 +15,10 @@ export function dismiss(id: number) {
   if (i >= 0) toasts.splice(i, 1)
 }
 
-export function toast(message: string, options: Partial<Omit<Toast, 'id' | 'message'>> = {}) {
+/** `duration` (ms) keeps a message up longer than the default. */
+export function toast(message: string, options: Partial<Omit<Toast, 'id' | 'message'>> & { duration?: number } = {}) {
   const t: Toast = { id: nextId++, message, kind: options.kind ?? 'info', action: options.action }
   toasts.push(t)
   if (toasts.length > 4) toasts.shift()
-  setTimeout(() => dismiss(t.id), t.kind === 'error' ? 7000 : 4500)
+  setTimeout(() => dismiss(t.id), options.duration ?? (t.kind === 'error' ? 7000 : 4500))
 }
