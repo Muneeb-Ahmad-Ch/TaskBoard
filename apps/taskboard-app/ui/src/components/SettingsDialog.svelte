@@ -2,24 +2,7 @@
   import ArchivedList from './ArchivedList.svelte'
   // Settings, organized by category (left) with the chosen page on the right.
   // Every change is saved immediately; there is no Save button.
-  import {
-    Archive,
-    Bell,
-    CalendarDays,
-    Check,
-    Database,
-    Download,
-    ExternalLink,
-    FolderOpen,
-    Globe,
-    Info,
-    Mail,
-    Monitor,
-    Palette,
-    PanelLeft,
-    RotateCcw,
-    Upload,
-  } from '@lucide/svelte'
+  import { Archive, Bell, Bot, CalendarDays, Check, Database, Download, ExternalLink, FolderOpen, Globe, Info, Mail, Monitor, Palette, PanelLeft, RotateCcw, Upload } from '@lucide/svelte'
   import type { AppSettings } from '../lib/bindings/AppSettings'
   import type { BackupInfo } from '../lib/bindings/BackupInfo'
   import type { DbInfo } from '../lib/bindings/DbInfo'
@@ -31,6 +14,7 @@
   import { app } from '../lib/store.svelte'
   import { ACCENTS, setAccentHue, setThemePref, theme, type ThemePref } from '../lib/theme.svelte'
   import { toast } from '../lib/toast.svelte'
+  import AiSettings from './AiSettings.svelte'
   import LayoutSettings from './LayoutSettings.svelte'
   import Modal from './Modal.svelte'
   import Switch from './Switch.svelte'
@@ -44,12 +28,13 @@
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
     { id: 'reminders', label: 'Reminders', icon: Bell },
     { id: 'data', label: 'Data & backups', icon: Database },
+    { id: 'ai', label: 'AI assistants', icon: Bot },
     { id: 'about', label: 'About', icon: Info },
   ] as const
   type PageId = (typeof PAGES)[number]['id']
 
   // "Customize sidebar…" and "About Taskboard" open a specific page.
-  const OPEN_AT: Record<string, PageId> = { layout: 'sidebar', about: 'about' }
+  const OPEN_AT: Record<string, PageId> = { layout: 'sidebar', about: 'about', ai: 'ai' }
   let page = $state<PageId>(OPEN_AT[app.settingsSection ?? ''] ?? 'general')
   app.settingsSection = null
 
@@ -378,6 +363,8 @@
             <button class="btn !h-7 text-xs" onclick={() => void toggleSample()}>{hasSample ? 'Remove' : 'Add'}</button>
           </div>
         </section>
+      {:else if page === 'ai'}
+        <AiSettings settings={appSettings} onchange={(patch) => void setApp(patch)} />
       {:else if page === 'about'}
         <section class="card">
           <div class="flex items-center gap-4 p-4">

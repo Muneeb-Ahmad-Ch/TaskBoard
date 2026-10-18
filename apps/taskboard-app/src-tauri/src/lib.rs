@@ -6,6 +6,7 @@
 
 mod data;
 mod desktop;
+mod mcp;
 
 use std::sync::{Arc, Mutex};
 
@@ -843,6 +844,16 @@ fn init_logging() -> Option<tracing_appender::non_blocking::WorkerGuard> {
 }
 
 pub fn run() {
+    // `taskboard-app.exe --mcp`: be the MCP server for an AI assistant instead
+    // of opening a window. Checked before the single-instance plugin, which
+    // would otherwise hand these arguments to the running app and exit.
+    if std::env::args().any(|a| a == mcp::FLAG) {
+        if let Err(err) = mcp::run_server() {
+            eprintln!("taskboard mcp: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let started = std::time::Instant::now();
     let _log_guard = init_logging();
 
@@ -912,7 +923,8 @@ pub fn run() {
             }
             desktop::sync_autostart(app.handle(), settings.autostart);
             desktop::spawn_integrity_check(app.handle().clone(), path);
-            desktop::spawn_reminders(app.handle().clone(), db);
+            desktop::spawn_reminders(app.handle().clone(), Arc::clone(&db));
+            mcp::spawn_change_watcher(app.handle().clone(), db);
             // Another app may own the shortcut; Taskboard still works without it.
             if let Err(err) = app.global_shortcut().register(quick_add_shortcut()) {
                 tracing::warn!(%err, "quick-add shortcut unavailable");
@@ -923,6 +935,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db_info,
             history_state,
+            mcp::mcp_info,
+            mcp::mcp_self_test,
             list_clients,
             list_projects,
             list_statuses,

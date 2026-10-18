@@ -46,9 +46,12 @@
     }
     return list
   })
-  const minWidth = $derived(36 + TITLE_MIN + cols.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0))
+  /** Task fills the leftover space but never shrinks below this; a resize that
+   *  runs out of room on the right raises it, so the table scrolls instead. */
+  const titleMin = $derived(Math.max(TITLE_MIN, layout.widths.title ?? 0))
+  const minWidth = $derived(36 + titleMin + cols.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0))
   const gridTemplate = $derived(
-    `36px ${cols.map((c) => (c.id === 'title' ? `minmax(${TITLE_MIN}px, 1fr)` : `${c.width}px`)).join(' ')}`,
+    `36px ${cols.map((c) => (c.id === 'title' ? `minmax(${titleMin}px, 1fr)` : `${c.width}px`)).join(' ')}`,
   )
 
   const COL_MIN = 70
@@ -79,28 +82,48 @@
     layout.widths[id] = Math.round(Math.max(COL_MIN, Math.min(COL_MAX, w)))
   }
 
-  /** Moves a handle by `dx` pixels from the starting widths (target, then the columns after it). */
-  function applyResize(r: Resize, startA: number, startAfter: number[], dx: number) {
-    // Task fills the leftover space, so only the columns after it change.
+  /**
+   * Moves a handle by `dx` pixels from the starting widths (target, the columns
+   * after it, and Task's pixel width). Growing takes room from the columns to
+   * the right first; once they are at their minimum the column keeps growing
+   * and Task is held at its width, so the table scrolls sideways rather than
+   * the edge stopping under the mouse.
+   */
+  function applyResize(r: Resize, startA: number, startAfter: number[], taskPx: number, dx: number) {
     const fill = r.target.id === 'title'
     let d = fill ? dx : Math.max(COL_MIN - startA, Math.min(COL_MAX - startA, dx * r.sign))
     if (r.after) {
       if (d > 0) {
-        // Growing: take from the next column, then the one after, down to their minimum.
-        d = Math.min(d, startAfter.reduce((sum, w) => sum + Math.max(0, w - COL_MIN), 0))
-        let left = d
+        const room = startAfter.reduce((sum, w) => sum + Math.max(0, w - COL_MIN), 0)
+        let left = Math.min(d, room)
         r.after.forEach((c, k) => {
           const give = Math.min(left, Math.max(0, startAfter[k] - COL_MIN))
           left -= give
           setWidth(c.id, startAfter[k] - give)
         })
+        const overflow = d - Math.min(d, room)
+        // Task holds (or grows, for its own handle) and the table gets wider.
+        layout.widths.title = fill ? Math.max(TITLE_MIN, taskPx + overflow) : overflow > 0 ? Math.max(TITLE_MIN, taskPx) : layout.widths.title
+        if (!fill && !overflow) delete layout.widths.title
       } else {
         // Shrinking: the next column takes the space.
         d = Math.max(d, -(COL_MAX - startAfter[0]))
         r.after.forEach((c, k) => setWidth(c.id, k === 0 ? startAfter[0] - d : startAfter[k]))
+        if (fill) delete layout.widths.title
       }
     }
     if (!fill) setWidth(r.target.id, startA + d)
+  }
+
+  /** Task's pixel width right now, for freezing it during a resize. */
+  function taskWidth(): number {
+    return viewport?.querySelector<HTMLElement>('[role="columnheader"]:nth-child(2)')?.getBoundingClientRect().width ?? TITLE_MIN
+  }
+
+  /** After a resize: Task's floor only matters while the table overflows. */
+  function settleTitleMin() {
+    const floor = layout.widths.title
+    if (floor && 36 + floor + cols.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0) <= width) delete layout.widths.title
   }
 
   function startResize(e: PointerEvent, col: Col) {
@@ -115,12 +138,14 @@
     const startX = e.clientX
     const startA = r.target.width
     const startAfter = (r.after ?? []).map((c) => c.width)
-    const move = (ev: PointerEvent) => applyResize(r, startA, startAfter, ev.clientX - startX)
+    const taskPx = taskWidth()
+    const move = (ev: PointerEvent) => applyResize(r, startA, startAfter, taskPx, ev.clientX - startX)
     const up = () => {
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', up)
       handle.removeEventListener('pointercancel', up)
       document.body.classList.remove('col-resizing')
+      settleTitleMin()
       saveLayout()
     }
     handle.addEventListener('pointermove', move)
@@ -136,7 +161,7 @@
     // Read the saved widths: repeated keys can arrive before the next render.
     const a = layout.widths[r.target.id] ?? r.target.width
     const after = (r.after ?? []).map((c) => layout.widths[c.id] ?? c.width)
-    if (step) applyResize(r, a, after, step)
+    if (step) applyResize(r, a, after, taskWidth(), step)
     else if (e.key === 'Home') delete layout.widths[r.target.id === 'title' && r.after ? r.after[0].id : r.target.id]
     else return
     e.preventDefault()
@@ -150,6 +175,7 @@
     if (!r) return
     delete layout.widths[r.target.id]
     if (r.after?.[0]) delete layout.widths[r.after[0].id]
+    delete layout.widths.title
     saveLayout()
   }
 

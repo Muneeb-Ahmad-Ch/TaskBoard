@@ -36,6 +36,7 @@
       { id: 'v-meet', group: 'View', label: 'Meetings', run: () => (app.view = 'meetings') },
       { id: 'layout', group: 'Actions', label: 'Customize layout (sidebar, views, columns)…', run: () => { app.settingsSection = 'layout'; app.settingsOpen = true } },
       { id: 'settings', group: 'Actions', label: 'Settings…', run: () => (app.settingsOpen = true) },
+      { id: 'ai', group: 'Actions', label: 'Connect an AI assistant…', run: () => { app.settingsSection = 'ai'; app.settingsOpen = true } },
       { id: 'shortcuts', group: 'Actions', label: 'Keyboard shortcuts', hint: '?', run: () => (app.shortcutsOpen = true) },
       ...(app.scope.kind === 'project'
         ? [
