@@ -27,7 +27,7 @@
   $effect(() => {
     // Focus the first field; restore focus to whatever opened us on close.
     const opener = document.activeElement as HTMLElement | null
-    queueMicrotask(() => dialog?.querySelector<HTMLElement>('input, select, textarea, button')?.focus())
+    queueMicrotask(() => (dialog?.querySelector<HTMLElement>('input:not([type=hidden]):not([aria-hidden=true]), select, textarea') ?? dialog)?.focus())
     return () => opener?.focus?.()
   })
 
@@ -56,7 +56,7 @@
 <div class="backdrop fixed inset-0 z-40 grid place-items-center bg-black/30 p-4" role="presentation" onpointerdown={(e) => e.target === e.currentTarget && onclose()}>
   <div
     bind:this={dialog}
-    class="dialog flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface-2 shadow-2xl"
+    class="dialog flex max-h-[90vh] w-full flex-col overflow-hidden rounded-xl border border-border bg-surface-2 shadow-2xl outline-none"
     style="max-width: {width}px;{height ? ` height: min(${height}px, 90vh);` : ''}"
     role="dialog"
     aria-modal="true"

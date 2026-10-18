@@ -49,9 +49,9 @@
         <span class="sub {trend >= 0 ? 'text-success' : 'text-muted'}">{trend >= 0 ? '+' : ''}{trend} vs last week ({d.completed_last_week})</span>
       </div>
       <button class="stat text-left" onclick={() => go('today')}>
-        <span class="label"><AlertTriangle size={14} /> Due today · overdue</span>
-        <span class="value">{d.due_today}<span class="text-[17px] {d.overdue ? 'text-danger' : 'text-subtle'}"> · {d.overdue}</span></span>
-        <span class="sub">{d.due_next_7_days} more in the next 7 days</span>
+        <span class="label"><AlertTriangle size={14} /> Due today</span>
+        <span class="value">{d.due_today}</span>
+        <span class="sub"><span class={d.overdue ? 'font-medium text-danger' : ''}>{d.overdue} overdue</span> · {d.due_next_7_days} more in the next 7 days</span>
       </button>
       <div class="stat">
         <span class="label"><CalendarClock size={14} /> Meetings today</span>
@@ -60,14 +60,19 @@
       </div>
       <div class="stat">
         <span class="label"><Flame size={14} /> Streak</span>
-        <span class="value">{d.streak_days}<span class="text-[15px] font-normal text-muted"> day{d.streak_days === 1 ? '' : 's'}</span></span>
-        <span class="sub">Best: {d.best_streak_days} days</span>
+        <span class="value">{d.streak_days}<span class="ml-1 text-[15px] font-normal text-muted">day{d.streak_days === 1 ? '' : 's'}</span></span>
+        <span class="sub">Best: {d.best_streak_days} day{d.best_streak_days === 1 ? '' : 's'}</span>
       </div>
     </div>
 
     <div class="mt-3 grid gap-3 lg:grid-cols-[1.1fr_1fr]">
       <section class="panel">
         <h3 class="title">Completed per day <span class="font-normal text-subtle">· last 14 days</span></h3>
+        {#if !d.completions.some((c) => c.count)}
+          <div class="grid h-32 place-items-center text-center text-[13px] text-muted">
+            <p>Nothing completed in the last two weeks yet.<br /><span class="text-xs text-subtle">Finished tasks show up here as a daily bar.</span></p>
+          </div>
+        {:else}
         <div class="flex h-32 items-end gap-1.5" role="img" aria-label="Completed tasks per day for the last 14 days">
           {#each d.completions as c (c.date)}
             <div class="flex flex-1 flex-col items-center gap-1" title="{longFmt.format(new Date(`${c.date}T00:00`))}: {c.count}">
@@ -77,6 +82,7 @@
             </div>
           {/each}
         </div>
+        {/if}
       </section>
 
       <section class="panel">
@@ -122,9 +128,12 @@
               <Progress value={p.total ? (p.done / p.total) * 100 : 0} width={110} label />
               <span class="text-xs text-subtle">{p.open} open</span>
               <span class="flex-1"></span>
-              <svg width="120" height="28" class="overflow-visible" role="img" aria-label="Open tasks trend">
-                <polyline points={spark(p.burndown)} fill="none" stroke={swatch(p.color, 0.6, 0.14)} stroke-width="2" stroke-linejoin="round" />
-              </svg>
+              <!-- A trend needs history: skip it until open tasks have changed over the 14 days. -->
+              {#if new Set(p.burndown).size > 1 && p.burndown.filter((v) => v > 0).length > 1}
+                <svg width="120" height="28" class="overflow-visible" role="img" aria-label="Open tasks over the last 14 days">
+                  <polyline points={spark(p.burndown)} fill="none" stroke={swatch(p.color, 0.6, 0.14)} stroke-width="2" stroke-linejoin="round" />
+                </svg>
+              {/if}
             </div>
           </button>
         {:else}

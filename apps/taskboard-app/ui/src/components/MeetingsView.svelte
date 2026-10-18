@@ -50,6 +50,15 @@
   const shown = $derived(clientFilter ? meetings.filter((m) => m.client_id === clientFilter) : meetings)
 
   /** Meetings grouped by calendar day, in list order. */
+  /** The one meeting whose Join is emphasized: live now, or the next to start. */
+  const nextJoinable = $derived(
+    range === 'upcoming'
+      ? meetings
+          .filter((m) => m.meeting_url && m.status !== 'cancelled' && m.end_at > Date.now())
+          .reduce<(typeof meetings)[number] | null>((a, b) => (a && a.start_at <= b.start_at ? a : b), null)
+      : null,
+  )
+
   const groups = $derived.by(() => {
     const out: { day: Date; items: Occurrence[] }[] = []
     for (const m of shown) {
@@ -140,7 +149,7 @@
                   </span>
                 </button>
                 {#if m.meeting_url && !cancelled && range === 'upcoming'}
-                  <button class="join" onclick={() => void openLink(m.meeting_url!)} title={m.meeting_url}><ExternalLink size={12} /> Join</button>
+                  <button class="join" class:next={m === nextJoinable} onclick={() => void openLink(m.meeting_url!)} title={m.meeting_url}><ExternalLink size={12} /> Join</button>
                 {/if}
               </li>
             {/each}
@@ -189,14 +198,27 @@
   }
   .join {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
-    gap: 0.3rem;
-    height: 26px;
-    padding-inline: 0.55rem;
+    gap: 0.35rem;
+    height: 28px;
+    padding-inline: 0.65rem;
     border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 500;
+  }
+  .join:hover {
+    border-color: var(--border-strong);
+  }
+  .join.next {
+    border-color: transparent;
     background: var(--accent);
     color: var(--on-accent);
-    font-size: 12px;
-    font-weight: 600;
+  }
+  .join.next:hover {
+    filter: brightness(1.06);
   }
 </style>

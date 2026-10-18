@@ -656,6 +656,10 @@
   /* Groups keep room on the right for the actions button and fold arrow;
      their projects line up under the group's name. */
   .nav-item.client-row {
+    padding-right: 32px;
+  }
+  .group:hover > .nav-item.client-row,
+  .group:focus-within > .nav-item.client-row {
     padding-right: 82px;
   }
   .section-head {

@@ -4,9 +4,11 @@ import App from './App.svelte'
 import { inTauri, ipc } from './lib/ipc'
 import { initStore } from './lib/store.svelte'
 import { applyTheme } from './lib/theme.svelte'
+import { installAppChrome } from './lib/appChrome'
 
 async function boot() {
   performance.mark('boot')
+  if (!import.meta.env.DEV) installAppChrome()
   applyTheme()
   if (inTauri) {
     const mica = await ipc.hasMica().catch(() => false)

@@ -2,7 +2,7 @@
   import { endExternal, hoverExternal } from '../lib/dnd.svelte'
   import { untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
-  import { ChevronDown, ChevronRight, ChevronsLeftRight, CheckCircle2, Circle, MoreHorizontal, Plus, Repeat } from '@lucide/svelte'
+  import { ChevronDown, ChevronRight, ChevronsLeft, CheckCircle2, Circle, MoreHorizontal, Plus, Repeat } from '@lucide/svelte'
   import type { Category } from '../lib/bindings/Category'
   import type { Id } from '../lib/bindings/Id'
   import type { Priority } from '../lib/bindings/Priority'
@@ -292,6 +292,23 @@
   let kbd = $state<{ row: TaskRow } | null>(null)
   let announcement = $state('')
   const openCols = $derived(columns.filter((c) => !collapsed[c.key]))
+
+  let boardWidth = $state(0)
+  $effect(() => {
+    if (!board) return
+    const el = board
+    const ro = new ResizeObserver(() => (boardWidth = el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  })
+  /** Column width: the free width split between open columns, 208–320 px. */
+  const colWidth = $derived.by(() => {
+    if (!boardWidth || !openCols.length) return 260
+    const gap = 12
+    const extras = (columns.length - openCols.length) * (44 + gap) + (singleProject ? 200 + gap : 0)
+    const free = boardWidth - extras - gap * (openCols.length - 1) - 4
+    return Math.max(208, Math.min(320, Math.floor(free / openCols.length)))
+  })
 
   function onCardKeydown(e: KeyboardEvent, row: TaskRow, colKey: string, lane: string) {
     if (kbd) return
@@ -586,7 +603,7 @@
     </div>
     {#if !row.completed_at && (row.subtasks_total || row.progress > 0)}
       <div class="flex items-center gap-2" title={row.subtasks_total ? `From ${row.subtasks_done}/${row.subtasks_total} subtasks` : 'Progress'}>
-        <span class="flex-1"><Progress value={row.progress} width={200} height={4} /></span>
+        <span class="min-w-0 flex-1 overflow-hidden"><Progress value={row.progress} width={Math.max(60, colWidth - 64)} height={4} /></span>
         <span class="tabular text-[11px] text-subtle">{row.progress}%</span>
       </div>
     {/if}
@@ -638,12 +655,12 @@
       Subtasks
     </label>
     {#if !singleProject && columns.length}
-      <span class="min-w-0 truncate text-subtle" title="Columns combine same-named statuses across {scopeProjectIds().length} projects">Merged across {scopeProjectIds().length} projects</span>
+      <span class="min-w-0 truncate text-subtle" title="Columns combine same-named statuses across {scopeProjectIds().length} projects">Columns from {scopeProjectIds().length} projects</span>
     {/if}
     <span class="ml-auto hidden shrink-0 whitespace-nowrap text-subtle 2xl:inline">Drag cards, or Space to pick up · arrows · Space to drop</span>
   </div>
 
-  <div bind:this={board} class="board min-h-0 flex-1 overflow-auto rounded-[var(--radius)]">
+  <div bind:this={board} class="board min-h-0 flex-1 overflow-auto rounded-[var(--radius)]" style="--col-w: {colWidth}px">
     <div class="inline-flex min-w-full flex-col">
       <!-- column headers (sticky) -->
       <div class="sticky top-0 z-10 flex gap-3 bg-surface-1 pb-2">
@@ -677,7 +694,7 @@
                 {count}{wip ? ` / ${wip}` : ''}
               </span>
               <span class="flex-1"></span>
-              <button class="icon" aria-label="Collapse {col.name}" title="Collapse" onclick={() => toggleColumn(col.key)}><ChevronsLeftRight size={13} /></button>
+              <button class="icon" aria-label="Collapse {col.name}" title="Collapse column" onclick={() => toggleColumn(col.key)}><ChevronsLeft size={13} /></button>
               {#if col.status}
                 <button class="icon" aria-label="{col.name} column actions" onclick={(e) => columnMenu(e, col)}><MoreHorizontal size={14} /></button>
               {/if}
@@ -728,7 +745,7 @@
         <div class="flex gap-3">
           {#each columns as col (col.key)}
             {@const d = data.get(col.key)}
-            <div class="w-[284px] shrink-0 {collapsed[col.key] ? '!w-11' : ''}">
+            <div class="w-[var(--col-w)] shrink-0 {collapsed[col.key] ? '!w-11' : ''}">
               {#if d && d.total > d.rows.length && !collapsed[col.key]}
                 <button class="add-btn" onclick={() => loadMore(col)}>Show {Math.min(CARD_LIMIT, d.total - d.rows.length)} more of {d.total - d.rows.length}</button>
               {/if}
@@ -761,7 +778,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    width: 284px;
+    width: var(--col-w);
     flex-shrink: 0;
     height: 36px;
     padding-inline: 0.6rem 0.25rem;
@@ -784,7 +801,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    width: 284px;
+    width: var(--col-w);
     flex-shrink: 0;
     min-height: 64px;
     padding: 6px;

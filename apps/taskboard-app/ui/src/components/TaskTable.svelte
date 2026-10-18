@@ -690,6 +690,7 @@
           class:selected={row && selected.has(row.id)}
           class:cursor={i === cursor}
           class:done={row?.completed_at}
+          class:overdue={app.scope.kind === 'today' && row && isOverdue(row.due_date, !!row.completed_at)}
           style="top: {i * ROW}px; height: {ROW}px; grid-template-columns: {gridTemplate}"
           role="row"
           tabindex="-1"
@@ -772,7 +773,8 @@
                   </button>
                 {:else if col.id === 'progress'}
                   <button class="cell-btn w-full" title={row.subtasks_total ? `From ${row.subtasks_done}/${row.subtasks_total} subtasks` : 'Set progress'} onclick={(e) => progressMenu(e, row)}>
-                    <Progress value={row.progress} width={52} label />
+                    <!-- Only when it means something: subtasks, or progress someone set. -->
+                    {#if row.subtasks_total || row.progress}<Progress value={row.progress} width={52} label />{:else}<span class="ghost">—</span>{/if}
                   </button>
                 {:else if col.id === 'estimate'}
                   {#if estimating === row.id}
@@ -876,11 +878,19 @@
   .cell-btn:hover {
     background: var(--surface-3);
   }
+  /* Empty cells stay blank; the dash only appears on the row being pointed at
+     or selected, to show the cell can be set. */
   .ghost {
-    color: var(--border-strong);
+    color: transparent;
   }
-  .row:hover .ghost {
+  .row:hover .ghost,
+  .row.selected .ghost,
+  .row.cursor .ghost {
     color: var(--text-subtle);
+  }
+  /* Today: overdue rows carry a thin red rail, so the two groups read apart. */
+  .row.overdue {
+    box-shadow: inset 3px 0 0 color-mix(in oklch, var(--danger) 75%, transparent);
   }
   .tag {
     flex-shrink: 0;
