@@ -34,6 +34,8 @@
 </script>
 
 <div class="min-h-0 flex-1 overflow-y-auto rounded-[var(--radius)] border border-border bg-surface-2 px-4 py-2">
+  <!-- A readable column on very wide windows: Join stays next to its event. -->
+  <div class="mx-auto max-w-[1180px]">
   {#each grouped as { day, list } (isoDate(day))}
     <section class="py-2">
       <h3 class="mb-1 text-[13px] font-semibold {sameDay(day, today) ? 'text-accent' : ''}">{sameDay(day, today) ? 'Today · ' : ''}{dayFmt.format(day)}</h3>
@@ -74,6 +76,7 @@
   {:else}
     <p class="py-10 text-center text-muted">Nothing scheduled in the next three weeks.</p>
   {/each}
+  </div>
 </div>
 
 <style>
