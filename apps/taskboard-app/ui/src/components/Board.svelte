@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { endExternal, hoverExternal } from '../lib/dnd.svelte'
   import { untrack } from 'svelte'
   import { SvelteMap } from 'svelte/reactivity'
   import { ChevronDown, ChevronRight, ChevronsLeftRight, CheckCircle2, Circle, MoreHorizontal, Plus, Repeat } from '@lucide/svelte'
@@ -145,6 +146,9 @@
       drag.x = e.clientX
       drag.y = e.clientY
       hitTest()
+      // Over the sidebar: a project there can take the card.
+      if (!over) hoverExternal({ kind: 'tasks', ids: [drag.row.id], label: drag.row.title }, drag.x, drag.y)
+      else endExternal(false)
     }
   }
 
@@ -162,8 +166,10 @@
       const target = over
       drag = null
       over = null
-      if (target) void commitMove(row, target)
-      else flushReload()
+      if (target) {
+        endExternal(false)
+        void commitMove(row, target)
+      } else if (!endExternal(true)) flushReload()
     } else if (pending) {
       app.openTaskId = pending.row.id
     }
@@ -171,6 +177,7 @@
   }
 
   function cancelDrag() {
+    endExternal(false)
     endPointer()
     drag = null
     over = null

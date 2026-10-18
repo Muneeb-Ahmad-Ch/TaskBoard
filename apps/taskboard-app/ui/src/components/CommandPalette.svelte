@@ -4,6 +4,7 @@
   import { swatch } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
   import { activeViewChanged, app, applySavedView, redo, setScope, undo, updateActiveView } from '../lib/store.svelte'
+  import { layout, pinProject, unpinProject } from '../lib/layout.svelte'
   import { setThemePref } from '../lib/theme.svelte'
   import { openChangelog } from '../lib/about'
   import { cal, newMeeting } from '../lib/cal.svelte'
@@ -36,6 +37,13 @@
       { id: 'layout', group: 'Actions', label: 'Customize layout (sidebar, views, columns)…', run: () => { app.settingsSection = 'layout'; app.settingsOpen = true } },
       { id: 'settings', group: 'Actions', label: 'Settings…', run: () => (app.settingsOpen = true) },
       { id: 'shortcuts', group: 'Actions', label: 'Keyboard shortcuts', hint: '?', run: () => (app.shortcutsOpen = true) },
+      ...(app.scope.kind === 'project'
+        ? [
+            layout.pinned.includes(app.scope.id)
+              ? { id: 'unpin', group: 'Actions', label: 'Unpin this project', run: () => app.scope.kind === 'project' && unpinProject(app.scope.id) }
+              : { id: 'pin', group: 'Actions', label: 'Pin this project to the top', run: () => app.scope.kind === 'project' && pinProject(app.scope.id) },
+          ]
+        : []),
       { id: 'changelog', group: 'Actions', label: "What's new (changelog)", run: openChangelog },
       { id: 'about', group: 'Actions', label: 'About Taskboard', run: () => { app.settingsSection = 'about'; app.settingsOpen = true } },
       { id: 'find-slot', group: 'Actions', label: 'Find a meeting slot…', run: () => (cal.findSlotOpen = true) },

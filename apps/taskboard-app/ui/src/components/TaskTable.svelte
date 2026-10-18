@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { beginDrag } from '../lib/dnd.svelte'
   import { ArrowDown, ArrowUp, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Repeat, Trash2, X } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
@@ -671,6 +672,12 @@
           onclick={(e) => {
             select(i, e)
             if (row && !e.ctrlKey && !e.shiftKey) app.openTaskId = row.id
+          }}
+          onpointerdown={(e) => {
+            // Drag a task (or the selection it belongs to) onto a sidebar project.
+            if (!row || (e.target as HTMLElement).closest('input, textarea, select, .resizer')) return
+            const ids = targets(row)
+            beginDrag(e, { kind: 'tasks', ids, label: ids.length > 1 ? plural(ids.length, 'task') : row.title })
           }}
           onkeydown={() => {}}
         >

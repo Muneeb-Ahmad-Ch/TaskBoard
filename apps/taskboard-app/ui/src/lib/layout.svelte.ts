@@ -4,7 +4,7 @@
 export type NavId = 'today' | 'upcoming' | 'inbox' | 'all' | 'meetings' | 'dashboard'
 export type TabId = 'table' | 'board' | 'calendar'
 /** Fixed sidebar sections (user sections are hidden by id, see `hiddenSections`). */
-export type SectionId = 'savedViews'
+export type SectionId = 'pinned' | 'savedViews'
 
 export const NAV_LABELS: Record<NavId, string> = {
   today: 'Today',
@@ -15,7 +15,7 @@ export const NAV_LABELS: Record<NavId, string> = {
   dashboard: 'Dashboard',
 }
 export const TAB_LABELS: Record<TabId, string> = { table: 'Table', board: 'Board', calendar: 'Calendar' }
-export const SECTION_LABELS: Record<SectionId, string> = { savedViews: 'Saved views' }
+export const SECTION_LABELS: Record<SectionId, string> = { pinned: 'Pinned projects', savedViews: 'Saved views' }
 
 /** Numbers the sidebar can show next to items; each can be turned off. */
 export type CountId = 'views' | 'overdue' | 'sections' | 'projects'
@@ -33,6 +33,8 @@ const KEY = 'taskboard.layout'
 type Stored = {
   nav: { id: NavId; visible: boolean }[]
   sections: Record<SectionId, boolean>
+  /** Pinned project ids, in the order shown at the top of the sidebar. */
+  pinned: string[]
   /** User sections hidden from the sidebar (ids). */
   hiddenSections: string[]
   /** Section names hidden before sections were user-defined ("Clients",
@@ -49,7 +51,8 @@ type Stored = {
 function defaults(): Stored {
   return {
     nav: NAV_ORDER.map((id) => ({ id, visible: true })),
-    sections: { savedViews: true },
+    sections: { pinned: true, savedViews: true },
+    pinned: [],
     hiddenSections: [],
     legacyHidden: [],
     tabs: { table: true, board: true, calendar: true },
@@ -78,7 +81,8 @@ function load(): Stored {
     ]
     return {
       nav,
-      sections: { savedViews: old.savedViews ?? true },
+      sections: { pinned: old.pinned ?? true, savedViews: old.savedViews ?? true },
+      pinned: Array.isArray(saved.pinned) ? saved.pinned : [],
       hiddenSections: saved.hiddenSections ?? [],
       legacyHidden,
       tabs,
@@ -113,6 +117,20 @@ export function moveNav(id: NavId, dir: -1 | 1) {
   if (i < 0 || j < 0 || j >= layout.nav.length) return
   const [item] = layout.nav.splice(i, 1)
   layout.nav.splice(j, 0, item)
+  save()
+}
+
+/** Pins a project (at the end, or before another pinned one). */
+export function pinProject(id: string, before: string | null = null) {
+  const list = layout.pinned.filter((p) => p !== id)
+  const at = before ? list.indexOf(before) : -1
+  list.splice(at < 0 ? list.length : at, 0, id)
+  layout.pinned = list
+  save()
+}
+
+export function unpinProject(id: string) {
+  layout.pinned = layout.pinned.filter((p) => p !== id)
   save()
 }
 
@@ -165,6 +183,7 @@ export function visibleTabs(): TabId[] {
 }
 
 export function resetLayout() {
-  Object.assign(layout, defaults())
+  // Pins are the user's picks, not layout: they survive a reset.
+  Object.assign(layout, { ...defaults(), pinned: layout.pinned })
   save()
 }

@@ -44,7 +44,7 @@ pub use planning::{
     Slot, SlotDay, SlotResult, TimeEntryPatch, WorkingDay,
 };
 pub use query::{TaskPage, TaskQuery, TaskRow, TaskSort};
-pub use reorder::Direction;
+pub use reorder::{Direction, ProjectPlace};
 pub use saved_views::{SavedView, SavedViewPatch};
 pub use sections::{NewSection, Section, SectionDelete, SectionPatch, Setup};
 pub use statuses::{NewStatus, StatusPatch};

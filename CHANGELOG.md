@@ -9,7 +9,15 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Drag and drop in the sidebar:** reorder sections, groups and projects,
+  and drag a project into another group or section (or a group into another
+  section). Each move is one Undo. Alt+↑/↓ and the right-click menu still work.
+- **Drop tasks on the sidebar:** drag task rows from the table (a selection
+  moves together) or cards from the board onto a project, or onto Inbox.
+- **Pinned projects:** right-click a project → **Pin to top** (or drag it onto
+  Pinned) for a short list at the top of the sidebar; drag to reorder. Pins are
+  kept per device and can be hidden in Settings → Layout.
 
 ## [0.3.1] - 2026-10-17
 

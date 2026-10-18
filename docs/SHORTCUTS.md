@@ -64,6 +64,8 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Alt+↑ / Alt+↓ | Move the focused section, group or project up / down (also in its right-click menu) |
 | Right-click | Section / group / project / saved view actions (edit, rename, move, delete); on Today, Inbox…: Customize sidebar (Settings → Layout) |
 | Double-click | Rename a section, group or project |
+| Drag | Reorder sections, groups and projects, or move them into another group / section; drop on Pinned to pin a project |
+| Drag a task row or board card onto a project (or Inbox) | Move the task there (a selection moves together) |
 
 ## Calendar
 

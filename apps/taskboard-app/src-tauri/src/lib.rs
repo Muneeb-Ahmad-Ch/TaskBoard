@@ -15,9 +15,10 @@ use taskboard_core::{
     AppSettings, Client, ClientHours, ClientPatch, Dashboard, DayOverride, DayPlan, Db, DbInfo,
     Direction, ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask,
     NewClient, NewEvent, NewProject, NewSection, NewStatus, NewTask, NewTimeEntry, NotifySettings,
-    Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectSummary, QuickAddPreview, SavedView,
-    SavedViewPatch, Section, SectionDelete, SectionPatch, Setup, SidebarCounts, SlotResult, Status,
-    StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch, WorkingDay,
+    Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectPlace, ProjectSummary,
+    QuickAddPreview, SavedView, SavedViewPatch, Section, SectionDelete, SectionPatch, Setup,
+    SidebarCounts, SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery,
+    TaskSummary, TimeEntryPatch, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -334,6 +335,44 @@ async fn move_section(
     direction: Direction,
 ) -> CmdResult<bool> {
     write(app, state, move |db| db.move_section(id, direction)).await
+}
+
+/// Drag and drop: section before `before` (None = last).
+#[tauri::command]
+async fn place_section(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    before: Option<Id>,
+) -> CmdResult<bool> {
+    write(app, state, move |db| db.place_section(id, before)).await
+}
+
+/// Drag and drop: group into `section_id`, before `before` (None = last).
+#[tauri::command]
+async fn place_client(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    section_id: Id,
+    before: Option<Id>,
+) -> CmdResult<bool> {
+    write(app, state, move |db| {
+        db.place_client(id, section_id, before)
+    })
+    .await
+}
+
+/// Drag and drop: project into a group or section, before `before`.
+#[tauri::command]
+async fn place_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    to: ProjectPlace,
+    before: Option<Id>,
+) -> CmdResult<bool> {
+    write(app, state, move |db| db.place_project(id, to, before)).await
 }
 
 #[tauri::command]
@@ -915,6 +954,9 @@ pub fn run() {
             create_section,
             update_section,
             move_section,
+            place_section,
+            place_client,
+            place_project,
             delete_section,
             apply_setup,
             saved_views,

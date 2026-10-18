@@ -39,6 +39,7 @@ import type { ProjectPatch } from './bindings/ProjectPatch'
 import type { ProjectSummary } from './bindings/ProjectSummary'
 import type { QuickAddPreview } from './bindings/QuickAddPreview'
 import type { NewSection } from './bindings/NewSection'
+import type { ProjectPlace } from './bindings/ProjectPlace'
 import type { SavedView } from './bindings/SavedView'
 import type { Section } from './bindings/Section'
 import type { SectionDelete } from './bindings/SectionDelete'
@@ -94,6 +95,10 @@ export const ipc = {
   createSection: (input: NewSection) => invoke<Section>('create_section', { input }),
   updateSection: (id: Id, patch: SectionPatch) => invoke<Section>('update_section', { id, patch }),
   moveSection: (id: Id, direction: Direction) => invoke<boolean>('move_section', { id, direction }),
+  /** Drag and drop placement; `before` null = last. */
+  placeSection: (id: Id, before: Id | null) => invoke<boolean>('place_section', { id, before }),
+  placeClient: (id: Id, sectionId: Id, before: Id | null) => invoke<boolean>('place_client', { id, sectionId, before }),
+  placeProject: (id: Id, to: ProjectPlace, before: Id | null) => invoke<boolean>('place_project', { id, to, before }),
   deleteSection: (id: Id, how: SectionDelete) => invoke<void>('delete_section', { id, how }),
   applySetup: (setup: Setup) => invoke<Section[]>('apply_setup', { setup }),
   moveProject: (id: Id, direction: Direction) => invoke<boolean>('move_project', { id, direction }),

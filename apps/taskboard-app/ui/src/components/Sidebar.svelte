@@ -1,16 +1,17 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Plus, Search, Settings, Star, CalendarDays, User, Video } from '@lucide/svelte'
+  import { Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Pin, Plus, Search, Settings, Star, CalendarDays, User, Video } from '@lucide/svelte'
   import type { Client } from '../lib/bindings/Client'
   import type { Section } from '../lib/bindings/Section'
   import type { Direction } from '../lib/bindings/Direction'
   import type { Id } from '../lib/bindings/Id'
   import type { ProjectSummary } from '../lib/bindings/ProjectSummary'
   import type { SavedView } from '../lib/bindings/SavedView'
-  import { cap, swatch } from '../lib/format'
+  import { cap, plural, swatch } from '../lib/format'
   import { ipc } from '../lib/ipc'
-  import { act, activeViewChanged, app, applySavedView, groupsIn, isPage, itemName, looseProjectsIn, projectsOf, saveCurrentView, sectionById, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
-  import { layout, NAV_LABELS, type NavId } from '../lib/layout.svelte'
+  import { act, activeViewChanged, app, applySavedView, groupsIn, inboxId, isPage, itemName, looseProjectsIn, projectsOf, saveCurrentView, sectionById, setScope, updateActiveView, type Scope } from '../lib/store.svelte'
+  import { layout, NAV_LABELS, pinProject, unpinProject, type NavId } from '../lib/layout.svelte'
+  import { beginDrag, dropClass, setDropResolver, type DragItem, type DropTarget } from '../lib/dnd.svelte'
   import { startOfDay, addDays, newMeeting } from '../lib/cal.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
 
@@ -196,6 +197,9 @@
       x: e.clientX,
       y: e.clientY,
       items: [
+        layout.pinned.includes(p.id)
+          ? { label: 'Unpin', run: () => unpinProject(p.id) }
+          : { label: 'Pin to top', run: () => pinProject(p.id) },
         { label: 'Settings…', run: () => (app.projectDialog = p.id) },
         { label: 'Rename', run: () => (editing = { kind: 'rename-project', id: p.id, value: p.name }) },
         'separator',
@@ -289,6 +293,108 @@
     }
   }
 
+  // ---------- pinned projects ----------
+  const pinnedProjects = $derived(
+    layout.pinned.map((id) => app.projects.find((p) => p.id === id)).filter((p): p is ProjectSummary => !!p && !p.is_inbox),
+  )
+
+  // ---------- drag and drop ----------
+  // Rows carry `data-drop` keys ("section:<id>", "group:<id>", "project:<id>",
+  // "pin:<id>", "pins", "inbox"); the resolver turns the row under the pointer
+  // into a drop: before / after it, or inside it.
+  let list: HTMLDivElement | undefined = $state()
+
+  /** The id that comes after `id` in `ids` once `skip` is taken out (null = last). */
+  function nextAfter(ids: Id[], id: Id, skip: Id): Id | null {
+    const rest = ids.filter((x) => x !== skip)
+    return rest[rest.indexOf(id) + 1] ?? null
+  }
+
+  const projectById = (id: Id) => app.projects.find((p) => p.id === id)
+
+  /** Siblings and container of a project row, for dropping next to it. */
+  function containerOf(p: ProjectSummary) {
+    return p.client_id
+      ? { ids: projectsOf(p.client_id).map((x) => x.id), to: { kind: 'group' as const, id: p.client_id } }
+      : { ids: looseProjectsIn(p.section_id ?? '').map((x) => x.id), to: { kind: 'section' as const, id: p.section_id ?? '' } }
+  }
+
+  function moveTasks(ids: Id[], projectId: Id, name: string) {
+    void act(async () => {
+      if (ids.length === 1) await ipc.updateTask(ids[0], { project_id: projectId })
+      else await ipc.bulkUpdateTasks(ids, { project_id: projectId })
+      return true
+    }, `Moved ${plural(ids.length, 'task')} to ${name}`)
+  }
+
+  function resolveDrop(item: DragItem, x: number, y: number): DropTarget | null {
+    // Scroll the list while the pointer rests near its top or bottom edge.
+    if (list) {
+      const r = list.getBoundingClientRect()
+      if (x >= r.left && x <= r.right) {
+        if (y < r.top + 28) list.scrollTop -= 12
+        else if (y > r.bottom - 28) list.scrollTop += 12
+      }
+    }
+    const el = document.elementsFromPoint(x, y).find((e): e is HTMLElement => e instanceof HTMLElement && !!e.dataset.drop)
+    if (!el) return null
+    const key = el.dataset.drop ?? ''
+    const [kind, id = ''] = key.split(':')
+    const box = el.getBoundingClientRect()
+    const half: 'before' | 'after' = y < box.top + box.height / 2 ? 'before' : 'after'
+    const at = (position: DropTarget['position'], run: () => void): DropTarget => ({ key, position, run })
+
+    if (item.kind === 'tasks') {
+      if (kind === 'inbox') {
+        const inbox = inboxId()
+        return inbox ? at('inside', () => moveTasks(item.ids, inbox, 'Inbox')) : null
+      }
+      if (kind !== 'project' && kind !== 'pin') return null
+      const p = projectById(id)
+      return p ? at('inside', () => moveTasks(item.ids, p.id, p.name)) : null
+    }
+
+    if (item.kind === 'section') {
+      if (kind !== 'section' || id === item.id) return null
+      const before = half === 'before' ? id : nextAfter(app.sections.map((s) => s.id), id, item.id)
+      return at(half, () => void act(() => ipc.placeSection(item.id, before), `Moved “${item.label}”`))
+    }
+
+    if (item.kind === 'group') {
+      if (kind === 'section') return at('inside', () => void act(() => ipc.placeClient(item.id, id, null), `Moved “${item.label}”`))
+      if (kind !== 'group' || id === item.id) return null
+      const target = app.clients.find((c) => c.id === id)
+      if (!target?.section_id) return null
+      const sectionId = target.section_id
+      const before = half === 'before' ? id : nextAfter(groupsIn(sectionId).map((c) => c.id), id, item.id)
+      return at(half, () => void act(() => ipc.placeClient(item.id, sectionId, before), `Moved “${item.label}”`))
+    }
+
+    // Projects. Pinned rows only reorder or extend the pinned list.
+    if (kind === 'pins') return at('inside', () => pinProject(item.id))
+    if (kind === 'pin') {
+      if (id === item.id) return null
+      const before = half === 'before' ? id : nextAfter(layout.pinned, id, item.id)
+      return at(half, () => pinProject(item.id, before))
+    }
+    if (item.pinned) return null
+    const moveTo = (to: { kind: 'group' | 'section'; id: Id }, before: Id | null) => () =>
+      void act(() => ipc.placeProject(item.id, to, before), `Moved “${item.label}”`)
+    if (kind === 'group') return at('inside', moveTo({ kind: 'group', id }, null))
+    if (kind === 'section') return at('inside', moveTo({ kind: 'section', id }, null))
+    if (kind !== 'project' || id === item.id) return null
+    const target = projectById(id)
+    if (!target || target.is_inbox) return null
+    const { ids, to } = containerOf(target)
+    const before = half === 'before' ? id : nextAfter(ids, id, item.id)
+    return at(half, moveTo(to, before))
+  }
+
+  $effect(() => {
+    setDropResolver(resolveDrop)
+    return () => setDropResolver(null)
+  })
+
   function autofocus(node: HTMLInputElement) {
     node.focus()
     node.select()
@@ -306,17 +412,19 @@
   />
 {/snippet}
 
-{#snippet projectRow(p: ProjectSummary, indent: boolean)}
-  {#if editing?.kind === 'rename-project' && editing.id === p.id}
+{#snippet projectRow(p: ProjectSummary, indent: boolean, pinned = false)}
+  {#if editing?.kind === 'rename-project' && editing.id === p.id && !pinned}
     {@render editor('Project name', editing.value)}
   {:else}
     {@const pct = p.total_tasks ? Math.round((p.done_tasks / p.total_tasks) * 100) : 0}
-    <div class="group relative flex flex-col">
+    {@const dropKey = `${pinned ? 'pin' : 'project'}:${p.id}`}
+    <div class="drop group relative flex flex-col {dropClass(dropKey)}" data-drop={dropKey}>
     <button
       class="nav-item"
       class:in-client={indent}
       class:active={isActive({ kind: 'project', id: p.id })}
       onclick={() => setScope({ kind: 'project', id: p.id })}
+      onpointerdown={(e) => beginDrag(e, { kind: 'project', id: p.id, label: p.name, pinned })}
       oncontextmenu={(e) => projectMenu(e, p)}
       onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveProject(p.id, dir))}
       ondblclick={() => (editing = { kind: 'rename-project', id: p.id, value: p.name })}
@@ -330,6 +438,7 @@
         </svg>
       </span>
       <span class="flex-1 truncate text-left">{p.name}</span>
+      {#if pinned && p.client_name}<span class="max-w-[40%] truncate text-xs text-subtle">{p.client_name}</span>{/if}
       {#if p.open_tasks && layout.counts.projects}<span class="tabular text-xs text-subtle group-hover:invisible group-focus-within:invisible">{p.open_tasks}</span>{/if}
     </button>
     <button
@@ -355,7 +464,7 @@
   <nav class="flex flex-col gap-px" aria-label="Views">
     {#each shownNav as id (id)}
       {@const Icon = NAV_ICONS[id]}
-      <div class="group relative">
+      <div class="drop group relative {id === 'inbox' ? dropClass('inbox') : ''}" data-drop={id === 'inbox' ? 'inbox' : undefined}>
       <button class="nav-item w-full" class:active={navActive(id)} onclick={() => navGo(id)} oncontextmenu={customizeMenu}>
         <Icon size={15} />
         <span class="flex-1 text-left">{NAV_LABELS[id]}</span>
@@ -385,7 +494,16 @@
     {/each}
   </nav>
 
-  <div class="-mx-1 mt-4 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1 pb-2">
+  <div bind:this={list} class="-mx-1 mt-4 flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1 pb-2">
+    {#if layout.sections.pinned && pinnedProjects.length}
+      <div class="drop section {dropClass('pins')}" data-drop="pins" role="presentation" oncontextmenu={customizeMenu}>
+        <span class="flex items-center gap-1.5"><Pin size={11} /> Pinned</span>
+      </div>
+      {#each pinnedProjects as p (p.id)}
+        {@render projectRow(p, false, true)}
+      {/each}
+      <div class="mb-3"></div>
+    {/if}
     {#each visibleSections as sec, si (sec.id)}
       {@const item = itemName(sec)}
       {@const groups = groupsIn(sec.id)}
@@ -393,12 +511,13 @@
       {#if editing?.kind === 'rename-section' && editing.id === sec.id}
         {@render editor('Section name', editing.value)}
       {:else}
-        <div class="section-head group relative" class:mt-4={si > 0}>
+        <div class="drop section-head group relative {dropClass(`section:${sec.id}`)}" class:mt-4={si > 0} data-drop="section:{sec.id}">
           <button
             class="section-name"
             class:active={isActive({ kind: 'section', id: sec.id })}
             title="Show all work in {sec.name}"
             onclick={() => setScope({ kind: 'section', id: sec.id })}
+            onpointerdown={(e) => beginDrag(e, { kind: 'section', id: sec.id, label: sec.name })}
             oncontextmenu={(e) => sectionMenu(e, sec)}
             onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveSection(sec.id, dir))}
             ondblclick={() => (editing = { kind: 'rename-section', id: sec.id, value: sec.name })}
@@ -424,11 +543,12 @@
           {#if editing?.kind === 'rename-client' && editing.id === client.id}
             {@render editor(`${cap(item)} name`, editing.value)}
           {:else}
-            <div class="group relative">
+            <div class="drop group relative {dropClass(`group:${client.id}`)}" data-drop="group:{client.id}">
               <button
                 class="nav-item client-row w-full"
                 class:active={isActive({ kind: 'client', id: client.id })}
                 onclick={() => setScope({ kind: 'client', id: client.id })}
+                onpointerdown={(e) => beginDrag(e, { kind: 'group', id: client.id, label: client.name })}
                 oncontextmenu={(e) => clientMenu(e, client)}
                 onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveClient(client.id, dir))}
                 ondblclick={() => (editing = { kind: 'rename-client', id: client.id, value: client.name })}
@@ -618,6 +738,20 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--text-subtle);
+  }
+  /* Where a dragged item lands: a line above / below a row, or the row lit up. */
+  .drop {
+    border-radius: 6px;
+  }
+  .drop-before {
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+  .drop-after {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .drop-inside {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 1px var(--accent);
   }
   .icon-btn {
     display: grid;

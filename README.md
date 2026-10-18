@@ -42,7 +42,9 @@ needs permission (see [License](#license)).
   sidebar sections anything (Clients, Teams, Departments, Family…) and say
   what one group in each is called. First run offers ready-made setups
   (Freelancer, Company, Personal life) or a blank start. Click a section to
-  see all its work with progress; move groups and projects between sections.
+  see all its work with progress; drag sections, groups and projects to
+  reorder or move them, drop tasks onto a project, and pin the projects you
+  use daily.
 - **Three views of the same data.**
   - *Table*: virtualized (50,000 tasks scroll smoothly), inline editing,
     sorting, resizable columns, multi-select bulk edits.

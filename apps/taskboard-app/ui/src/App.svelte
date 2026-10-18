@@ -24,6 +24,7 @@
   import WorkingHoursDialog from './components/WorkingHoursDialog.svelte'
   import { cal } from './lib/cal.svelte'
   import { layout } from './lib/layout.svelte'
+  import { dnd } from './lib/dnd.svelte'
   import ReminderBanner from './components/ReminderBanner.svelte'
   import Welcome from './components/Welcome.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
@@ -294,6 +295,12 @@
 {#if cal.findSlotOpen}<FindSlotDialog onclose={() => (cal.findSlotOpen = false)} />{/if}
 {#if app.settingsOpen}<SettingsDialog onclose={() => (app.settingsOpen = false)} />{/if}
 {#if app.shortcutsOpen}<ShortcutsDialog onclose={() => (app.shortcutsOpen = false)} />{/if}
+{#if dnd.item && !dnd.external}
+  <!-- What is being dragged; the sidebar marks where it would land. -->
+  <div class="drag-ghost" style="left: {dnd.x + 14}px; top: {dnd.y + 10}px" aria-hidden="true">
+    {dnd.item.label}{#if !dnd.target}<span class="text-subtle"> · drop on a highlighted spot</span>{/if}
+  </div>
+{/if}
 <ReminderBanner />
 {#if app.clientDialog}
   {#key app.clientDialog}<ClientDialog id={app.clientDialog} onclose={() => (app.clientDialog = null)} />{/key}
@@ -310,6 +317,21 @@
 <Toasts />
 
 <style>
+  .drag-ghost {
+    position: fixed;
+    z-index: 70;
+    max-width: 280px;
+    padding: 4px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface-2);
+    box-shadow: 0 8px 24px rgb(0 0 0 / 0.22);
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+  }
   .panel {
     border-top-left-radius: 10px;
     box-shadow: var(--shadow-panel);
