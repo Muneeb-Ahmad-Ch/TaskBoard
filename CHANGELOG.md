@@ -60,8 +60,28 @@ Download any version from the
   where the add-a-task box is; a list whose tasks are all done says so, with
   a Show completed button.
 
+- **Wide windows use their space:** board columns grow (up to 480px) to fill
+  the width, a collapsed column keeps a one-line head with its name down its
+  strip, the dashboard shows as many project columns as fit, and the Meetings
+  and Agenda lists keep a readable width so Join sits next to its meeting.
+- **Short windows keep their rows:** the schedule strip uses one-line chips
+  and starts collapsed below 640px of height (remembered once you toggle it).
+- The header's progress, time left, meetings and overdue drop out one by one
+  as the window narrows, instead of squeezing the page title.
+
 ### Fixed
 - The empty Inbox said "Add a task below" with the add-a-task box at the top.
+- **Column resizing** tracks the mouse in every layout (task panel open,
+  small windows, zoom): the Task column stops at its minimum instead of
+  growing its neighbour, grows by the whole drag when the table already
+  scrolls sideways, and no column appears or vanishes during or after a
+  resize (which columns fit depends on the window, not on custom widths).
+- Escape closes a dialog even after switching Settings pages, and no longer
+  closes the task panel behind an open dialog.
+- Pins saved by an older version on this device move into the database
+  only when that database has those projects (a second database no longer
+  takes them).
+- A selected row's dimmed text (a due time) is readable in the dark theme.
 
 ### Robustness
 - A view, the task panel or a dialog that fails to render shows a short
