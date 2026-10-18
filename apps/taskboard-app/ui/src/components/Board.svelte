@@ -293,6 +293,23 @@
   let announcement = $state('')
   const openCols = $derived(columns.filter((c) => !collapsed[c.key]))
 
+  let boardWidth = $state(0)
+  $effect(() => {
+    if (!board) return
+    const el = board
+    const ro = new ResizeObserver(() => (boardWidth = el.clientWidth))
+    ro.observe(el)
+    return () => ro.disconnect()
+  })
+  /** Column width: the free width split between open columns, 208–320 px. */
+  const colWidth = $derived.by(() => {
+    if (!boardWidth || !openCols.length) return 260
+    const gap = 12
+    const extras = (columns.length - openCols.length) * (44 + gap) + (singleProject ? 200 + gap : 0)
+    const free = boardWidth - extras - gap * (openCols.length - 1) - 4
+    return Math.max(208, Math.min(320, Math.floor(free / openCols.length)))
+  })
+
   function onCardKeydown(e: KeyboardEvent, row: TaskRow, colKey: string, lane: string) {
     if (kbd) return
     if (e.key === 'Enter') {
@@ -586,7 +603,7 @@
     </div>
     {#if !row.completed_at && (row.subtasks_total || row.progress > 0)}
       <div class="flex items-center gap-2" title={row.subtasks_total ? `From ${row.subtasks_done}/${row.subtasks_total} subtasks` : 'Progress'}>
-        <span class="flex-1"><Progress value={row.progress} width={200} height={4} /></span>
+        <span class="min-w-0 flex-1 overflow-hidden"><Progress value={row.progress} width={Math.max(60, colWidth - 64)} height={4} /></span>
         <span class="tabular text-[11px] text-subtle">{row.progress}%</span>
       </div>
     {/if}
@@ -643,7 +660,7 @@
     <span class="ml-auto hidden shrink-0 whitespace-nowrap text-subtle 2xl:inline">Drag cards, or Space to pick up · arrows · Space to drop</span>
   </div>
 
-  <div bind:this={board} class="board min-h-0 flex-1 overflow-auto rounded-[var(--radius)]">
+  <div bind:this={board} class="board min-h-0 flex-1 overflow-auto rounded-[var(--radius)]" style="--col-w: {colWidth}px">
     <div class="inline-flex min-w-full flex-col">
       <!-- column headers (sticky) -->
       <div class="sticky top-0 z-10 flex gap-3 bg-surface-1 pb-2">
@@ -756,13 +773,6 @@
 <style>
   .board {
     scroll-padding: 8px;
-    /* Five columns fit beside the sidebar at 1440 px. */
-    --col-w: 236px;
-  }
-  @media (min-width: 1680px) {
-    .board {
-      --col-w: 268px;
-    }
   }
   .col-head {
     display: flex;

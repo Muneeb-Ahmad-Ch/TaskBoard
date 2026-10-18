@@ -43,7 +43,7 @@
   }
 </script>
 
-<span class="field" class:disabled>
+<span class="df" class:disabled>
   <button type="button" class="face" {disabled} aria-label="{label}: {shown || 'not set'}" onclick={open}>
     {#if shown}<span class="tabular">{shown}</span>{:else}<span class="text-subtle">{placeholder}</span>{/if}
   </button>
@@ -55,14 +55,14 @@
 </span>
 
 <style>
-  .field {
+  .df {
     position: relative;
     display: inline-flex;
     align-items: center;
     min-width: 0;
     border-radius: 6px;
   }
-  .field:hover:not(.disabled) {
+  .df:hover:not(.disabled) {
     background: var(--hover);
   }
   .face {
@@ -88,7 +88,7 @@
     color: var(--text-subtle);
     opacity: 0;
   }
-  .field:hover .clear,
+  .df:hover .clear,
   .clear:focus-visible {
     opacity: 1;
   }
