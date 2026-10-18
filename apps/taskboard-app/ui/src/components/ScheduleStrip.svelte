@@ -17,12 +17,16 @@
   let items = $state<Occurrence[]>([])
   let now = $state(Date.now())
 
+  /** Remembered when set; otherwise open, except in short windows where the
+   *  list needs the height. */
   function loadOpen(): boolean {
+    let saved: string | null = null
     try {
-      return localStorage.getItem(KEY) !== 'false'
+      saved = localStorage.getItem(KEY)
     } catch {
-      return true
+      // per-device convenience only
     }
+    return saved === null ? window.innerHeight >= 640 : saved !== 'false'
   }
   function toggle() {
     open = !open
@@ -248,5 +252,17 @@
   }
   .side:hover {
     color: var(--text);
+  }
+  /* Short windows: one-line chips, so the list keeps its rows. */
+  @media (max-height: 760px) {
+    .body {
+      flex-direction: row;
+      align-items: center;
+      gap: 6px;
+      padding-block: 4px;
+    }
+    .item {
+      width: 260px;
+    }
   }
 </style>

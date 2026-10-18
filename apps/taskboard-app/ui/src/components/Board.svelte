@@ -301,13 +301,14 @@
     ro.observe(el)
     return () => ro.disconnect()
   })
-  /** Column width: the free width split between open columns, 208–320 px. */
+  /** Column width: the free width split between open columns, 208–480 px,
+   *  so a wide window is filled rather than left empty on the right. */
   const colWidth = $derived.by(() => {
     if (!boardWidth || !openCols.length) return 260
     const gap = 12
     const extras = (columns.length - openCols.length) * (44 + gap) + (singleProject ? 200 + gap : 0)
     const free = boardWidth - extras - gap * (openCols.length - 1) - 4
-    return Math.max(208, Math.min(320, Math.floor(free / openCols.length)))
+    return Math.max(208, Math.min(480, Math.floor(free / openCols.length)))
   })
 
   function onCardKeydown(e: KeyboardEvent, row: TaskRow, colKey: string, lane: string) {
@@ -684,6 +685,10 @@
       {:else}
         <button class="add-btn" onclick={() => (adding = { col: col.key, lane })}><Plus size={14} /> Add task</button>
       {/if}
+    {:else if lane === lanes[0]?.key}
+      <button class="strip-label" title="Expand {col.name}" aria-label="Expand {col.name}" onclick={() => toggleColumn(col.key)}>
+        <span class="vertical text-xs font-medium">{col.name}</span>
+      </button>
     {/if}
   </div>
 {/snippet}
@@ -716,9 +721,8 @@
           {@const count = d?.total ?? 0}
           <div class="col-head" class:collapsed={collapsed[col.key]} title={collapsed[col.key] ? `${col.name} (${count})` : undefined}>
             {#if collapsed[col.key]}
-              <button class="flex h-full w-full flex-col items-center gap-2 py-2" aria-label="Expand {col.name}" onclick={() => toggleColumn(col.key)}>
-                <span class="size-2 rounded-full" style="background: {swatch(col.color, 0.62, 0.13)}"></span>
-                <span class="vertical text-xs font-medium">{col.name}</span>
+              <button class="flex h-full w-full items-center justify-center gap-1" aria-label="Expand {col.name} ({count})" onclick={() => toggleColumn(col.key)}>
+                <span class="size-2 shrink-0 rounded-full" style="background: {swatch(col.color, 0.62, 0.13)}"></span>
                 <span class="tabular text-[11px] text-subtle">{count}</span>
               </button>
             {:else if editing?.key === col.key}
@@ -834,10 +838,20 @@
   }
   .col-head.collapsed {
     width: 44px;
-    height: auto;
-    min-height: 140px;
     padding: 0;
-    align-items: stretch;
+  }
+  /* A collapsed column's name, down its strip (the head row stays one line). */
+  .strip-label {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    padding: 10px 0;
+    border-radius: 6px;
+    color: var(--text-muted);
+  }
+  .strip-label:hover {
+    background: var(--hover);
+    color: var(--text);
   }
   .vertical {
     writing-mode: vertical-rl;

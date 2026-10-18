@@ -33,11 +33,16 @@
   const TITLE_MIN = 180
   const SQUEEZE_ORDER: ColId[] = ['tags', 'estimate', 'progress', 'priority', 'status']
   let width = $state(1200)
+  /** While a column edge is being dragged, the columns on screen stay as they
+   *  were (none appears or vanishes under the pointer); they re-fit on release. */
+  let frozen = $state<ColId[] | null>(null)
   const cols = $derived.by(() => {
-    let list = orderedColumns().filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map((c) => ({
-      ...c,
-      width: layout.widths[c.id] ?? c.width,
-    }))
+    const withWidth = (c: ColumnDef) => ({ ...c, width: layout.widths[c.id] ?? c.width })
+    if (frozen) {
+      const ids = frozen
+      return orderedColumns().filter((c) => ids.includes(c.id)).map(withWidth)
+    }
+    let list = orderedColumns().filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map(withWidth)
     // Decide with the smaller of default and chosen width, so widening a column
     // scrolls the table sideways instead of hiding other columns.
     const fit = (c: Col) => Math.min(c.width, COLUMN_DEFS.find((d) => d.id === c.id)?.width ?? c.width)
@@ -93,9 +98,11 @@
    */
   function applyResize(r: Resize, startA: number, startAfter: number[], taskPx: number, dx: number) {
     const fill = r.target.id === 'title'
-    let d = fill ? dx : Math.max(COL_MIN - startA, Math.min(COL_MAX - startA, dx * r.sign))
+    // Task never goes below its minimum; other columns stay within their limits.
+    let d = fill ? Math.max(TITLE_MIN - taskPx, dx) : Math.max(COL_MIN - startA, Math.min(COL_MAX - startA, dx * r.sign))
     if (r.after) {
       if (d > 0) {
+        // Growing takes room from the columns to the right, nearest first.
         const room = startAfter.reduce((sum, w) => sum + Math.max(0, w - COL_MIN), 0)
         let left = Math.min(d, room)
         r.after.forEach((c, k) => {
@@ -103,16 +110,14 @@
           left -= give
           setWidth(c.id, startAfter[k] - give)
         })
-        const overflow = d - Math.min(d, room)
-        // Task holds (or grows, for its own handle) and the table gets wider.
-        layout.widths.title = fill ? Math.max(TITLE_MIN, taskPx + overflow) : overflow > 0 ? Math.max(TITLE_MIN, taskPx) : layout.widths.title
-        if (!fill && !overflow) delete layout.widths.title
       } else {
         // Shrinking: the next column takes the space.
         d = Math.max(d, -(COL_MAX - startAfter[0]))
         r.after.forEach((c, k) => setWidth(c.id, k === 0 ? startAfter[0] - d : startAfter[k]))
-        if (fill) delete layout.widths.title
       }
+      // Task's own edge moves by the whole drag (the table scrolls if it must);
+      // right of Task, Task and everything to its left stay put.
+      layout.widths.title = fill ? Math.max(TITLE_MIN, taskPx + d) : Math.max(TITLE_MIN, taskPx)
     }
     if (!fill) setWidth(r.target.id, startA + d)
   }
@@ -141,12 +146,14 @@
     const startA = r.target.width
     const startAfter = (r.after ?? []).map((c) => c.width)
     const taskPx = taskWidth()
+    frozen = cols.map((c) => c.id)
     const move = (ev: PointerEvent) => applyResize(r, startA, startAfter, taskPx, ev.clientX - startX)
     const up = () => {
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', up)
       handle.removeEventListener('pointercancel', up)
       document.body.classList.remove('col-resizing')
+      frozen = null
       settleTitleMin()
       saveLayout()
     }
@@ -168,6 +175,7 @@
     else return
     e.preventDefault()
     e.stopPropagation()
+    settleTitleMin()
     saveLayout()
   }
 
