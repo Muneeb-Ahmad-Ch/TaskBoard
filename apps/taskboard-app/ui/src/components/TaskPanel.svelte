@@ -14,6 +14,7 @@
   import DateField from './DateField.svelte'
   import Progress from './Progress.svelte'
   import Splitter from './Splitter.svelte'
+  import { anyDialogOpen } from './Modal.svelte'
   import TaskBlocks from './TaskBlocks.svelte'
   import { layout, PANEL, setPanelWidth } from '../lib/layout.svelte'
   import { fromIso, repeatOptions } from '../lib/cal.svelte'
@@ -158,7 +159,7 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === 'Escape' && app.openTaskId && !menu && !isTyping(e)) back()
+    if (e.key === 'Escape' && app.openTaskId && !menu && !isTyping(e) && !anyDialogOpen()) back()
   }}
 />
 

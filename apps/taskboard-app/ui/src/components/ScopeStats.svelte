@@ -149,23 +149,23 @@
 
 <span class="flex min-w-0 items-center gap-3 self-center text-xs text-muted">
   {#if total}
-    <span class="flex shrink-0 items-center gap-2" title="{done} of {total} tasks done{scope.kind === 'today' ? ' (finished today, of everything due)' : ''}">
+    <span class="flex shrink-0 items-center gap-2 @max-[300px]:hidden" title="{done} of {total} tasks done{scope.kind === 'today' ? ' (finished today, of everything due)' : ''}">
       <Progress value={pct} width={72} label name={progressName} />
       <span class="tabular text-subtle">{done}/{total}</span>
     </span>
   {/if}
   {#if estimateLeft}
-    <span class="stat max-[1180px]:hidden" title="Estimated time for open tasks">
+    <span class="stat @max-[480px]:hidden" title="Estimated time for open tasks">
       <Clock size={13} /><span class="tabular">{minutes(estimateLeft)} left</span>
     </span>
   {/if}
   {#if meetings.length}
-    <span class="stat max-[1280px]:hidden" title={next ? `Next: ${next.title}, ${nextFmt.format(next.start_at)}` : ''}>
+    <span class="stat @max-[600px]:hidden" title={next ? `Next: ${next.title}, ${nextFmt.format(next.start_at)}` : ''}>
       <CalendarClock size={13} /><span class="tabular">{meetings.length} {meetings.length === 1 ? 'meeting' : 'meetings'} {meetingWord}</span>
     </span>
   {/if}
   {#if overdue}
-    <span class="stat text-danger" title="Open tasks past their due date">
+    <span class="stat text-danger @max-[360px]:hidden" title="Open tasks past their due date">
       <AlertTriangle size={13} /><span class="tabular">{overdue} overdue</span>
     </span>
   {/if}

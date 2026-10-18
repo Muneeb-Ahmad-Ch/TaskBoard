@@ -66,7 +66,7 @@
         <CheckCircle2 size={20} class={updates.phase === 'none' ? 'text-success' : 'text-subtle'} />
       {/if}
     </span>
-    <div class="min-w-0 flex-1" role="status" aria-live="polite">
+    <div id="update-status" class="min-w-0 flex-1" role="status" aria-live="polite">
       <div class="text-[13px] font-semibold">Taskboard {version || '…'}</div>
       <div class="mt-0.5 text-xs text-muted">
         {#if updates.phase === 'checking'}

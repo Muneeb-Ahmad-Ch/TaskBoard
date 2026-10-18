@@ -977,6 +977,11 @@
   .row.selected {
     background: var(--accent-soft);
   }
+  /* Dimmed details (a due time, the group / project slash) stay readable on
+     the selection color. */
+  .row.selected .text-subtle {
+    color: var(--text-muted);
+  }
   .row.cursor {
     box-shadow: inset 2px 0 0 var(--accent);
   }

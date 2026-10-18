@@ -30,6 +30,7 @@
   import ReminderBanner from './components/ReminderBanner.svelte'
   import Welcome from './components/Welcome.svelte'
   import SettingsDialog from './components/SettingsDialog.svelte'
+  import { anyDialogOpen } from './components/Modal.svelte'
   import { isTyping, swatch } from './lib/format'
   import { app, isPage, redo, savePlace, scopeTitle, sectionById, undo, type View } from './lib/store.svelte'
 
@@ -169,7 +170,7 @@
   })
 
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && app.sidebarOpen) {
+    if (e.key === 'Escape' && app.sidebarOpen && !anyDialogOpen()) {
       app.sidebarOpen = false
       return
     }
@@ -240,16 +241,16 @@
           <PanelLeft size={17} />
         </button>
       {/if}
-      <div class="flex min-w-0 flex-1 items-baseline gap-2.5">
-        <h1 class="font-display truncate text-lg font-semibold tracking-tight">{pageTitle ?? app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle()}</h1>
+      <div class="@container flex min-w-0 flex-1 items-baseline gap-2.5">
+        <h1 class="font-display shrink truncate text-lg font-semibold tracking-tight">{pageTitle ?? app.views.find((v) => v.id === app.activeViewId)?.name ?? scopeTitle()}</h1>
         {#if subtitle}
-          <span class="flex shrink-0 items-center gap-1.5 text-xs max-[1180px]:hidden {'warn' in subtitle && subtitle.warn ? 'font-medium text-danger' : 'text-muted'}">
+          <span class="flex shrink-0 items-center gap-1.5 text-xs @max-[520px]:hidden {'warn' in subtitle && subtitle.warn ? 'font-medium text-danger' : 'text-muted'}">
             {#if layout.headerDot}<span class="size-2 rounded-full" style="background: {swatch(subtitle.color)}"></span>{/if}{subtitle.text}
           </span>
         {/if}
         {#if !isPage()}
           <!-- Progress, time left, meetings and overdue for the list on screen. -->
-          <span class="min-w-0 max-[1000px]:hidden">
+          <span class="min-w-0 shrink-[3] overflow-hidden @max-[260px]:hidden">
             {#key JSON.stringify(app.scope)}<ScopeStats scope={app.scope} />{/key}
           </span>
         {/if}

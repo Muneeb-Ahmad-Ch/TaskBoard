@@ -1,3 +1,13 @@
+<script lang="ts" module>
+  /** Open dialogs, newest last. */
+  const open: symbol[] = []
+
+  /** True while any dialog is open (window-level shortcuts stand down). */
+  export function anyDialogOpen(): boolean {
+    return open.length > 0
+  }
+</script>
+
 <script lang="ts">
   import type { Snippet } from 'svelte'
   import { X } from '@lucide/svelte'
@@ -23,6 +33,27 @@
   } = $props()
 
   let dialog: HTMLDivElement | undefined = $state()
+  const me = Symbol('dialog')
+
+  $effect(() => {
+    open.push(me)
+    return () => {
+      const i = open.indexOf(me)
+      if (i >= 0) open.splice(i, 1)
+    }
+  })
+
+  /** Keys that reach the window while focus is outside every dialog. */
+  function onWindowKeydown(e: KeyboardEvent) {
+    if (e.defaultPrevented || open[open.length - 1] !== me || dialog?.contains(document.activeElement)) return
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      onclose()
+    } else if (e.key === 'Tab') {
+      e.preventDefault()
+      dialog?.focus()
+    }
+  }
 
   $effect(() => {
     // Focus the first field; restore focus to whatever opened us on close.
@@ -52,6 +83,8 @@
     }
   }
 </script>
+
+<svelte:window onkeydown={onWindowKeydown} />
 
 <div class="backdrop fixed inset-0 z-40 grid place-items-center bg-black/30 p-4" role="presentation" onpointerdown={(e) => e.target === e.currentTarget && onclose()}>
   <div
