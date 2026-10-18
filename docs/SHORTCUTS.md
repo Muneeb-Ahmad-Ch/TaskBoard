@@ -19,6 +19,8 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | 1 / 2 / 3 | The visible view tabs, left to right (Table / Board / Calendar by default) |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z or Ctrl+Y | Redo |
+| Ctrl+= / Ctrl+− (or Ctrl + mouse wheel) | Zoom in / out (80% to 150%; capped so the window stays usable) |
+| Ctrl+0 | Reset zoom to 100% |
 | Esc | Close the open dialog, menu or task panel; on a subtask, go back to its parent first |
 
 ## Quick Add syntax
@@ -44,7 +46,9 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Enter | Open the task panel |
 | F2 or E | Rename |
 | Space | Mark selected tasks done / not done |
+| A | Archive selected tasks (restore from Settings → Data) |
 | Delete | Delete selected tasks (undoable) |
+| Right-click, Menu key or Shift+F10 | Row menu: open, rename, done, duplicate, archive, delete (acts on the selection) |
 | Ctrl+A | Select all loaded rows |
 | Esc | Clear selection |
 | ← / → on a column's resize handle | Make the column narrower / wider (double-click the handle to reset) |
@@ -56,13 +60,14 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Tab | Focus a card |
 | Enter | Open the task |
 | Space | Pick up the card; ← → change column, ↑ ↓ change position; Space drops, Esc cancels |
+| Right-click, Menu key or Shift+F10 | Card menu: open, done, duplicate, archive, delete |
 
 ## Sidebar
 
 | Keys | Action |
 |---|---|
 | Alt+↑ / Alt+↓ | Move the focused section, group or project up / down (also in its right-click menu) |
-| Right-click | Section / group / project / saved view actions (edit, rename, move, delete); on Today, Inbox…: Customize sidebar (Settings → Layout) |
+| Right-click | Section / group / project / saved view actions (edit, rename, move, delete); on Today, Inbox…: Customize sidebar (Settings → Sidebar) |
 | Double-click | Rename a section, group or project |
 | Drag | Reorder sections, groups and projects, or move them into another group / section; drop on Pinned to pin a project |
 | Drag a task row or board card onto a project (or Inbox) | Move the task there (a selection moves together) |
@@ -75,3 +80,10 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | T | Today |
 | M / W / D / A | Month / Week / Day / Agenda |
 | Alt + drag on the grid | Create a time block instead of a meeting |
+
+## Panels
+
+| Keys | Action |
+|---|---|
+| Drag the sidebar's right edge or the task panel's left edge | Resize it (double-click the edge to reset) |
+| ← / → on a focused edge (Shift for bigger steps), Home | Resize from the keyboard; Home resets |

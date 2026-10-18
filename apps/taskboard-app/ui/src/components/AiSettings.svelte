@@ -34,12 +34,12 @@
   const SNIPPETS = $derived.by(() => {
     if (!info) return []
     const exe = info.command
-    const json = JSON.stringify({ mcpServers: { taskboard: { command: exe, args: info.args } } }, null, 2)
-    const toml = `[mcp_servers.taskboard]\ncommand = ${JSON.stringify(exe)}\nargs = [${info.args.map((a) => JSON.stringify(a)).join(', ')}]`
+    const json = JSON.stringify({ mcpServers: { tb: { command: exe, args: info.args } } }, null, 2)
+    const toml = `[mcp_servers.tb]\ncommand = ${JSON.stringify(exe)}\nargs = [${info.args.map((a) => JSON.stringify(a)).join(', ')}]`
     const quoted = exe.includes(' ') ? `"${exe}"` : exe
     return [
       { id: 'claude-desktop', name: 'Claude Desktop', hint: 'Claude → Settings → Developer → Edit Config, paste into claude_desktop_config.json', text: json, label: 'Copy config' },
-      { id: 'claude-code', name: 'Claude Code', hint: 'Run once in a terminal.', text: `claude mcp add taskboard -- ${quoted} ${info.args.join(' ')}`, label: 'Copy command' },
+      { id: 'claude-code', name: 'Claude Code', hint: 'Run once in a terminal.', text: `claude mcp add tb -- ${quoted} ${info.args.join(' ')}`, label: 'Copy command' },
       { id: 'codex', name: 'Codex', hint: 'Add to ~/.codex/config.toml', text: toml, label: 'Copy config' },
       { id: 'other', name: 'Cursor, Windsurf, VS Code and others', hint: 'Any app that supports MCP servers over stdio; paste into its MCP settings.', text: json, label: 'Copy config' },
     ]
@@ -124,7 +124,9 @@
     <button class="btn !h-7 min-w-[132px] justify-center text-xs" disabled={testing} onclick={() => void runTest()}><PlugZap size={13} /> {testing ? 'Testing…' : 'Run test'}</button>
   </div>
   {#if info}
-    <p class="px-4 pb-3 text-xs text-subtle break-all">Server: <code>{info.command} {info.args.join(' ')}</code></p>
+    <p class="px-4 pb-3 text-xs text-subtle break-all">
+      Server: <code>{info.command} {info.args.join(' ')}</code>. These set it up as <code>tb</code>, so you can say "tb" (or "Taskboard") to your assistant, e.g. "what's due in tb today?". A setup under another name keeps working.
+    </p>
   {/if}
 </section>
 

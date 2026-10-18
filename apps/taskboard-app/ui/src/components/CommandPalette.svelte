@@ -3,10 +3,12 @@
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { swatch } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
-  import { activeViewChanged, app, applySavedView, archiveCompleted, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
+  import { activeViewChanged, addWaitingEverywhere, app, applySavedView, archiveCompleted, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
   import { openChangelog } from '../lib/about'
   import { cal, newMeeting } from '../lib/cal.svelte'
+  import { checkForUpdates } from '../lib/updater.svelte'
+  import { resetZoom, zoomIn, zoomOut } from '../lib/zoom.svelte'
 
   interface Command {
     id: string
@@ -35,7 +37,14 @@
       { id: 'v-cal', group: 'View', label: 'Calendar view', hint: '3', run: () => (app.view = 'calendar') },
       { id: 'v-dash', group: 'View', label: 'Dashboard', run: () => (app.view = 'dashboard') },
       { id: 'v-meet', group: 'View', label: 'Meetings', run: () => (app.view = 'meetings') },
-      { id: 'layout', group: 'Actions', label: 'Customize layout (sidebar, views, columns)…', run: () => { app.settingsSection = 'layout'; app.settingsOpen = true } },
+      { id: 'layout', group: 'Actions', label: 'Customize the sidebar…', run: () => { app.settingsSection = 'sidebar'; app.settingsOpen = true } },
+      { id: 'sections', group: 'Actions', label: 'Edit sections…', run: () => { app.settingsSection = 'sections'; app.settingsOpen = true } },
+      { id: 'views', group: 'Actions', label: 'Customize views and table columns…', run: () => { app.settingsSection = 'views'; app.settingsOpen = true } },
+      { id: 'updates', group: 'Actions', label: 'Check for updates…', run: () => { app.settingsSection = 'updates'; app.settingsOpen = true; void checkForUpdates() } },
+      { id: 'zoom-in', group: 'View', label: 'Zoom in', hint: 'Ctrl +', run: zoomIn },
+      { id: 'zoom-out', group: 'View', label: 'Zoom out', hint: 'Ctrl −', run: zoomOut },
+      { id: 'zoom-reset', group: 'View', label: 'Reset zoom', hint: 'Ctrl 0', run: resetZoom },
+      { id: 'waiting', group: 'Actions', label: 'Add a “Waiting” column to every project', run: () => void addWaitingEverywhere() },
       { id: 'settings', group: 'Actions', label: 'Settings…', run: () => (app.settingsOpen = true) },
       { id: 'ai', group: 'Actions', label: 'Connect an AI assistant…', run: () => { app.settingsSection = 'ai'; app.settingsOpen = true } },
       { id: 'shortcuts', group: 'Actions', label: 'Keyboard shortcuts', hint: '?', run: () => (app.shortcutsOpen = true) },

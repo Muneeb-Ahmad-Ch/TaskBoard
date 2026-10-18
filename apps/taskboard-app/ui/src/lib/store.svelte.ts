@@ -365,6 +365,14 @@ export async function act<T>(run: () => Promise<T>, done?: string): Promise<T | 
   }
 }
 
+/** Adds a Waiting column (in progress, amber) to every project without one. */
+export async function addWaitingEverywhere() {
+  const n = await act(() => ipc.addStatusEverywhere('Waiting', 'active', '70'))
+  if (n === undefined) return
+  if (n) toast(`Added a Waiting column to ${plural(n, 'project')}`, { action: { label: 'Undo', run: () => void undo() } })
+  else toast('Every project already has a Waiting column')
+}
+
 /** Archives a list's completed tasks (top-level, done or cancelled) as one undo step. */
 export async function archiveCompleted(query: TaskQuery = scopeQuery()) {
   const n = await act(() => ipc.archiveCompleted(query))

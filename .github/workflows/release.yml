@@ -33,8 +33,40 @@ jobs:
         working-directory: apps/taskboard-app/ui
         run: pnpm install --frozen-lockfile
 
-      # Builds NSIS + MSI and attaches them to a draft release for review.
-      # Signing / updater secrets are optional; see docs/RELEASING.md.
+      # In-app updates only install packages signed with this key, so a
+      # release without it would strand everyone on the current version.
+      - name: Updater signing key is set
+        shell: bash
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD repository secrets (docs/RELEASING.md)."
+            exit 1
+          fi
+
+      # The version's changelog section becomes the release notes, which the
+      # app also shows in Settings → Updates.
+      - name: Release notes from the changelog
+        id: notes
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" 'index($0, "## [" v "]") == 1 { on = 1; next } on && /^## \[/ { exit } on { print }' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then echo "See the [changelog](https://github.com/Muneeb-Ahmad-Ch/TaskBoard/blob/main/CHANGELOG.md)." > notes.md; fi
+          {
+            echo 'body<<NOTES_EOF'
+            cat notes.md
+            echo
+            echo '---'
+            echo 'Already on Taskboard 0.5 or later? It updates itself: Settings → Updates.'
+            echo 'New install: download `Taskboard_*_x64-setup.exe` below. Installers are not code-signed yet, so Windows may show "Windows protected your PC": click More info → Run anyway.'
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      # Builds NSIS + MSI, signs the update packages, and attaches them with
+      # latest.json to a draft release for review. Publishing the draft is
+      # what makes installed apps see the update.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,9 +79,9 @@ jobs:
           tauriScript: pnpm -C ui tauri
           tagName: ${{ github.ref_name }}
           releaseName: Taskboard ${{ github.ref_name }}
-          releaseBody: |
-            What's new: see the [changelog](https://github.com/Muneeb-Ahmad-Ch/TaskBoard/blob/main/CHANGELOG.md).
-
-            Download `Taskboard_*_x64-setup.exe` below. Installers are not code-signed yet, so Windows may show "Windows protected your PC": click More info → Run anyway.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
+          includeUpdaterJson: true
+          # Installed copies came from the setup .exe; update them with it.
+          updaterJsonPreferNsis: true
           prerelease: false

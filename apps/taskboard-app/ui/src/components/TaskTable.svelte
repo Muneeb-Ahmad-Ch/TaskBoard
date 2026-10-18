@@ -1,6 +1,6 @@
 <script lang="ts">
   import { beginDrag } from '../lib/dnd.svelte'
-  import { Archive, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Inbox, ListTodo, Repeat, Search, Star, Trash2, X } from '@lucide/svelte'
+  import { Archive, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Hourglass, Inbox, ListTodo, Repeat, Search, Star, Trash2, X } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Id } from '../lib/bindings/Id'
@@ -666,7 +666,7 @@
             run: () => setColumnVisible(c.id, layout.hidden.includes(c.id)),
           })),
         'separator',
-        { label: 'Reorder columns…', run: () => { app.settingsSection = 'layout'; app.settingsOpen = true } },
+        { label: 'Reorder columns…', run: () => { app.settingsSection = 'views'; app.settingsOpen = true } },
         {
           label: 'Reset widths',
           run: () => {
@@ -830,6 +830,7 @@
               }}
             >
               {#if row.category === 'done' || row.category === 'cancelled'}<CheckCircle2 size={17} />
+              {:else if row.status_name.toLowerCase() === 'waiting'}<Hourglass size={16} aria-label="Waiting" />
               {:else if row.category === 'active'}<CircleDot size={17} />
               {:else if row.status_name === 'Backlog'}<CircleDashed size={17} />
               {:else}<Circle size={17} />{/if}

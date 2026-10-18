@@ -11,7 +11,8 @@
     "test": "vitest run",
     "tauri": "TAURI_APP_PATH=../src-tauri TAURI_FRONTEND_PATH=. tauri",
     "app:dev": "pnpm tauri dev",
-    "app:build": "pnpm tauri build"
+    "app:build": "pnpm tauri build",
+    "app:build:unsigned": "pnpm tauri build --config ../src-tauri/tauri.unsigned.conf.json"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.0",

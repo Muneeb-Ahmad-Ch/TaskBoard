@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CalendarRange, Eye, EyeOff, KanbanSquare, PanelLeft, Rows3, Search, X } from '@lucide/svelte'
+  import { AlertTriangle, CalendarRange, Eye, EyeOff, KanbanSquare, PanelLeft, Rows3, Search, X } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import Board from './components/Board.svelte'
   import Calendar from './components/Calendar.svelte'
@@ -15,6 +15,9 @@
   import TaskPanel from './components/TaskPanel.svelte'
   import TaskTable from './components/TaskTable.svelte'
   import ScopeStats from './components/ScopeStats.svelte'
+  import ScheduleStrip from './components/ScheduleStrip.svelte'
+  import { errorMessage, inTauri, ipc } from './lib/ipc'
+  import { toast } from './lib/toast.svelte'
   import Toasts from './components/Toasts.svelte'
   import DashboardView from './components/DashboardView.svelte'
   import EventDialog from './components/EventDialog.svelte'
@@ -29,6 +32,47 @@
   import SettingsDialog from './components/SettingsDialog.svelte'
   import { isTyping, swatch } from './lib/format'
   import { app, isPage, redo, savePlace, scopeTitle, sectionById, undo, type View } from './lib/store.svelte'
+
+  /** A view, the task panel or a dialog failed to render: log it for troubleshooting. */
+  function logFailure(where: string, error: unknown) {
+    const message = error instanceof Error ? error.message : errorMessage(error)
+    if (inTauri) void ipc.logUiError(`${where}: ${message}`, error instanceof Error ? error.stack : undefined).catch(() => {})
+  }
+
+  // A failed view or panel gets another chance when the list or task changes.
+  let viewReset: (() => void) | null = null
+  let panelReset: (() => void) | null = null
+  $effect(() => {
+    void JSON.stringify(app.scope)
+    untrack(() => {
+      viewReset?.()
+      viewReset = null
+    })
+  })
+  $effect(() => {
+    void app.openTaskId
+    untrack(() => {
+      panelReset?.()
+      panelReset = null
+    })
+  })
+
+  /** A dialog failed: close the dialogs, say so, and let them open again. */
+  function dialogFailed(error: unknown, reset: () => void) {
+    logFailure('dialog', error)
+    app.paletteOpen = false
+    app.settingsOpen = false
+    app.shortcutsOpen = false
+    app.clientDialog = null
+    app.projectDialog = null
+    app.sectionDialog = null
+    app.deleteSection = null
+    cal.draft = null
+    cal.workingHoursOpen = false
+    cal.findSlotOpen = false
+    toast('That window ran into a problem and was closed. Your data is safe.', { kind: 'error' })
+    setTimeout(reset, 0)
+  }
 
   const views: { id: View; label: string; key: string; icon: typeof Rows3; milestone: string }[] = [
     { id: 'table', label: 'Table', key: '1', icon: Rows3, milestone: 'M2' },
@@ -240,7 +284,10 @@
 
     <div class="relative flex min-h-0 flex-1">
       <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5 max-[1000px]:px-4" role="tabpanel" aria-label={current.label}>
+        {#key app.view}
+        <svelte:boundary onerror={(e, reset) => { logFailure('view', e); viewReset = reset }} failed={viewFailed}>
         {#if app.view === 'table'}
+          <ScheduleStrip />
           {#if layout.quickAdd === 'top'}<QuickAdd placement="top" />{/if}
           {#if isEmpty && !welcomeDismissed}
             <Welcome ondismiss={dismissWelcome} />
@@ -266,14 +313,19 @@
             </div>
           </div>
         {/if}
+        </svelte:boundary>
+        {/key}
       </div>
-      <TaskPanel />
+      <svelte:boundary onerror={(e, reset) => { logFailure('task panel', e); panelReset = reset }} failed={panelFailed}>
+        <TaskPanel />
+      </svelte:boundary>
     </div>
 
     <StatusBar />
   </main>
 </div>
 
+<svelte:boundary onerror={dialogFailed}>
 {#if app.paletteOpen}<CommandPalette />{/if}
 {#if cal.draft}
   {#key cal.draft}
@@ -303,7 +355,31 @@
 {#if app.deleteSection}
   {#key app.deleteSection}<DeleteSectionDialog id={app.deleteSection} onclose={() => (app.deleteSection = null)} />{/key}
 {/if}
+</svelte:boundary>
 <Toasts />
+
+{#snippet viewFailed(_error: unknown, reset: () => void)}
+  <div class="grid flex-1 place-items-center rounded-[var(--radius)] border border-dashed border-border-strong p-6 text-center" role="alert">
+    <div class="max-w-[360px]">
+      <AlertTriangle size={28} class="mx-auto mb-2 text-danger" />
+      <p class="font-medium">This view ran into a problem</p>
+      <p class="text-muted">Your data is safe, and the problem was logged. Try again, or switch to another view.</p>
+      <button class="btn mt-3" onclick={reset}>Try again</button>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet panelFailed(_error: unknown, reset: () => void)}
+  <aside class="flex w-[320px] shrink-0 flex-col items-center justify-center gap-2 border-l border-border bg-surface-1 p-6 text-center" role="alert">
+    <AlertTriangle size={24} class="text-danger" />
+    <p class="font-medium">This task couldn't be shown</p>
+    <p class="text-xs text-muted">The problem was logged.</p>
+    <div class="flex gap-1.5">
+      <button class="btn !h-7 text-xs" onclick={reset}>Try again</button>
+      <button class="btn !h-7 text-xs" onclick={() => { app.openTaskId = null; reset() }}>Close</button>
+    </div>
+  </aside>
+{/snippet}
 
 <style>
   .drag-ghost {

@@ -84,9 +84,10 @@ export const zoomIn = () => setZoomLevel(stepLevel(zoom.chosen, 1))
 export const zoomOut = () => setZoomLevel(stepLevel(zoom.chosen, -1))
 export const resetZoom = () => setZoomLevel(1)
 
-/** Keys and Ctrl + wheel; re-checks the cap when the window is resized. */
-export function installZoom() {
-  void applyZoom()
+/** Keys and Ctrl + wheel; re-checks the cap when the window is resized.
+ *  Resolves once the saved level is applied (before the window shows). */
+export function installZoom(): Promise<void> {
+  const first = applyZoom()
   window.addEventListener(
     'keydown',
     (e) => {
@@ -121,4 +122,5 @@ export function installZoom() {
     clearTimeout(timer)
     timer = setTimeout(() => void applyZoom(), 120)
   })
+  return first
 }

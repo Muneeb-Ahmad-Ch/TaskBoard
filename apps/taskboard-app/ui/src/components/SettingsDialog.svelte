@@ -2,7 +2,7 @@
   import ArchivedList from './ArchivedList.svelte'
   // Settings, organized by category (left) with the chosen page on the right.
   // Every change is saved immediately; there is no Save button.
-  import { Archive, Bell, Bot, CalendarDays, Check, Database, Download, ExternalLink, FolderOpen, Globe, Info, Mail, Monitor, Palette, PanelLeft, RotateCcw, Upload } from '@lucide/svelte'
+  import { Archive, Bell, Bot, CalendarDays, Check, Database, Download, ExternalLink, FolderOpen, FolderTree, Globe, Info, Mail, Minus, Monitor, Palette, PanelLeft, Plus, RefreshCw, RotateCcw, Table2, Upload } from '@lucide/svelte'
   import type { AppSettings } from '../lib/bindings/AppSettings'
   import type { BackupInfo } from '../lib/bindings/BackupInfo'
   import type { DbInfo } from '../lib/bindings/DbInfo'
@@ -15,26 +15,43 @@
   import { ACCENTS, setAccentHue, setThemePref, theme, type ThemePref } from '../lib/theme.svelte'
   import { toast } from '../lib/toast.svelte'
   import AiSettings from './AiSettings.svelte'
-  import LayoutSettings from './LayoutSettings.svelte'
   import Modal from './Modal.svelte'
+  import SectionsSettings from './SectionsSettings.svelte'
+  import SidebarSettings from './SidebarSettings.svelte'
   import Switch from './Switch.svelte'
+  import UpdatesSettings from './UpdatesSettings.svelte'
+  import ViewsSettings from './ViewsSettings.svelte'
+  import { LEVELS, resetZoom, zoom, zoomIn, zoomOut } from '../lib/zoom.svelte'
+  import { updates } from '../lib/updater.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
 
   const PAGES = [
     { id: 'general', label: 'General', icon: Monitor },
     { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'sidebar', label: 'Layout', icon: PanelLeft },
+    { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
+    { id: 'sections', label: 'Sections', icon: FolderTree },
+    { id: 'views', label: 'Views & table', icon: Table2 },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
     { id: 'reminders', label: 'Reminders', icon: Bell },
     { id: 'data', label: 'Data & backups', icon: Database },
     { id: 'ai', label: 'AI assistants', icon: Bot },
+    { id: 'updates', label: 'Updates', icon: RefreshCw },
     { id: 'about', label: 'About', icon: Info },
   ] as const
   type PageId = (typeof PAGES)[number]['id']
 
-  // "Customize sidebar…" and "About Taskboard" open a specific page.
-  const OPEN_AT: Record<string, PageId> = { layout: 'sidebar', about: 'about', ai: 'ai' }
+  // "Customize sidebar…", "About Taskboard" and the like open a specific page.
+  const OPEN_AT: Record<string, PageId> = {
+    layout: 'sidebar',
+    sidebar: 'sidebar',
+    sections: 'sections',
+    views: 'views',
+    data: 'data',
+    ai: 'ai',
+    updates: 'updates',
+    about: 'about',
+  }
   let page = $state<PageId>(OPEN_AT[app.settingsSection ?? ''] ?? 'general')
   app.settingsSection = null
 
@@ -155,7 +172,7 @@
 
   const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   const size = (b: number) => (b > 1_048_576 ? `${(b / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`)
-  const KIND: Record<string, string> = { daily: 'Daily', manual: 'Manual', 'pre-migrate': 'Before upgrade', 'pre-import': 'Before import', 'pre-restore': 'Before restore' }
+  const KIND: Record<string, string> = { daily: 'Daily', manual: 'Manual', 'pre-migrate': 'Before upgrade', 'pre-update': 'Before update', 'pre-import': 'Before import', 'pre-restore': 'Before restore' }
 
   const THEMES: { v: ThemePref; l: string }[] = [
     { v: 'system', l: 'System' },
@@ -168,6 +185,12 @@
     { v: 6, l: 'Saturday' },
   ]
   const current = $derived(PAGES.find((p) => p.id === page) ?? PAGES[0])
+  const pct = (level: number) => `${Math.round(level * 100)}%`
+  const zoomHint = $derived(
+    zoom.applied < zoom.chosen
+      ? `Set to ${pct(zoom.chosen)}; ${pct(zoom.applied)} is the most that fits this window.`
+      : 'Ctrl + and Ctrl − (or Ctrl + mouse wheel). Ctrl 0 resets.',
+  )
 </script>
 
 {#snippet row(title: string, hint: string)}
@@ -262,9 +285,24 @@
               {/each}
             </div>
           </div>
+          <div class="set-row">
+            {@render row('Zoom', zoomHint)}
+            <div class="flex items-center gap-1" role="group" aria-label="Zoom">
+              <button class="btn !h-7 !w-7 !px-0" aria-label="Zoom out" title="Zoom out (Ctrl −)" disabled={zoom.chosen <= LEVELS[0]} onclick={() => { zoomOut(); saved() }}><Minus size={14} /></button>
+              <span class="tabular w-12 text-center text-[13px]">{pct(zoom.applied)}</span>
+              <button class="btn !h-7 !w-7 !px-0" aria-label="Zoom in" title="Zoom in (Ctrl +)" disabled={zoom.chosen >= LEVELS[LEVELS.length - 1]} onclick={() => { zoomIn(); saved() }}><Plus size={14} /></button>
+              <button class="btn !h-7 text-xs" disabled={zoom.chosen === 1} onclick={() => { resetZoom(); saved() }}>Reset</button>
+            </div>
+          </div>
         </section>
       {:else if page === 'sidebar'}
-        <LayoutSettings onchange={saved} />
+        <SidebarSettings onchange={saved} />
+      {:else if page === 'sections'}
+        <SectionsSettings onchange={saved} />
+      {:else if page === 'views'}
+        <ViewsSettings onchange={saved} />
+      {:else if page === 'updates'}
+        <UpdatesSettings />
       {:else if page === 'calendar'}
         <section class="card">
           <div class="set-row">
@@ -371,7 +409,12 @@
             <img src="/favicon.svg" alt="" class="size-14 shrink-0" />
             <div class="min-w-0 flex-1">
               <div class="font-display text-[17px] font-semibold">Taskboard</div>
-              <div class="text-[13px] text-muted">Version {version || '…'}</div>
+              <div class="flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
+                Version {version || '…'}
+                <button class="link text-xs" onclick={() => (page = 'updates')}>
+                  {updates.phase === 'available' && updates.info ? `Version ${updates.info.version} is available` : updates.phase === 'none' ? 'Up to date' : 'Check for updates'}
+                </button>
+              </div>
               <div class="mt-0.5 text-xs text-muted">Free for personal use; commercial use needs permission.</div>
             </div>
           </div>

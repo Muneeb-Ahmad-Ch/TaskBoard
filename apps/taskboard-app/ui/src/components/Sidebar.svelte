@@ -263,7 +263,7 @@
   })
 
   function customize() {
-    app.settingsSection = 'layout'
+    app.settingsSection = 'sidebar'
     app.settingsOpen = true
   }
 

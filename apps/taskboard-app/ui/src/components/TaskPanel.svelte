@@ -14,6 +14,7 @@
   import DateField from './DateField.svelte'
   import Progress from './Progress.svelte'
   import Splitter from './Splitter.svelte'
+  import TaskBlocks from './TaskBlocks.svelte'
   import { layout, PANEL, setPanelWidth } from '../lib/layout.svelte'
   import { fromIso, repeatOptions } from '../lib/cal.svelte'
 
@@ -378,6 +379,8 @@
           onkeydown={(e) => e.key === 'Enter' && void addSubtask()}
         />
       </div>
+
+      <TaskBlocks {task} />
 
       <h3 class="mt-5 mb-1.5 text-xs font-semibold tracking-wide text-subtle uppercase">Notes</h3>
       {#key task.id}

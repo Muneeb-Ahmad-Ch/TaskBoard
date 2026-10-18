@@ -9,7 +9,64 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Updates in place:** Settings → Updates checks GitHub for a new version
+  (at startup and every few hours; can be turned off), shows what's new, and
+  installs it without a trip to the Releases page: a signed download with
+  progress, a backup of your data, then Taskboard closes and reopens on the
+  new version. A status-bar chip says when one is ready. 0.4 and earlier
+  need one manual install of this version first.
+- **Waiting column** for tasks waiting on someone's reply or approval: part of
+  the default columns for new projects (after In Progress, counts as open),
+  with an hourglass in the table. Ctrl+K → "Add a Waiting column to every
+  project" adds it to existing projects in one undoable step.
+- **Archive tasks** instead of deleting them: right-click a row or card, select
+  and press A, or "Archive N completed" in the table footer (also in Ctrl+K
+  and a Done column's menu). Archived tasks leave every list and come back
+  with their subtasks from Settings → Data → Archived tasks.
+- **Schedule strip** above the task list: the meetings and time blocks coming
+  up for the open group, project, section or day, with + Meeting / + Time
+  block for that group or project, and the task a block is for.
+- **Time blocks in the task panel:** the blocks booked for a task, with "Block
+  time for this task".
+- **Progress on every list:** Today, Upcoming, Inbox and All work show
+  progress (% and done/total) like sections, groups and projects do.
+- **Zoom** from 80% to 150% (Ctrl + / Ctrl −, Ctrl + mouse wheel, Ctrl 0;
+  Settings → Appearance). It stops where the window would get too small, and
+  the status bar shows the level when it isn't 100%.
+- **Resizable sidebar and task panel:** drag their edges, or set the width in
+  Settings; double-click an edge to reset.
+- **AI assistants can do everything the app can:** set a task's column by
+  name (the bug where a status stayed "To Do" while progress moved), edit
+  many tasks at once, archive, reorder board columns and cards, pin, edit one
+  occurrence of a meeting or a whole series, book a time block for a task
+  (`schedule_task`), filter meetings and blocks by kind, group, project or
+  task, add all-day events, keep an event's length when moving it, timers,
+  working hours, days off, slots, saved views, reminders and backups. They
+  still can't change the app's settings or their own access.
+- **"tb" for short:** assistants are set up as `tb` and know that "tb" means
+  Taskboard ("what's due in tb today?").
+- Row and card right-click menus (also the Menu key / Shift+F10).
+
+### Changed
+- **Settings → Layout** is now three tidier pages: **Sidebar** (items, a
+  checkbox grid for counts and color dots, width), **Sections**, and **Views &
+  table** (view tabs, add-a-task box, columns, task panel width). Reorder
+  arrows appear on the row you point at; each page has its own Restore
+  defaults.
+- Pinned projects are stored with your data (so assistants see them) instead
+  of per device.
+- Empty lists say what belongs there, and "Add one above / below" follows
+  where the add-a-task box is; a list whose tasks are all done says so, with
+  a Show completed button.
+
+### Fixed
+- The empty Inbox said "Add a task below" with the add-a-task box at the top.
+
+### Robustness
+- A view, the task panel or a dialog that fails to render shows a short
+  message with Try again (and is logged) instead of a blank window; other UI
+  errors are logged and reported once instead of failing silently.
 
 ## [0.4.1] - 2026-10-18
 
