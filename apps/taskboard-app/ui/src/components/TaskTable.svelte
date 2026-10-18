@@ -1,18 +1,20 @@
 <script lang="ts">
   import { beginDrag } from '../lib/dnd.svelte'
-  import { ArrowDown, ArrowUp, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Repeat, Trash2, X } from '@lucide/svelte'
+  import { Archive, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Inbox, ListTodo, Repeat, Search, Star, Trash2, X } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Id } from '../lib/bindings/Id'
   import type { Priority } from '../lib/bindings/Priority'
   import type { Status } from '../lib/bindings/Status'
   import type { TaskPatch } from '../lib/bindings/TaskPatch'
+  import type { TaskQuery } from '../lib/bindings/TaskQuery'
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import type { TaskSort } from '../lib/bindings/TaskSort'
   import type { TaskSummary } from '../lib/bindings/TaskSummary'
   import { dueLabel, isOverdue, isTyping, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
-  import { act, app, scopeQuery, sectionById } from '../lib/store.svelte'
+  import { act, app, archiveCompleted, scopeQuery, sectionById } from '../lib/store.svelte'
+  import { layout as viewLayout } from '../lib/layout.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import { COLUMN_DEFS, orderedColumns, saveTableLayout, setColumnVisible, tableLayout, type ColId, type ColumnDef } from '../lib/tableLayout.svelte'
@@ -259,20 +261,42 @@
     for (const p of visiblePages()) if (!pages.has(p)) void fetchPage(p, generation)
   })
 
+  /** Completed top-level tasks in view: what "Archive completed" would take. */
+  let completedHere = $state(0)
+  /** Completed tasks an empty list is hiding, for its empty state. */
+  let hiddenDone = $state(0)
+
   // Footer summary (debounced; it scans the whole query).
   $effect(() => {
     const key = queryKey
     void app.dataVersion
     if (!inTauri) return
     const t = setTimeout(async () => {
+      const q: TaskQuery = JSON.parse(key)
+      const showsDone = !q.categories?.length || q.categories.includes('done')
       try {
-        summary = await ipc.summarizeTasks(JSON.parse(key))
+        const [s, c] = await Promise.all([
+          ipc.summarizeTasks(q),
+          showsDone ? ipc.summarizeTasks({ ...q, categories: ['done', 'cancelled'], top_level: true }) : null,
+        ])
+        summary = s
+        completedHere = c?.total ?? 0
+        hiddenDone = !s.total && !showsDone ? (await ipc.summarizeTasks(hiddenDoneQuery(q))).total : 0
       } catch {
         summary = null
+        completedHere = 0
+        hiddenDone = 0
       }
     }, 120)
     return () => clearTimeout(t)
   })
+
+  /** Today: what was finished today. Other lists: their completed tasks. */
+  function hiddenDoneQuery(q: TaskQuery): TaskQuery {
+    if (app.scope.kind !== 'today') return { ...q, categories: ['done'] }
+    const now = new Date()
+    return { due_to: q.due_to, categories: ['done'], completed_from: new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() }
+  }
 
   $effect(() => {
     if (!viewport) return
@@ -371,6 +395,9 @@
         if (e.ctrlKey) {
           e.preventDefault()
           for (const rows of pages.values()) for (const r of rows) selected.add(r.id)
+        } else if (!e.altKey && !e.metaKey && selected.size) {
+          e.preventDefault()
+          void archiveSelected()
         }
     }
   }
@@ -415,12 +442,22 @@
     else await act(() => ipc.bulkUpdateTasks(ids, p), message ?? `Updated ${plural(ids.length, 'task')}`)
   }
 
-  async function removeSelected() {
-    const ids = selectedIds()
+  async function removeSelected(ids = selectedIds()) {
     selected.clear()
     await act(
       () => (ids.length === 1 ? ipc.deleteTask(ids[0]).then(() => 1) : ipc.bulkDelete(ids)),
       ids.length === 1 ? 'Task deleted' : `Deleted ${plural(ids.length, 'task')}`,
+    )
+  }
+
+  /** Archive: out of every list, kept in Settings → Data → Archived. */
+  async function archiveSelected(ids = selectedIds()) {
+    if (!ids.length) return
+    selected.clear()
+    if (app.openTaskId && ids.includes(app.openTaskId)) app.openTaskId = null
+    await act(
+      () => (ids.length === 1 ? ipc.setTaskArchived(ids[0], true).then(() => 1) : ipc.bulkSetArchived(ids, true)),
+      ids.length === 1 ? 'Task archived' : `Archived ${plural(ids.length, 'task')}`,
     )
   }
 
@@ -571,6 +608,50 @@
     )
   }
 
+  /**
+   * Right-click a row (or press the menu key / Shift+F10 on the table): actions
+   * for that row, or for the whole selection when the row is part of it.
+   */
+  function onGridMenu(e: MouseEvent) {
+    const target = e.target as HTMLElement
+    // The header has its own menu; text fields keep the native one.
+    if (e.defaultPrevented || target.closest('input, textarea')) return
+    const rowEl = target.closest<HTMLElement>('[aria-rowindex]')
+    const i = rowEl ? Number(rowEl.getAttribute('aria-rowindex')) - 1 : cursor
+    const row = rowAt(i)
+    if (!row) return
+    e.preventDefault()
+    if (!selected.has(row.id)) select(i)
+    // From the keyboard there is no pointer: open at the row.
+    const at = rowEl ? { x: e.clientX, y: e.clientY } : rowPoint(i)
+    const ids = targets(row)
+    const many = ids.length > 1
+    const allDone = ids.every((id) => rowById(id)?.completed_at)
+    const items: MenuEntry[] = []
+    if (!many)
+      items.push(
+        { label: 'Open', hint: 'Enter', run: () => (app.openTaskId = row.id) },
+        { label: 'Rename', hint: 'F2', run: () => (renaming = row.id) },
+      )
+    items.push({
+      label: `${allDone ? 'Mark not done' : 'Mark done'}${many ? ` (${ids.length})` : ''}`,
+      hint: 'Space',
+      run: () => void act(() => ipc.bulkSetDone(ids, !allDone)),
+    })
+    if (!many) items.push({ label: 'Duplicate', run: () => void act(() => ipc.duplicateTask(row.id), 'Task duplicated') })
+    items.push(
+      'separator',
+      { label: many ? `Archive ${ids.length} tasks` : 'Archive', hint: 'A', run: () => void archiveSelected(ids) },
+      { label: many ? `Delete ${ids.length} tasks` : 'Delete', hint: 'Del', danger: true, run: () => void removeSelected(ids) },
+    )
+    menu = { ...at, items }
+  }
+
+  function rowPoint(i: number): { x: number; y: number } {
+    const r = viewport?.querySelector(`[aria-rowindex="${i + 1}"]`)?.getBoundingClientRect()
+    return r ? { x: r.left + 48, y: r.bottom + 2 } : { x: 120, y: 120 }
+  }
+
   function columnsMenu(e: MouseEvent) {
     e.preventDefault()
     menu = {
@@ -612,6 +693,32 @@
   }
 
   const bulkRow = $derived(selected.size > 1 ? rowById(selectedIds()[0]) : undefined)
+
+  /** What an empty list says; "above" or "below" follows where quick add sits. */
+  const empty = $derived.by(() => {
+    const add = `Add one ${viewLayout.quickAdd === 'top' ? 'above' : 'below'}, or press N.`
+    const showDone = { label: 'Show completed', run: () => (app.showDone = true) }
+    if (app.search.trim())
+      return app.showDone || app.scope.kind === 'today' || app.scope.kind === 'upcoming'
+        ? { icon: Search, title: 'No matching tasks', body: 'Try a different search.', action: null }
+        : { icon: Search, title: 'No matching open tasks', body: 'Try a different search, or include completed tasks.', action: { ...showDone, label: 'Include completed' } }
+    if (hiddenDone) {
+      const n = `${plural(hiddenDone, 'completed task')} ${hiddenDone === 1 ? 'is' : 'are'} hidden.`
+      return app.scope.kind === 'today'
+        ? { icon: CheckCircle2, title: 'All done for today', body: `You finished ${plural(hiddenDone, 'task')} today.`, action: null }
+        : { icon: CheckCircle2, title: 'All done here', body: n, action: app.scope.kind === 'upcoming' ? null : showDone }
+    }
+    switch (app.scope.kind) {
+      case 'inbox':
+        return { icon: Inbox, title: 'Your Inbox is empty', body: `Tasks without a project land here. ${add}`, action: null }
+      case 'today':
+        return { icon: Star, title: 'Nothing due today', body: `Tasks due today, and overdue ones, show up here. ${add}`, action: null }
+      case 'upcoming':
+        return { icon: CalendarDays, title: 'Nothing due in the next 7 days', body: 'Tasks with a due date in the coming week show up here.', action: null }
+      default:
+        return { icon: ListTodo, title: 'No tasks yet', body: add, action: null }
+    }
+  })
 </script>
 
 <input
@@ -637,6 +744,7 @@
     tabindex="0"
     onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
     {onkeydown}
+    oncontextmenu={onGridMenu}
   >
     <!-- header (sticky, scrolls sideways with the rows) -->
     <div class="sticky top-0 z-10 grid h-9 items-center border-b border-border bg-surface-2 text-xs text-muted select-none" style="grid-template-columns: {gridTemplate}; min-width: {minWidth}px" role="row" tabindex="-1" oncontextmenu={columnsMenu}>
@@ -673,11 +781,14 @@
     </div>
 
     {#if loaded && total === 0}
-      <div class="absolute inset-0 top-9 grid place-items-center text-center">
-        <div>
-          <CheckCircle2 size={28} class="mx-auto mb-2 text-subtle" />
-          <p class="font-medium">{app.search ? 'No matching tasks' : 'Nothing here'}</p>
-          <p class="text-muted">{app.search ? 'Try a different search.' : 'Add a task below, or press N.'}</p>
+      <div class="absolute inset-0 top-9 grid place-items-center px-6 text-center">
+        <div class="max-w-[360px]">
+          <empty.icon size={28} class="mx-auto mb-2 text-subtle" />
+          <p class="font-medium">{empty.title}</p>
+          <p class="text-muted">{empty.body}</p>
+          {#if empty.action}
+            <button class="btn mt-3" onclick={empty.action.run}>{empty.action.label}</button>
+          {/if}
         </div>
       </div>
     {/if}
@@ -823,6 +934,7 @@
       <button class="bulk" onclick={(e) => dueMenu(e, bulkRow)}>Due date</button>
       <button class="bulk" onclick={(e) => priorityMenu(e, bulkRow)}>Priority</button>
       <button class="bulk" onclick={(e) => projectMenu(e, bulkRow)}>Move to</button>
+      <button class="bulk" title="Hide them from every list; restore from Settings → Data (A)" onclick={() => void archiveSelected()}><Archive size={13} /> Archive</button>
       <button class="bulk text-danger" onclick={() => void removeSelected()}><Trash2 size={13} /> Delete</button>
       <button class="bulk ml-auto" onclick={() => selected.clear()}><X size={13} /> Clear</button>
     {:else if summary}
@@ -838,7 +950,14 @@
         <span aria-hidden="true">·</span>
         <span class="tabular">{minutes(summary.estimate_minutes)} estimated</span>
       {/if}
-      <span class="ml-auto hidden text-subtle xl:inline">↑↓ move · Enter open · F2 rename · Space done · Del delete</span>
+      <span class="ml-auto flex min-w-0 items-center gap-3">
+        <span class="hidden truncate text-subtle {completedHere ? '2xl:inline' : 'xl:inline'}">↑↓ move · Enter open · F2 rename · Space done · A archive · Del delete</span>
+        {#if completedHere}
+          <button class="bulk shrink-0" title="Hide this list's completed tasks; restore them from Settings → Data" onclick={() => void archiveCompleted(JSON.parse(queryKey))}>
+            <Archive size={13} /> Archive {completedHere} completed
+          </button>
+        {/if}
+      </span>
     {/if}
   </div>
 </div>

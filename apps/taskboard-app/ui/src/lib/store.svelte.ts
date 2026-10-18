@@ -11,7 +11,7 @@ import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
 import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
-import { isoDate, todayIso } from './format'
+import { isoDate, plural, todayIso } from './format'
 import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
 import { adoptLegacySectionPrefs, takeLegacyPins, visibleTabs } from './layout.svelte'
 import { toast } from './toast.svelte'
@@ -363,6 +363,14 @@ export async function act<T>(run: () => Promise<T>, done?: string): Promise<T | 
     toast(errorMessage(err), { kind: 'error' })
     return undefined
   }
+}
+
+/** Archives a list's completed tasks (top-level, done or cancelled) as one undo step. */
+export async function archiveCompleted(query: TaskQuery = scopeQuery()) {
+  const n = await act(() => ipc.archiveCompleted(query))
+  if (n === undefined) return
+  if (n) toast(`Archived ${plural(n, 'completed task')}`, { action: { label: 'Undo', run: () => void undo() } })
+  else toast('No completed tasks to archive here')
 }
 
 export async function undo() {

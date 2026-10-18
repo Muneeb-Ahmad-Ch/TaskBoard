@@ -58,7 +58,17 @@ fn inbox_is_created_once_with_default_workflow() {
         .into_iter()
         .map(|s| s.name)
         .collect();
-    assert_eq!(names, ["Backlog", "To Do", "In Progress", "Review", "Done"]);
+    assert_eq!(
+        names,
+        [
+            "Backlog",
+            "To Do",
+            "In Progress",
+            "Waiting",
+            "Review",
+            "Done"
+        ]
+    );
     // Seeding is not an undoable user action.
     assert_eq!(db.history_state().unwrap().undo, None);
 }
@@ -868,7 +878,15 @@ fn columns_can_be_added_renamed_moved_and_must_be_unique() {
     };
     assert_eq!(
         names(&db),
-        ["Backlog", "To Do", "In Progress", "Review", "QA", "Done"]
+        [
+            "Backlog",
+            "To Do",
+            "In Progress",
+            "Waiting",
+            "Review",
+            "QA",
+            "Done"
+        ]
     );
 
     let dup = NewStatus {

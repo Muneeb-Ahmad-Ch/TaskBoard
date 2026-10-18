@@ -43,6 +43,15 @@
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper" },
       "nsis": { "installMode": "currentUser" }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEY2RUJCRURBMTJBODJFNEEKUldSS0xxZ1MycjdyOWdlSWI4L1Z6MDEwOEhpb2p0WkpXdS8rWll4WHJ3UWloWkVwUGhzaXhaYUwK",
+      "endpoints": ["https://github.com/Muneeb-Ahmad-Ch/TaskBoard/releases/latest/download/latest.json"],
+      "requireSignedVersion": true,
+      "windows": { "installMode": "passive" }
     }
   }
 }

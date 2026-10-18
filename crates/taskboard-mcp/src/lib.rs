@@ -22,7 +22,7 @@ pub const PROTOCOLS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 pub const LATEST_PROTOCOL: &str = PROTOCOLS[0];
 
 const SERVER_NAME: &str = "taskboard";
-const INSTRUCTIONS: &str = "Taskboard is the user's local planner: sections (e.g. Clients, Personal) hold groups (clients, teams…) and projects; projects hold tasks and subtasks; the Inbox is a project for unfiled tasks. Each project has board columns (statuses such as To Do, In Progress, Done): set a task's column with update_task status (the column name) and keep it in step with progress. Call get_overview first to learn the ids and each project's columns, then list_tasks / get_task for detail. update_task, complete_task, archive_task and delete_task take ids for several tasks at once (one undo step). Archive finished work instead of deleting it. Ids are opaque strings; dates are YYYY-MM-DD; times are HH:MM (24h); event times are local YYYY-MM-DDTHH:MM. add_task understands quick-add syntax (\"Send invoice fri 3pm #admin !high ~30m @website every month\"). Every change is undoable (undo / redo) and shows up in the app at once.";
+const INSTRUCTIONS: &str = "Taskboard (the user may call it \"tb\") is the user's local planner: sections (e.g. Clients, Personal) hold groups (clients, teams…) and projects; projects hold tasks and subtasks; the Inbox is a project for unfiled tasks. Each project has board columns (statuses such as To Do, In Progress, Waiting, Done): set a task's column with update_task status (the column name) and keep it in step with progress. When the user is waiting on someone (a reply, an approval), move the task to Waiting (add_status_everywhere adds that column where it is missing) and set its due date to the day to follow up. Meetings and time blocks: list_events (filter by kind, group, project or task), add_event, update_event; schedule_task books focus time for a task. Call get_overview first to learn the ids and each project's columns, then list_tasks / get_task for detail. update_task, complete_task, archive_task and delete_task take ids for several tasks at once (one undo step). Archive finished work instead of deleting it. Ids are opaque strings; dates are YYYY-MM-DD; times are HH:MM (24h); event times are local YYYY-MM-DDTHH:MM. add_task understands quick-add syntax (\"Send invoice fri 3pm #admin !high ~30m @website every month\"). Every change is undoable (undo / redo) and shows up in the app at once.";
 
 /// One assistant that has connected, for the app's Settings page.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,7 +164,7 @@ impl Server {
         json!({
             "protocolVersion": version,
             "capabilities": { "tools": { "listChanged": false } },
-            "serverInfo": { "name": SERVER_NAME, "title": "Taskboard", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": SERVER_NAME, "title": "Taskboard (tb)", "version": env!("CARGO_PKG_VERSION") },
             "instructions": INSTRUCTIONS,
         })
     }

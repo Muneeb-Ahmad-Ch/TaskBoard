@@ -214,6 +214,15 @@ pub(super) const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
+        name: "add_status_everywhere",
+        description: "Adds a board column to every project that has none by that name, in one undo step, e.g. Waiting (category active) for tasks waiting on someone's reply. It goes after the first column of its category, else before the finished ones.",
+        fields: &[
+            ("name", STR, true),
+            ("category", CATEGORY, true),
+            ("color", COLOR, false),
+        ],
+    },
+    Tool {
         name: "update_status",
         description: "Renames or recolors a board column, changes what it means (category) or its WIP limit (null = none).",
         fields: &[
@@ -352,6 +361,20 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
             db.create_status(from_args::<NewStatus>(args.clone())?)
                 .map_err(err)?,
         ),
+        "add_status_everywhere" => {
+            #[derive(serde::Deserialize)]
+            struct Input {
+                name: String,
+                category: taskboard_core::Category,
+                #[serde(default)]
+                color: Option<String>,
+            }
+            let i: Input = from_args(args.clone())?;
+            let n = db
+                .add_status_everywhere(&i.name, i.category, i.color.as_deref())
+                .map_err(err)?;
+            Ok(json!({ "projects_updated": n }))
+        }
         "update_status" => {
             let id = id_arg(args, "id")?;
             let patch: StatusPatch = from_args(without(args, &["id"]))?;

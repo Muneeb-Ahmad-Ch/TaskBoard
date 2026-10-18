@@ -9,10 +9,13 @@ use taskboard_core::{
 };
 
 use super::{
-    Args, BOOL, DAY, ID, NULLABLE_ID, NULLABLE_STR, RANGE_FROM, RANGE_TO, STR, Tool, ToolResult,
-    day_start, err, from_args, hm, id_arg, iso, opt_id, parse_date, parse_when, str_arg, window,
-    without,
+    Args, BOOL, DAY, EVENT_WHEN, ID, NULLABLE_ID, NULLABLE_STR, RANGE_FROM, RANGE_TO, STR, Tool,
+    ToolResult, day_start, err, from_args, hm, id_arg, iso, opt_id, parse_date, parse_when,
+    str_arg, window, without,
 };
+use taskboard_core::Id;
+
+const KIND: &str = r#"{"type":"string","enum":["meeting","block"],"description":"meeting, or block (focus time, usually for a task)"}"#;
 
 const DAYS: [&str; 7] = [
     "Monday",
@@ -28,8 +31,15 @@ const HOURS: &str = r#"{"type":"array","items":{"type":"string"},"description":"
 pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "list_events",
-        description: "Meetings and time blocks between two local dates or date-times (default: today and the next 7 days; at most 366 days), with the group / project they belong to. Each repeating occurrence has occurrence_start, which update_event needs to change just that one.",
-        fields: &[("from", RANGE_FROM, false), ("to", RANGE_TO, false)],
+        description: "Meetings and time blocks between two local dates or date-times (default: today and the next 7 days; at most 366 days), with the group / project they belong to and, for a time block, the task it is for (task_id). Filter by kind, client_id (group), project_id or task_id. Each repeating occurrence has occurrence_start, which update_event needs to change just that one.",
+        fields: &[
+            ("from", RANGE_FROM, false),
+            ("to", RANGE_TO, false),
+            ("kind", KIND, false),
+            ("client_id", ID, false),
+            ("project_id", ID, false),
+            ("task_id", ID, false),
+        ],
     },
     Tool {
         name: "get_event",
@@ -38,16 +48,12 @@ pub(super) const TOOLS: &[Tool] = &[
     },
     Tool {
         name: "add_event",
-        description: "Adds a meeting or a time block (focus time) at local times; recurrence_rule makes it repeat.",
+        description: "Adds a meeting or a time block (focus time) at local times, or all day when start / end are plain dates. end defaults to an hour after start (the same day for all-day). recurrence_rule makes it repeat. To book time for a task, schedule_task is simpler.",
         fields: &[
-            (
-                "kind",
-                r#"{"type":"string","enum":["meeting","block"]}"#,
-                true,
-            ),
+            ("kind", KIND, true),
             ("title", STR, true),
-            ("start", super::WHEN, true),
-            ("end", super::WHEN, true),
+            ("start", EVENT_WHEN, true),
+            ("end", EVENT_WHEN, false),
             ("client_id", ID, false),
             ("project_id", ID, false),
             ("task_id", ID, false),
@@ -82,8 +88,27 @@ pub(super) const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
+        name: "schedule_task",
+        description: "Books a time block for a task (like dragging it onto the calendar): titled after the task, in its project, linked to it. minutes defaults to the task's estimate, else 60.",
+        fields: &[
+            ("task_id", ID, true),
+            ("start", super::WHEN, true),
+            (
+                "minutes",
+                r#"{"type":"integer","description":"Length, 5 to 720 minutes"}"#,
+                false,
+            ),
+            ("title", STR, false),
+            (
+                "flexible",
+                r#"{"type":"boolean","description":"Slot finding may book over it (default true)"}"#,
+                false,
+            ),
+        ],
+    },
+    Tool {
         name: "update_event",
-        description: "Changes a meeting or time block. scope: series (default, every occurrence), occurrence (just the one starting at occurrence_start: title, notes_md, start, end, or cancelled=true to skip it) or following (that one and every later one).",
+        description: "Changes a meeting or time block. Moving start alone keeps its length; plain dates make it all-day. scope: series (default, every occurrence), occurrence (just the one starting at occurrence_start: title, notes_md, start, end, or cancelled=true to skip it) or following (that one and every later one).",
         fields: &[
             ("id", ID, true),
             (
@@ -102,13 +127,9 @@ pub(super) const TOOLS: &[Tool] = &[
                 false,
             ),
             ("title", STR, false),
-            (
-                "kind",
-                r#"{"type":"string","enum":["meeting","block"]}"#,
-                false,
-            ),
-            ("start", super::WHEN, false),
-            ("end", super::WHEN, false),
+            ("kind", KIND, false),
+            ("start", EVENT_WHEN, false),
+            ("end", EVENT_WHEN, false),
             ("client_id", NULLABLE_ID, false),
             ("project_id", NULLABLE_ID, false),
             ("task_id", NULLABLE_ID, false),
@@ -225,12 +246,13 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
         "list_events" => list_events(db, args),
         "get_event" => event_json(&db.event(id_arg(args, "id")?).map_err(err)?),
         "add_event" => {
-            let input: NewEvent = from_args(with_times(args.clone(), true)?)?;
+            let input: NewEvent = from_args(with_times(args.clone(), Times::Add)?)?;
             if input.kind == EventKind::Meeting && input.title.trim().is_empty() {
                 return Err("title must not be empty".to_owned());
             }
             event_json(&db.create_event(input).map_err(err)?)
         }
+        "schedule_task" => schedule_task(db, args),
         "update_event" => update_event(db, args),
         "delete_event" => {
             db.delete_event(id_arg(args, "id")?).map_err(err)?;
@@ -307,7 +329,27 @@ fn event_json(e: &taskboard_core::Event) -> ToolResult {
 
 fn list_events(db: &mut Db, args: &Args) -> ToolResult {
     let (from, to) = window(args, 366)?;
-    let list = db.occurrences(from, to).map_err(err)?;
+    let kind = match str_arg(args, "kind") {
+        None => None,
+        Some("meeting") => Some(EventKind::Meeting),
+        Some("block") => Some(EventKind::Block),
+        Some(other) => return Err(format!("kind must be meeting or block, got {other:?}")),
+    };
+    let group = opt_id(args, "client_id")?;
+    let project = opt_id(args, "project_id")?;
+    let task = opt_id(args, "task_id")?;
+    let matches = |want: Option<Id>, have: Option<Id>| want.is_none_or(|w| have == Some(w));
+    let list: Vec<_> = db
+        .occurrences(from, to)
+        .map_err(err)?
+        .into_iter()
+        .filter(|o| {
+            kind.is_none_or(|k| o.kind == k)
+                && matches(group, o.client_id)
+                && matches(project, o.project_id)
+                && matches(task, o.task_id)
+        })
+        .collect();
     Ok(json!({
         "events": list.iter().map(|o| json!({
             "event_id": o.event_id, "kind": o.kind, "title": o.title, "status": o.status,
@@ -315,30 +357,139 @@ fn list_events(db: &mut Db, args: &Args) -> ToolResult {
             "all_day": o.all_day, "client_id": o.client_id, "group_name": o.client_name,
             "project_id": o.project_id, "project_name": o.project_name, "location": o.location,
             "meeting_url": o.meeting_url, "recurring": o.recurring, "changed": o.modified,
+            "task_id": o.task_id, "counts_as_time": o.counts_as_time, "flexible": o.flexible,
         })).collect::<Vec<_>>(),
     }))
 }
 
-/// `start` / `end` (local text) become `start_at` / `end_at` (milliseconds).
-fn with_times(mut args: Args, required: bool) -> Result<Args, String> {
-    for (text, ms) in [("start", "start_at"), ("end", "end_at")] {
-        match args.remove(text) {
-            Some(Value::String(s)) => {
-                args.insert(ms.to_owned(), json!(parse_when(text, &s)?));
-            }
-            Some(other) => return Err(format!("{text} must be a string, got {other}")),
-            None if required => return Err(format!("missing required field(s): {text}")),
-            None => {}
+/// What `with_times` is preparing: a new event, a change to a whole series
+/// (or from one occurrence on), or a change to one occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Times {
+    Add,
+    Change,
+    Occurrence,
+}
+
+const HOUR_MS: i64 = 3_600_000;
+
+/// `start` / `end` (local text) become `start_at` / `end_at` (milliseconds),
+/// or `all_day_start` / `all_day_end` when they are plain dates. A new
+/// event's end defaults to an hour later (the same day when all-day).
+fn with_times(mut args: Args, mode: Times) -> Result<Args, String> {
+    let mut take = |key: &str| match args.remove(key) {
+        Some(Value::String(s)) => Ok(Some(s.trim().to_owned())),
+        None | Some(Value::Null) => Ok(None),
+        Some(other) => Err(format!("{key} must be a string, got {other}")),
+    };
+    let start = take("start")?;
+    let end = take("end")?;
+    let is_date = |s: &str| !s.contains('T') && !s.contains(' ');
+    let all_day = match (&start, &end) {
+        (None, _) if mode == Times::Add => {
+            return Err("missing required field(s): start".to_owned());
+        }
+        (None, None) => return Ok(args),
+        (Some(a), Some(b)) if is_date(a) != is_date(b) => {
+            return Err("start and end must both be dates (all-day) or both date-times".to_owned());
+        }
+        (Some(a), _) => is_date(a),
+        (None, Some(b)) => is_date(b),
+    };
+    if all_day {
+        if mode == Times::Occurrence {
+            return Err("one occurrence moves by date-time (YYYY-MM-DDTHH:MM); to make the series all-day use scope series".to_owned());
+        }
+        let a = start
+            .as_deref()
+            .map(|s| parse_date("start", s))
+            .transpose()?;
+        let b = end.as_deref().map(|s| parse_date("end", s)).transpose()?;
+        if let (Some(a), Some(b)) = (a, b)
+            && b < a
+        {
+            return Err("end date must not be before start date".to_owned());
+        }
+        let b = if mode == Times::Add { b.or(a) } else { b };
+        if let Some(a) = a {
+            args.insert("all_day_start".into(), json!(a.to_string()));
+        }
+        if let Some(b) = b {
+            args.insert("all_day_end".into(), json!(b.to_string()));
+        }
+    } else {
+        let a = start
+            .as_deref()
+            .map(|s| parse_when("start", s))
+            .transpose()?;
+        let b = end.as_deref().map(|s| parse_when("end", s)).transpose()?;
+        let b = match (a, b) {
+            (Some(a), None) if mode == Times::Add => Some(a + HOUR_MS),
+            (_, b) => b,
+        };
+        if let (Some(a), Some(b)) = (a, b)
+            && b <= a
+        {
+            return Err("end must be after start".to_owned());
+        }
+        if let Some(a) = a {
+            args.insert("start_at".into(), json!(a));
+        }
+        if let Some(b) = b {
+            args.insert("end_at".into(), json!(b));
         }
     }
-    if let (Some(a), Some(b)) = (
-        args.get("start_at").and_then(Value::as_i64),
-        args.get("end_at").and_then(Value::as_i64),
-    ) && b <= a
-    {
-        return Err("end must be after start".to_owned());
-    }
     Ok(args)
+}
+
+/// Moving only the start keeps the event's length, as dragging does in the app.
+fn keep_length(db: &Db, id: Id, args: &mut Args) -> Result<(), String> {
+    if args.contains_key("end_at") {
+        return Ok(());
+    }
+    if let Some(start) = args.get("start_at").and_then(Value::as_i64) {
+        let e = db.event(id).map_err(err)?;
+        let length = match (e.start_at, e.end_at) {
+            (Some(a), Some(b)) if b > a => b - a,
+            _ => HOUR_MS,
+        };
+        args.insert("end_at".into(), json!(start + length));
+    }
+    Ok(())
+}
+
+fn schedule_task(db: &mut Db, args: &Args) -> ToolResult {
+    let task = db.task(id_arg(args, "task_id")?).map_err(err)?;
+    let start = parse_when("start", str_arg(args, "start").unwrap_or(""))?;
+    let minutes = match args.get("minutes").and_then(Value::as_i64) {
+        Some(m) => m,
+        None => task.estimate_minutes.filter(|m| *m > 0).unwrap_or(60),
+    };
+    if !(5..=720).contains(&minutes) {
+        return Err(format!("minutes must be between 5 and 720, got {minutes}"));
+    }
+    let title = str_arg(args, "title")
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or(&task.title)
+        .to_owned();
+    let mut input = Args::new();
+    input.insert("kind".into(), json!("block"));
+    input.insert("title".into(), json!(title));
+    input.insert("project_id".into(), json!(task.project_id));
+    input.insert("task_id".into(), json!(task.id));
+    input.insert("start_at".into(), json!(start));
+    input.insert("end_at".into(), json!(start + minutes * 60_000));
+    input.insert(
+        "flexible".into(),
+        json!(
+            args.get("flexible")
+                .and_then(Value::as_bool)
+                .unwrap_or(true)
+        ),
+    );
+    let event: NewEvent = from_args(input)?;
+    event_json(&db.create_event(event).map_err(err)?)
 }
 
 fn update_event(db: &mut Db, args: &Args) -> ToolResult {
@@ -354,7 +505,9 @@ fn update_event(db: &mut Db, args: &Args) -> ToolResult {
             if args.contains_key("cancelled") || args.contains_key("occurrence_start") {
                 return Err("cancelled / occurrence_start apply to scope occurrence; for the whole series use status".to_owned());
             }
-            let patch: EventPatch = from_args(with_times(without(args, &["id", "scope"]), false)?)?;
+            let mut changes = with_times(without(args, &["id", "scope"]), Times::Change)?;
+            keep_length(db, id, &mut changes)?;
+            let patch: EventPatch = from_args(changes)?;
             event_json(&db.update_event(id, patch).map_err(err)?)
         }
         "occurrence" => {
@@ -380,10 +533,12 @@ fn update_event(db: &mut Db, args: &Args) -> ToolResult {
                     extra.join(", ")
                 ));
             }
-            let patch: OccurrencePatch = from_args(with_times(
+            let mut changes = with_times(
                 without(args, &["id", "scope", "occurrence_start"]),
-                false,
-            )?)?;
+                Times::Occurrence,
+            )?;
+            keep_length(db, id, &mut changes)?;
+            let patch: OccurrencePatch = from_args(changes)?;
             db.edit_occurrence(id, original, patch).map_err(err)?;
             Ok(json!({ "updated": "occurrence", "occurrence_start": iso(original) }))
         }
@@ -395,10 +550,12 @@ fn update_event(db: &mut Db, args: &Args) -> ToolResult {
                         .to_owned(),
                 );
             }
-            let patch: EventPatch = from_args(with_times(
+            let mut changes = with_times(
                 without(args, &["id", "scope", "occurrence_start"]),
-                false,
-            )?)?;
+                Times::Change,
+            )?;
+            keep_length(db, id, &mut changes)?;
+            let patch: EventPatch = from_args(changes)?;
             event_json(&db.split_series(id, original, patch).map_err(err)?)
         }
         other => Err(format!(

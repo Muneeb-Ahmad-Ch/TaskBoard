@@ -40,6 +40,8 @@ pub(crate) const TIME: &str =
     r#"{"type":["string","null"],"description":"HH:MM, 24-hour; null clears it"}"#;
 pub(crate) const WHEN: &str =
     r#"{"type":"string","description":"Local date-time, YYYY-MM-DDTHH:MM"}"#;
+/// Event start / end: a time, or a plain date for an all-day event.
+pub(crate) const EVENT_WHEN: &str = r#"{"type":"string","description":"Local date-time YYYY-MM-DDTHH:MM, or a date YYYY-MM-DD for an all-day event (end date included)"}"#;
 pub(crate) const RANGE_FROM: &str =
     r#"{"type":"string","description":"YYYY-MM-DD or YYYY-MM-DDTHH:MM, inclusive"}"#;
 pub(crate) const RANGE_TO: &str = r#"{"type":"string","description":"YYYY-MM-DD (whole day included) or YYYY-MM-DDTHH:MM, exclusive"}"#;

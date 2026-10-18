@@ -220,6 +220,8 @@ pub struct Occurrence {
     pub client_name: Option<String>,
     pub project_id: Option<Id>,
     pub project_name: Option<String>,
+    /// The task a time block is for, if any.
+    pub task_id: Option<Id>,
     /// Project color, else client color, else "gray".
     pub color: String,
     pub location: String,
@@ -791,6 +793,7 @@ impl Db {
                 client_name: client_name.clone(),
                 project_id: e.project_id,
                 project_name: project_name.clone(),
+                task_id: e.task_id,
                 color: color.clone(),
                 location: e.location.clone(),
                 meeting_url: e.meeting_url.clone(),

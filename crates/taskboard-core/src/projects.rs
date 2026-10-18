@@ -18,11 +18,13 @@ const COLS: &str = "p.id, p.client_id, p.name, p.code, p.color, p.icon, p.state,
                     p.deadline, p.is_inbox, p.sort_key, p.archived_at, p.created_at, p.updated_at,
                     p.section_id";
 
-/// Default workflow for new projects (SPEC §4.2).
-const DEFAULT_STATUSES: [(&str, &str, Category); 5] = [
+/// Default workflow for new projects (SPEC §4.2). Waiting: the ball is in
+/// someone else's court (a reply, an approval); still open.
+const DEFAULT_STATUSES: [(&str, &str, Category); 6] = [
     ("Backlog", "gray", Category::Todo),
     ("To Do", "230", Category::Todo),
     ("In Progress", "262", Category::Active),
+    ("Waiting", "70", Category::Active),
     ("Review", "300", Category::Active),
     ("Done", "150", Category::Done),
 ];

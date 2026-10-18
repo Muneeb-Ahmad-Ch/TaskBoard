@@ -3,7 +3,7 @@
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { swatch } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
-  import { activeViewChanged, app, applySavedView, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
+  import { activeViewChanged, app, applySavedView, archiveCompleted, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
   import { openChangelog } from '../lib/about'
   import { cal, newMeeting } from '../lib/cal.svelte'
@@ -28,6 +28,8 @@
       { id: 'undo', group: 'Actions', label: app.history.undo ? `Undo: ${app.history.undo}` : 'Undo', hint: 'Ctrl Z', run: () => void undo() },
       { id: 'redo', group: 'Actions', label: app.history.redo ? `Redo: ${app.history.redo}` : 'Redo', hint: 'Ctrl Shift Z', run: () => void redo() },
       { id: 'done', group: 'Actions', label: app.showDone ? 'Hide completed tasks' : 'Show completed tasks', run: () => (app.showDone = !app.showDone) },
+      { id: 'archive-done', group: 'Actions', label: 'Archive completed tasks in this list', run: () => void archiveCompleted() },
+      { id: 'archived', group: 'Actions', label: 'Archived tasks and projects…', run: () => { app.settingsSection = 'data'; app.settingsOpen = true } },
       { id: 'v-table', group: 'View', label: 'Table view', hint: '1', run: () => (app.view = 'table') },
       { id: 'v-board', group: 'View', label: 'Board view', hint: '2', run: () => (app.view = 'board') },
       { id: 'v-cal', group: 'View', label: 'Calendar view', hint: '3', run: () => (app.view = 'calendar') },

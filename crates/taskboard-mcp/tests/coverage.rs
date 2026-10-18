@@ -74,7 +74,14 @@ fn status_is_set_by_column_name_in_any_case() {
         .clone();
     assert_eq!(
         web["statuses"],
-        json!(["Backlog", "To Do", "In Progress", "Review", "Done"])
+        json!([
+            "Backlog",
+            "To Do",
+            "In Progress",
+            "Waiting",
+            "Review",
+            "Done"
+        ])
     );
     let t = ok(
         &mut s,
@@ -285,6 +292,7 @@ fn board_columns_can_be_added_changed_ordered_and_removed() {
             "To Do",
             "Blocked",
             "In Progress",
+            "Waiting",
             "Review",
             "Done"
         ]
