@@ -13,7 +13,8 @@ import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
 import { isoDate, plural, todayIso } from './format'
 import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
-import { adoptLegacySectionPrefs, takeLegacyPins, visibleTabs } from './layout.svelte'
+import { adoptLegacySectionPrefs, clearLegacyPins, legacyPins, visibleTabs } from './layout.svelte'
+import { pinsToMigrate } from './pins'
 import { toast } from './toast.svelte'
 
 export type Scope =
@@ -298,13 +299,14 @@ export function setScope(scope: Scope) {
 }
 
 /** Pins made before they moved into the database (once, then gone). */
-async function migrateLegacyPins(current: Id[]) {
-  const legacy = takeLegacyPins()
-  if (!legacy.length) return
+async function migrateLegacyPins(current: Id[], projects: ProjectSummary[]) {
+  const next = pinsToMigrate(legacyPins(), current, new Set(projects.map((p) => p.id)))
+  if (!next) return
   try {
-    app.pinned = await ipc.setPinnedProjects([...current, ...legacy.filter((id) => !current.includes(id))])
+    app.pinned = await ipc.setPinnedProjects(next)
+    clearLegacyPins()
   } catch {
-    // Projects that no longer exist are dropped by the core; nothing else to do.
+    // Kept on this device; the next start tries again.
   }
 }
 
@@ -333,7 +335,7 @@ export async function refreshMeta() {
       ipc.pinnedProjects(),
     ])
     app.pinned = pinned
-    void migrateLegacyPins(pinned)
+    void migrateLegacyPins(pinned, projects)
     app.sections = sections
     adoptLegacySectionPrefs(sections)
     app.views = views

@@ -142,13 +142,15 @@ export function moveNav(id: NavId, dir: -1 | 1) {
 }
 
 /** Pins kept by an older version, to hand to the database once. */
-export function takeLegacyPins(): string[] {
-  const pins = layout.pinned
-  if (pins.length) {
-    layout.pinned = []
-    save()
-  }
-  return pins
+/** Pins saved by versions before 0.5 (they now live in the database). */
+export function legacyPins(): string[] {
+  return layout.pinned
+}
+
+export function clearLegacyPins() {
+  if (!layout.pinned.length) return
+  layout.pinned = []
+  save()
 }
 
 export function setSidebarWidth(px: number) {
