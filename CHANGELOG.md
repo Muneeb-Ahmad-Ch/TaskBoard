@@ -9,6 +9,10 @@ Download any version from the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.4.1] - 2026-10-18
+
 ### Changed
 - **Calmer table:** empty cells stay blank (a dash appears only on the row you
   point at), and progress shows only for tasks with subtasks or set progress.
@@ -189,7 +193,8 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.2.0...v0.3.0
