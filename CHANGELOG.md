@@ -9,7 +9,11 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed
+- Right-clicking no longer shows the browser's menu (Back, Refresh, Save as,
+  Print, Share), and browser shortcuts (F5, Ctrl+R, Ctrl+P, Ctrl+S, Alt+←/→,
+  mouse back/forward) no longer reload or navigate the window. Text fields keep
+  their cut / copy / paste menu.
 
 ## [0.4.0] - 2026-10-18
 
