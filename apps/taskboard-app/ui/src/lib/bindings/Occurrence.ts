@@ -13,6 +13,10 @@ export type Occurrence = { event_id: Id,
  */
 original_start: number, start_at: number, end_at: number, all_day: boolean, kind: EventKind, title: string, status: EventStatus, client_id: Id | null, client_name: string | null, project_id: Id | null, project_name: string | null, 
 /**
+ * The task a time block is for, if any.
+ */
+task_id: Id | null, 
+/**
  * Project color, else client color, else "gray".
  */
 color: string, location: string, meeting_url: string, counts_as_time: boolean, flexible: boolean, recurring: boolean, 

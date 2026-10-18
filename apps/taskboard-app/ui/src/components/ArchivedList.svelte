@@ -1,15 +1,20 @@
 <script lang="ts">
-  // Settings → Data: archived groups and projects, with Restore and Delete.
-  // Restoring a group brings back the projects archived with it.
+  // Settings → Data: archived tasks, groups and projects, with Restore and
+  // Delete. Restoring a group brings back the projects archived with it; a
+  // task comes back with its subtasks.
   import { RotateCcw, Trash2 } from '@lucide/svelte'
   import type { Client } from '../lib/bindings/Client'
   import type { ProjectSummary } from '../lib/bindings/ProjectSummary'
-  import { swatch } from '../lib/format'
+  import type { TaskRow } from '../lib/bindings/TaskRow'
+  import { plural, swatch } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
   import { act, app, itemName, sectionById } from '../lib/store.svelte'
 
   let groups = $state<Client[]>([])
   let projects = $state<ProjectSummary[]>([])
+  let tasks = $state<TaskRow[]>([])
+  let tasksTotal = $state(0)
+  let taskLimit = $state(50)
   /** The row whose Delete was clicked once and now asks to confirm. */
   let confirming = $state<string | null>(null)
 
@@ -17,9 +22,18 @@
     void app.dataVersion
     if (!inTauri) return
     let stale = false
-    Promise.all([ipc.listClients(true), ipc.listProjects(true)])
-      .then(([cs, ps]) => {
+    const limit = taskLimit
+    Promise.all([
+      ipc.listClients(true),
+      ipc.listProjects(true),
+      ipc.listTasks({ archived_only: true, categories: [], sort: 'updated', descending: true, limit }),
+    ])
+      .then(([cs, ps, page]) => {
         if (stale) return
+        // A subtask archived with its parent comes back with it; list the parent.
+        const shown = new Set(page.rows.map((r) => r.id))
+        tasks = page.rows.filter((r) => !r.parent_id || !shown.has(r.parent_id))
+        tasksTotal = page.total
         groups = cs.filter((c) => c.archived_at !== null)
         const archivedGroups = new Set(groups.map((c) => c.id))
         // Projects inside an archived group come back with it; list the rest.
@@ -30,6 +44,8 @@
       stale = true
     }
   })
+
+  const when = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })
 
   function where(sectionId: string | null, group: string | null): string {
     return [sectionById(sectionId)?.name, group].filter(Boolean).join(' › ')
@@ -49,7 +65,35 @@
 </script>
 
 <section class="card">
-  <h4 class="card-title">Archived</h4>
+  <h4 class="card-title">Archived tasks</h4>
+  {#if !tasks.length}
+    <p class="px-4 pb-3 text-xs text-muted">No archived tasks. Archive a task (right-click it, or select it and press A) to take it out of your lists without deleting it.</p>
+  {:else}
+    <ul class="list" aria-label="Archived tasks">
+      {#each tasks as t (t.id)}
+        <li>
+          <span class="size-2 shrink-0 rounded-full" style="background: {swatch(t.project_color)}"></span>
+          <span class="flex min-w-0 flex-1 flex-col">
+            <button class="truncate text-left text-[13px] hover:underline" title="Open it" onclick={() => { app.settingsOpen = false; app.openTaskId = t.id }}>{t.title}</button>
+            <span class="truncate text-xs text-muted">{t.client_name ? `${t.client_name} / ` : ''}{t.project_name}{t.archived_at ? ` · archived ${when.format(t.archived_at)}` : ''}{t.subtasks_total ? ` · ${plural(t.subtasks_total, 'subtask')}` : ''}</span>
+          </span>
+          <button class="btn !h-6 !px-2 text-xs" onclick={() => void act(() => ipc.setTaskArchived(t.id, false), `Restored “${t.title}”`)}><RotateCcw size={12} /> Restore</button>
+          <button
+            class="btn !h-6 !px-2 text-xs {confirming === t.id ? 'btn-danger' : ''}"
+            title="Deletes the task and its subtasks (undoable)"
+            onclick={() => void remove(t.id, () => ipc.deleteTask(t.id), `Deleted “${t.title}”`)}
+          ><Trash2 size={12} /> {confirming === t.id ? 'Click to confirm' : 'Delete'}</button>
+        </li>
+      {/each}
+    </ul>
+    {#if tasksTotal > taskLimit}
+      <div class="px-4 pb-3"><button class="btn !h-7 text-xs" onclick={() => (taskLimit += 100)}>Show more ({tasksTotal - taskLimit} more)</button></div>
+    {/if}
+  {/if}
+</section>
+
+<section class="card">
+  <h4 class="card-title">Archived groups and projects</h4>
   {#if !groups.length && !projects.length}
     <p class="px-4 pb-3 text-xs text-muted">Nothing archived. Archive a group or project from its right-click menu to hide it without losing anything.</p>
   {:else}

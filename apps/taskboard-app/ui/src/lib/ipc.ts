@@ -1,5 +1,5 @@
 // The only place the UI talks to Rust. Types come from generated bindings.
-import { invoke, isTauri } from '@tauri-apps/api/core'
+import { Channel, invoke, isTauri } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import type { AppSettings } from './bindings/AppSettings'
@@ -23,6 +23,7 @@ import type { OccurrencePatch } from './bindings/OccurrencePatch'
 import type { SlotResult } from './bindings/SlotResult'
 import type { TimeEntryPatch } from './bindings/TimeEntryPatch'
 import type { WorkingDay } from './bindings/WorkingDay'
+import type { Category } from './bindings/Category'
 import type { ClientPatch } from './bindings/ClientPatch'
 import type { DbInfo } from './bindings/DbInfo'
 import type { Direction } from './bindings/Direction'
@@ -81,6 +82,15 @@ export const ipc = {
   moveTask: (id: Id, to: MoveTask) => invoke<Task>('move_task', { id, to }),
   deleteTask: (id: Id) => invoke<void>('delete_task', { id }),
   duplicateTask: (id: Id) => invoke<Task>('duplicate_task', { id }),
+  setTaskArchived: (id: Id, archived: boolean) => invoke<Task>('set_task_archived', { id, archived }),
+  bulkSetArchived: (ids: Id[], archived: boolean) => invoke<number>('bulk_set_archived', { ids, archived }),
+  /** Archives the completed top-level tasks a list query matches; returns how many. */
+  archiveCompleted: (query: TaskQuery) => invoke<number>('archive_completed', { query }),
+  pinnedProjects: () => invoke<Id[]>('pinned_projects'),
+  pinProject: (id: Id, before: Id | null = null) => invoke<Id[]>('pin_project', { id, before }),
+  unpinProject: (id: Id) => invoke<Id[]>('unpin_project', { id }),
+  setPinnedProjects: (ids: Id[]) => invoke<Id[]>('set_pinned_projects', { ids }),
+  logUiError: (message: string, detail?: string) => invoke<void>('log_ui_error', { message, detail }),
   bulkUpdateTasks: (ids: Id[], patch: TaskPatch) =>
     invoke<number>('bulk_update_tasks', { ids, patch }),
   bulkSetDone: (ids: Id[], done: boolean) => invoke<number>('bulk_set_done', { ids, done }),
@@ -117,6 +127,9 @@ export const ipc = {
   // board columns
   allStatuses: () => invoke<Status[]>('all_statuses'),
   createStatus: (input: NewStatus) => invoke<Status>('create_status', { input }),
+  /** Adds a column (e.g. Waiting) to every project missing one by that name; returns how many got it. */
+  addStatusEverywhere: (name: string, category: Category, color: string | null = null) =>
+    invoke<number>('add_status_everywhere', { name, category, color }),
   updateStatus: (id: Id, patch: StatusPatch) => invoke<Status>('update_status', { id, patch }),
   moveStatus: (id: Id, after: Id | null) => invoke<Status>('move_status', { id, after }),
   deleteStatus: (id: Id, moveTo: Id) => invoke<void>('delete_status', { id, moveTo }),
@@ -157,6 +170,17 @@ export const ipc = {
   setAppSettings: (settings: AppSettings) => invoke<AppSettings>('set_app_settings', { settings }),
   testNotification: () => invoke<void>('test_notification'),
   startHidden: () => invoke<boolean>('start_hidden'),
+
+  // updates
+  checkUpdate: () => invoke<UpdateInfo | null>('check_update'),
+  /** Downloads, verifies, backs up and starts the installer (which closes and reopens the app). */
+  installUpdate: (onProgress: (p: UpdateProgress) => void) => {
+    const channel = new Channel<UpdateProgress>()
+    channel.onmessage = onProgress
+    return invoke<void>('install_update', { onProgress: channel })
+  },
+  /** The previous version, on the first launch after an update. */
+  updatedFrom: () => invoke<string | null>('updated_from'),
 
   // data
   listBackups: () => invoke<BackupInfo[]>('list_backups'),
@@ -217,6 +241,18 @@ export interface McpConnection {
   last_seen: number
   connections: number
 }
+/** A newer release (Settings → Updates). */
+export interface UpdateInfo {
+  version: string
+  current_version: string
+  /** Unix ms. */
+  date: number | null
+  /** Markdown release notes. */
+  notes: string | null
+}
+
+export type UpdateProgress = { event: 'downloading'; downloaded: number; total: number | null } | { event: 'installing' }
+
 export interface McpInfo {
   command: string
   args: string[]

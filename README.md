@@ -49,11 +49,20 @@ needs permission (see [License](#license)).
   use daily.
 - **Three views of the same data.**
   - *Table*: virtualized (50,000 tasks scroll smoothly), inline editing,
-    sorting, resizable columns, multi-select bulk edits.
+    sorting, resizable columns, multi-select bulk edits, a right-click menu
+    on every row. Above it, the **schedule strip** shows the list's meetings
+    and time blocks coming up (a client's calls next to its tasks).
   - *Board*: drag and drop (mouse or keyboard), custom columns per project,
     WIP limits, swimlanes by group / project / priority.
   - *Calendar*: month, week, day and agenda; drag to create, move and resize;
     working hours shading and daily capacity.
+- **Board columns that match how work flows**: Backlog, To Do, In Progress,
+  **Waiting** (on someone's reply or approval), Review, Done, or your own.
+  Ctrl+K → "Add a Waiting column to every project" brings older projects up
+  to date in one step.
+- **Archive** finished or parked tasks instead of deleting them (right-click,
+  or select and press A; "Archive N completed" clears a list). They stay out
+  of every list and come back from Settings → Data with their subtasks.
 - **Quick add** from anywhere (Ctrl+Shift+Space):
   `Send invoice fri 3pm #admin !high @website ~30m every month`.
 - **Meetings** with links, attendees, notes, reminders with a Join button,
@@ -68,36 +77,48 @@ needs permission (see [License](#license)).
 - **Markdown notes** on tasks, meetings and groups (rendered safely, links
   open in your browser).
 - **Time and progress**: task timer, logged hours per group, task progress
-  from subtasks (color-coded, ✓ when done), and for each section, group or project:
-  time left, meetings this week and overdue tasks. Dashboard with streaks and
-  project burndown.
+  from subtasks (color-coded, ✓ when done), and progress (% and done/total)
+  on every list: Today, Upcoming, Inbox, All work, each section, group and
+  project, with time left, meetings coming up and overdue tasks. Book **time
+  blocks** for a task from its panel. Dashboard with streaks and project
+  burndown.
 - **Repeating tasks**: fixed schedules (every Friday) or after completion
   (every! 3 days).
 - **Safe by design**: every change can be undone (bulk edits as one step),
   crash-tested storage, daily backups with retention, restore, and
   export/import (JSON, CSV, ICS; imports from Todoist, Trello, Notion CSV).
+- **Updates itself**: Settings → Updates checks GitHub for a new version,
+  shows what's new, and installs it in place: a signed download, a backup of
+  your data, and Taskboard reopens on the new version. No installer to find
+  and run.
 - **Modern Windows UI**: light and dark themes, accent colors, Mica, tray icon,
-  start with Windows, Windows notifications; keyboard-first and checked with
-  axe-core against WCAG 2.2 AA. Works down to small windows (the sidebar
-  becomes a drawer).
-- **Make it yours** (Settings → Layout): show, hide and reorder sidebar items,
-  sections, view tabs and table columns; resize columns; order sections,
-  groups and projects.
+  start with Windows, Windows notifications; zoom from 80% to 150%
+  (Ctrl + / Ctrl −); keyboard-first and checked with axe-core against WCAG
+  2.2 AA. Works down to small windows (the sidebar becomes a drawer).
+- **Make it yours** (Settings → Sidebar, Sections, Views & table): show, hide
+  and reorder sidebar items, sections, view tabs and table columns; resize
+  the sidebar, the task panel and columns by dragging their edges.
 
 ## Work with an AI assistant
 
 Taskboard is an **MCP server**, the standard that Claude Desktop, Claude Code,
 Codex, Cursor and other assistants use to work with apps. Once connected, an
-assistant can read, add, change and remove sections, groups, projects, tasks,
-meetings and logged time, using the same rules as the app. Everything it
-changes is undoable (Ctrl+Z) and appears in the app within a second.
+assistant can do what you can in the app: sections, groups, projects and
+pins; tasks and subtasks (board columns by name, bulk edits, archiving);
+meetings and time blocks (one occurrence or a whole series, booking time
+for a task, finding free slots); working hours and days off; timers and
+logged time; saved views, reminders and backups. Everything it changes is
+undoable (Ctrl+Z) and appears in the app within a second. It can't change
+the app's settings or its own access.
 
 1. Open **Settings → AI assistants** (or Ctrl+K → "Connect an AI assistant…").
 2. Click **Copy config** next to your assistant and paste it where that
    assistant keeps its MCP servers (the page says where). For Claude Code it
-   is one command: `claude mcp add taskboard -- "<path to taskboard-app.exe>" --mcp`.
+   is one command: `claude mcp add tb -- "<path to taskboard-app.exe>" --mcp`.
 3. Click **Run test** to check the connection, then ask your assistant to
-   "list my open tasks" or "add a task to Website: ship the homepage Friday".
+   "list my open tasks in tb" or "add a task to Website: ship the homepage
+   Friday". The server is set up as **tb**, and the assistant knows that "tb"
+   means Taskboard.
 
 The same page has an **on/off switch** and shows which assistants have
 connected and when. Nothing leaves your computer unless the assistant you
@@ -112,7 +133,8 @@ protocol tests live in `crates/taskboard-mcp`.
 Download the latest installer from
 [Releases](https://github.com/Muneeb-Ahmad-Ch/TaskBoard/releases)
 (`Taskboard_x.y.z_x64-setup.exe`, or the `.msi`). Windows 10 (1809+) and
-Windows 11.
+Windows 11. From version 0.5 on, Taskboard updates itself (Settings →
+Updates); 0.4 and earlier need this one manual install to get there.
 
 Installers are currently **not code-signed**, so Windows SmartScreen may warn
 on first run ("More info" → "Run anyway").
@@ -128,7 +150,8 @@ automatically), Node 22+, pnpm, and the
 cd apps/taskboard-app/ui
 pnpm install
 pnpm app:dev       # run the app in development
-pnpm app:build     # build NSIS + MSI installers into target/release/bundle
+pnpm app:build:unsigned   # build NSIS + MSI installers into target/release/bundle
+                          # (app:build also signs update packages; needs the key, see RELEASING.md)
 ```
 
 Checks:
@@ -157,8 +180,12 @@ docs/                   SPEC, ARCHITECTURE, DATA_MODEL, SHORTCUTS, RELEASING, RO
 
 ## Privacy
 
-Taskboard makes no network requests of its own. It only opens meeting links
-you click, in your browser. An AI assistant you connect runs on your computer
+The only request Taskboard makes on its own is the **update check**: at
+startup and every few hours it downloads a small file (`latest.json`) from
+this repository's GitHub releases to see whether a newer version exists.
+Nothing about your data is sent, and you can turn it off in Settings →
+Updates. Otherwise it only opens links you click (meetings, the changelog),
+in your browser. An AI assistant you connect runs on your computer
 and talks to Taskboard locally; what it sends to its own service is up to that
 assistant, and you can turn its access off in Settings → AI assistants. Your data lives in
 `%APPDATA%\app.taskboard.desktop\taskboard.db`, with backups in the

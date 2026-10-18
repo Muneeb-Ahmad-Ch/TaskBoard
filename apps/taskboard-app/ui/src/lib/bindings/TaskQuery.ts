@@ -32,7 +32,15 @@ parent_id?: Id,
 /**
  * Only tasks without a parent.
  */
-top_level?: boolean, include_archived?: boolean, sort?: TaskSort, descending?: boolean, offset?: number, 
+top_level?: boolean, include_archived?: boolean, 
+/**
+ * Only tasks archived on their own (Settings → Data → Archived).
+ */
+archived_only?: boolean, 
+/**
+ * Only tasks completed at or after this moment (Unix ms), e.g. "done today".
+ */
+completed_from?: number, sort?: TaskSort, descending?: boolean, offset?: number, 
 /**
  * Default 200, max 1000.
  */

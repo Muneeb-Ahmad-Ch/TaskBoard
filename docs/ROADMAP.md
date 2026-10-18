@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 2026-10-16. Scope is the Windows desktop app (SPEC §14); other
+Status as of 2026-10-18. Scope is the Windows desktop app (SPEC §14); other
 platforms and sync come later.
 
 ## Milestones
@@ -15,7 +15,7 @@ platforms and sync come later.
 | M5 | Repeating tasks, reminders, progress, dashboard, timer | Done |
 | M6 | Import/export, backups, settings, accessibility | Done, except i18n/RTL (below) |
 | M7 | Other platforms | Deferred until asked |
-| M8 | Release hardening | Done, except signing and auto-update (need the owner's keys) |
+| M8 | Release hardening | Done, except code signing (needs the owner's certificate); in-app updates live from 0.5 |
 | M9 | Sync | Phase 2 (design in SPEC §12) |
 
 Measured budgets are in [ARCHITECTURE.md §11](ARCHITECTURE.md#11-measured-performance-2026-10-16).
@@ -27,8 +27,9 @@ These need accounts or keys only the project owner can create. Steps are in
 
 - **Code signing** (Azure Trusted Signing or an Authenticode certificate).
   Until then SmartScreen warns on first install.
-- **Auto-update**: generate an updater key pair, store the private key as a
-  GitHub secret, then add `tauri-plugin-updater` with the public key.
+- **Update signing secrets**: in-app updates are built in; add the two
+  repository secrets (RELEASING.md §4) so releases carry signed update
+  packages.
 
 ## Deferred from v1 spec
 

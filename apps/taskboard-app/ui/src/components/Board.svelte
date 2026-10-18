@@ -10,7 +10,7 @@
   import { buildColumns, buildLanes, laneKey, type Column, type SectionOf } from '../lib/board'
   import { dueLabel, isOverdue, minutes, PALETTE, swatch } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
-  import { act, app, inboxId, scopeProjectId, scopeProjectIds, scopeQuery, sectionById, type Lanes } from '../lib/store.svelte'
+  import { act, app, archiveCompleted, inboxId, scopeProjectId, scopeProjectIds, scopeQuery, sectionById, type Lanes } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import Progress from './Progress.svelte'
@@ -301,13 +301,14 @@
     ro.observe(el)
     return () => ro.disconnect()
   })
-  /** Column width: the free width split between open columns, 208–320 px. */
+  /** Column width: the free width split between open columns, 208–480 px,
+   *  so a wide window is filled rather than left empty on the right. */
   const colWidth = $derived.by(() => {
     if (!boardWidth || !openCols.length) return 260
     const gap = 12
     const extras = (columns.length - openCols.length) * (44 + gap) + (singleProject ? 200 + gap : 0)
     const free = boardWidth - extras - gap * (openCols.length - 1) - 4
-    return Math.max(208, Math.min(320, Math.floor(free / openCols.length)))
+    return Math.max(208, Math.min(480, Math.floor(free / openCols.length)))
   })
 
   function onCardKeydown(e: KeyboardEvent, row: TaskRow, colKey: string, lane: string) {
@@ -449,11 +450,29 @@
     { value: 'cancelled', label: 'Cancelled' },
   ]
 
+  const completedColumn = (col: Column) => col.category === 'done' || col.category === 'cancelled'
+
+  function archiveItems(col: Column): MenuEntry[] {
+    if (!completedColumn(col)) return []
+    return [
+      {
+        label: 'Archive completed cards',
+        disabled: !data.get(col.key)?.total,
+        run: () => void archiveCompleted({ ...JSON.parse(baseKey), status_name: col.name }),
+      },
+    ]
+  }
+
   function columnMenu(e: MouseEvent, col: Column) {
     const st = col.status
-    if (!st) return
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const at = { x: r.left, y: r.bottom + 2 }
+    if (!st) {
+      const items = archiveItems(col)
+      if (items.length) menu = { ...at, items }
+      return
+    }
+    const archive = archiveItems(col)
     const index = columns.findIndex((c) => c.key === col.key)
     const others = columns.filter((c) => c.key !== col.key && c.status)
     menu = {
@@ -482,6 +501,7 @@
         'separator',
         { label: st.wip_limit ? `WIP limit: ${st.wip_limit}…` : 'Set WIP limit…', run: () => (editing = { key: col.key, kind: 'wip' }) },
         ...(st.wip_limit ? [{ label: 'Remove WIP limit', run: () => void act(() => ipc.updateStatus(st.id, { wip_limit: null })) }] : []),
+        ...(archive.length ? ['separator' as const, ...archive] : []),
         'separator',
         {
           label: 'Move left',
@@ -502,6 +522,32 @@
             if (target) void act(() => ipc.deleteStatus(st.id, target.id), `Deleted column “${col.name}”`)
           },
         })),
+      ],
+    }
+  }
+
+  function cardMenu(e: MouseEvent, row: TaskRow) {
+    if (kbd || drag) return
+    e.preventDefault()
+    e.stopPropagation()
+    // From the keyboard there is no pointer: open under the card.
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const at = e.button === 2 ? { x: e.clientX, y: e.clientY } : { x: r.left + 16, y: r.bottom + 2 }
+    menu = {
+      ...at,
+      items: [
+        { label: 'Open', hint: 'Enter', run: () => (app.openTaskId = row.id) },
+        { label: row.completed_at ? 'Mark not done' : 'Mark done', run: () => void act(() => ipc.setTaskDone(row.id, !row.completed_at)) },
+        { label: 'Duplicate', run: () => void act(() => ipc.duplicateTask(row.id), 'Task duplicated') },
+        'separator',
+        {
+          label: 'Archive',
+          run: () => {
+            if (app.openTaskId === row.id) app.openTaskId = null
+            void act(() => ipc.setTaskArchived(row.id, true), 'Task archived')
+          },
+        },
+        { label: 'Delete', danger: true, run: () => void act(() => ipc.deleteTask(row.id), 'Task deleted') },
       ],
     }
   }
@@ -564,6 +610,7 @@
     aria-label={row.title}
     onpointerdown={(e) => onCardPointerDown(e, row)}
     onkeydown={(e) => onCardKeydown(e, row, colKey, lane)}
+    oncontextmenu={(e) => cardMenu(e, row)}
   >
     <div class="flex items-start gap-2">
       <button
@@ -638,6 +685,10 @@
       {:else}
         <button class="add-btn" onclick={() => (adding = { col: col.key, lane })}><Plus size={14} /> Add task</button>
       {/if}
+    {:else if lane === lanes[0]?.key}
+      <button class="strip-label" title="Expand {col.name}" aria-label="Expand {col.name}" onclick={() => toggleColumn(col.key)}>
+        <span class="vertical text-xs font-medium">{col.name}</span>
+      </button>
     {/if}
   </div>
 {/snippet}
@@ -670,9 +721,8 @@
           {@const count = d?.total ?? 0}
           <div class="col-head" class:collapsed={collapsed[col.key]} title={collapsed[col.key] ? `${col.name} (${count})` : undefined}>
             {#if collapsed[col.key]}
-              <button class="flex h-full w-full flex-col items-center gap-2 py-2" aria-label="Expand {col.name}" onclick={() => toggleColumn(col.key)}>
-                <span class="size-2 rounded-full" style="background: {swatch(col.color, 0.62, 0.13)}"></span>
-                <span class="vertical text-xs font-medium">{col.name}</span>
+              <button class="flex h-full w-full items-center justify-center gap-1" aria-label="Expand {col.name} ({count})" onclick={() => toggleColumn(col.key)}>
+                <span class="size-2 shrink-0 rounded-full" style="background: {swatch(col.color, 0.62, 0.13)}"></span>
                 <span class="tabular text-[11px] text-subtle">{count}</span>
               </button>
             {:else if editing?.key === col.key}
@@ -695,7 +745,7 @@
               </span>
               <span class="flex-1"></span>
               <button class="icon" aria-label="Collapse {col.name}" title="Collapse column" onclick={() => toggleColumn(col.key)}><ChevronsLeft size={13} /></button>
-              {#if col.status}
+              {#if col.status || completedColumn(col)}
                 <button class="icon" aria-label="{col.name} column actions" onclick={(e) => columnMenu(e, col)}><MoreHorizontal size={14} /></button>
               {/if}
             {/if}
@@ -788,10 +838,20 @@
   }
   .col-head.collapsed {
     width: 44px;
-    height: auto;
-    min-height: 140px;
     padding: 0;
-    align-items: stretch;
+  }
+  /* A collapsed column's name, down its strip (the head row stays one line). */
+  .strip-label {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    padding: 10px 0;
+    border-radius: 6px;
+    color: var(--text-muted);
+  }
+  .strip-label:hover {
+    background: var(--hover);
+    color: var(--text);
   }
   .vertical {
     writing-mode: vertical-rl;

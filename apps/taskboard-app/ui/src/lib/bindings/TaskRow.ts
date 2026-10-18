@@ -15,4 +15,8 @@ progress: number, recurring: boolean,
 /**
  * Title of the parent task, for subtasks shown outside their parent.
  */
-parent_title: string | null, };
+parent_title: string | null, 
+/**
+ * When the task was archived (only seen with `include_archived` / `archived_only`).
+ */
+archived_at: number | null, };

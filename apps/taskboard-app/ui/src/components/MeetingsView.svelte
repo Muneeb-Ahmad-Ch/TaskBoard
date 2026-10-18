@@ -94,7 +94,8 @@
   const clientsWithMeetings = $derived(app.clients.filter((c) => meetings.some((m) => m.client_id === c.id)))
 </script>
 
-<div class="flex min-h-0 flex-1 flex-col gap-3">
+<!-- A readable column on very wide windows: Join stays next to its meeting. -->
+<div class="mx-auto flex min-h-0 w-full max-w-[1180px] flex-1 flex-col gap-3">
   <div class="flex min-h-8 shrink-0 flex-wrap items-center gap-2">
     <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="Which meetings">
       <button role="radio" aria-checked={range === 'upcoming'} class="seg" onclick={() => (range = 'upcoming')}>Upcoming</button>

@@ -7,6 +7,7 @@
 mod data;
 mod desktop;
 mod mcp;
+mod updates;
 
 use std::sync::{Arc, Mutex};
 
@@ -34,6 +35,8 @@ pub(crate) struct AppState {
     started: std::time::Instant,
     /// True when the Mica backdrop applied; the UI uses solid surfaces otherwise.
     mica: bool,
+    /// The previous version, on the first launch after an update.
+    updated_from: Option<String>,
 }
 
 pub(crate) type CmdResult<T> = Result<T, ErrorInfo>;
@@ -266,6 +269,87 @@ async fn bulk_delete(app: AppHandle, state: State<'_, AppState>, ids: Vec<Id>) -
         })
     })
     .await
+}
+
+/// Archives (or restores) a task with its subtasks.
+#[tauri::command]
+async fn set_task_archived(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    archived: bool,
+) -> CmdResult<Task> {
+    write(app, state, move |db| db.set_task_archived(id, archived)).await
+}
+
+#[tauri::command]
+async fn bulk_set_archived(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<Id>,
+    archived: bool,
+) -> CmdResult<usize> {
+    let verb = if archived { "Archive" } else { "Restore" };
+    write(app, state, move |db| {
+        db.batch(&tasks_label(verb, ids.len()), |db| {
+            for id in &ids {
+                db.set_task_archived(*id, archived)?;
+            }
+            Ok(ids.len())
+        })
+    })
+    .await
+}
+
+/// Archives every completed top-level task the query matches; returns how many.
+#[tauri::command]
+async fn archive_completed(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    query: TaskQuery,
+) -> CmdResult<usize> {
+    write(app, state, move |db| db.archive_completed(&query)).await
+}
+
+#[tauri::command]
+async fn pinned_projects(state: State<'_, AppState>) -> CmdResult<Vec<Id>> {
+    read(state, Db::pinned_projects).await
+}
+
+#[tauri::command]
+async fn pin_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Id,
+    before: Option<Id>,
+) -> CmdResult<Vec<Id>> {
+    write(app, state, move |db| db.pin_project(id, before)).await
+}
+
+#[tauri::command]
+async fn unpin_project(app: AppHandle, state: State<'_, AppState>, id: Id) -> CmdResult<Vec<Id>> {
+    write(app, state, move |db| db.unpin_project(id)).await
+}
+
+#[tauri::command]
+async fn set_pinned_projects(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<Id>,
+) -> CmdResult<Vec<Id>> {
+    write(app, state, move |db| db.set_pinned_projects(ids)).await
+}
+
+/// An error the UI caught (render failure, unhandled rejection), for the log
+/// file. Text only, trimmed; nothing leaves the computer.
+#[tauri::command]
+fn log_ui_error(message: String, detail: Option<String>) {
+    let cut = |s: &str| s.chars().take(2000).collect::<String>();
+    tracing::error!(
+        message = %cut(&message),
+        detail = %cut(detail.as_deref().unwrap_or("")),
+        "ui error"
+    );
 }
 
 #[tauri::command]
@@ -502,6 +586,21 @@ async fn create_status(
     input: NewStatus,
 ) -> CmdResult<Status> {
     write(app, state, move |db| db.create_status(input)).await
+}
+
+/// Adds a column (e.g. Waiting) to every project missing one by that name.
+#[tauri::command]
+async fn add_status_everywhere(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    category: taskboard_core::Category,
+    color: Option<String>,
+) -> CmdResult<usize> {
+    write(app, state, move |db| {
+        db.add_status_everywhere(&name, category, color.as_deref())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -865,6 +964,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::PendingUpdate::default())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![desktop::MINIMIZED_FLAG]),
@@ -900,7 +1001,7 @@ pub fn run() {
                 Some(path) => std::path::PathBuf::from(path),
                 None => app.path().app_data_dir()?.join("taskboard.db"),
             };
-            let db = Db::open_deferred_check(&path)?;
+            let mut db = Db::open_deferred_check(&path)?;
             tracing::info!(
                 path = %path.display(),
                 ms = started.elapsed().as_millis() as u64,
@@ -910,13 +1011,18 @@ pub fn run() {
                 .get_webview_window("main")
                 .is_some_and(|window| apply_backdrop(&window));
             let settings = db.app_settings().unwrap_or_default();
+            let updated_from = updates::note_version(&mut db);
             let db = Arc::new(Mutex::new(db));
-            let start_hidden = std::env::args().any(|a| a == desktop::MINIMIZED_FLAG);
+            // The installer reopens the app with the arguments it had, so an
+            // update applied to a tray-started app still shows the window.
+            let start_hidden =
+                updated_from.is_none() && std::env::args().any(|a| a == desktop::MINIMIZED_FLAG);
             app.manage(AppState {
                 db: Arc::clone(&db),
                 start_hidden,
                 started,
                 mica,
+                updated_from,
             });
             if let Err(err) = desktop::build_tray(app.handle()) {
                 tracing::warn!(%err, "tray icon unavailable");
@@ -957,6 +1063,14 @@ pub fn run() {
             bulk_update_tasks,
             bulk_set_done,
             bulk_delete,
+            set_task_archived,
+            bulk_set_archived,
+            archive_completed,
+            pinned_projects,
+            pin_project,
+            unpin_project,
+            set_pinned_projects,
+            log_ui_error,
             create_client,
             update_client,
             set_client_archived,
@@ -983,6 +1097,7 @@ pub fn run() {
             delete_project,
             all_statuses,
             create_status,
+            add_status_everywhere,
             update_status,
             move_status,
             delete_status,
@@ -1025,6 +1140,9 @@ pub fn run() {
             test_notification,
             start_hidden,
             show_main_window,
+            updates::check_update,
+            updates::install_update,
+            updates::updated_from,
         ])
         .run(tauri::generate_context!());
 

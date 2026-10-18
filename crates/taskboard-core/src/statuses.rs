@@ -64,6 +64,32 @@ fn siblings(tx: &Tx<'_>, project: Id) -> Result<Vec<Status>> {
     Ok(rows)
 }
 
+fn default_color(category: Category) -> &'static str {
+    match category {
+        Category::Todo => "230",
+        Category::Active => "262",
+        Category::Done => "150",
+        Category::Cancelled => "gray",
+    }
+}
+
+/// Where a new column of `category` goes: after the first column of that
+/// category, else just before the finished columns, else at the end.
+fn slot_for(all: &[Status], category: Category) -> (Option<String>, Option<String>) {
+    let key = |i: usize| all.get(i).map(|s| s.sort_key.clone());
+    if let Some(i) = all.iter().position(|s| s.category == category) {
+        return (key(i), key(i + 1));
+    }
+    match all
+        .iter()
+        .position(|s| matches!(s.category, Category::Done | Category::Cancelled))
+    {
+        Some(0) => (None, key(0)),
+        Some(i) => (key(i - 1), key(i)),
+        None => (all.last().map(|s| s.sort_key.clone()), None),
+    }
+}
+
 fn check_unique_name(tx: &Tx<'_>, project: Id, name: &str, except: Option<Id>) -> Result<()> {
     let clash = siblings(tx, project)?
         .iter()
@@ -122,6 +148,63 @@ impl Db {
             .ok_or(Error::NotFound("status"))
     }
 
+    /// Adds a column to every project (archived ones and the Inbox too) that
+    /// has none by that name, e.g. "Waiting" for projects made before it was
+    /// a default. One undo step; returns how many projects got it (0 adds no
+    /// undo step).
+    pub fn add_status_everywhere(
+        &mut self,
+        name: &str,
+        category: Category,
+        color: Option<&str>,
+    ) -> Result<usize> {
+        let name = clean_name(name, "column name")?;
+        let color = color.map(clean_color).transpose()?;
+        let missing: Vec<Id> = {
+            let mut stmt = self.conn().prepare(
+                "SELECT p.id FROM project p WHERE p.deleted_at IS NULL
+                   AND EXISTS (SELECT 1 FROM status s WHERE s.project_id = p.id AND s.deleted_at IS NULL)
+                   AND NOT EXISTS (SELECT 1 FROM status s WHERE s.project_id = p.id
+                                   AND s.deleted_at IS NULL AND lower(s.name) = lower(?1))
+                 ORDER BY p.sort_key",
+            )?;
+            stmt.query_map([&name], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        if missing.is_empty() {
+            return Ok(0);
+        }
+        let color = color.unwrap_or_else(|| default_color(category).into());
+        let label = format!(
+            "Add “{name}” to {} project{}",
+            missing.len(),
+            if missing.len() == 1 { "" } else { "s" }
+        );
+        self.transact(&label, |tx| {
+            for &project in &missing {
+                let all = siblings(tx, project)?;
+                let (before, after) = slot_for(&all, category);
+                tx.insert(
+                    Table::Status,
+                    &[
+                        ("id", Id::new().into()),
+                        ("project_id", project.into()),
+                        ("name", text(name.clone())),
+                        ("color", text(color.clone())),
+                        ("category", text(category.as_str())),
+                        (
+                            "sort_key",
+                            text(key_between(before.as_deref(), after.as_deref())?),
+                        ),
+                        ("created_at", int(tx.now())),
+                    ],
+                )?;
+            }
+            Ok(())
+        })?;
+        Ok(missing.len())
+    }
+
     pub fn create_status(&mut self, input: NewStatus) -> Result<Status> {
         let name = clean_name(&input.name, "column name")?;
         let color = input.color.as_deref().map(clean_color).transpose()?;
@@ -145,12 +228,7 @@ impl Db {
                 }
                 None => (all.last().map(|s| s.sort_key.clone()), None),
             };
-            let default_color = match input.category {
-                Category::Todo => "230",
-                Category::Active => "262",
-                Category::Done => "150",
-                Category::Cancelled => "gray",
-            };
+            let default_color = default_color(input.category);
             tx.insert(
                 Table::Status,
                 &[

@@ -63,6 +63,12 @@ pub struct TaskQuery {
     pub top_level: bool,
     #[ts(as = "Option<bool>", optional)]
     pub include_archived: bool,
+    /// Only tasks archived on their own (Settings → Data → Archived).
+    #[ts(as = "Option<bool>", optional)]
+    pub archived_only: bool,
+    /// Only tasks completed at or after this moment (Unix ms), e.g. "done today".
+    #[ts(optional)]
+    pub completed_from: Option<i64>,
     #[ts(as = "Option<TaskSort>", optional)]
     pub sort: TaskSort,
     #[ts(as = "Option<bool>", optional)]
@@ -106,6 +112,8 @@ pub struct TaskRow {
     pub recurring: bool,
     /// Title of the parent task, for subtasks shown outside their parent.
     pub parent_title: Option<String>,
+    /// When the task was archived (only seen with `include_archived` / `archived_only`).
+    pub archived_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -169,13 +177,16 @@ impl Db {
         let mut filters = vec!["t.deleted_at IS NULL".to_owned()];
         let mut args: Vec<Value> = Vec::new();
 
-        if !q.include_archived {
+        let include_archived = q.include_archived || q.archived_only;
+        if q.archived_only {
+            filters.push("t.archived_at IS NOT NULL".into());
+        } else if !include_archived {
             filters.push("t.archived_at IS NULL".into());
         }
         if q.client_id.is_some() || q.section_id.is_some() {
             // Selective: drive the query from the matching projects.
             let mut project_filter = vec!["deleted_at IS NULL".to_owned()];
-            if !q.include_archived {
+            if !include_archived {
                 project_filter.push("archived_at IS NULL".into());
             }
             if let Some(client) = q.client_id {
@@ -190,7 +201,7 @@ impl Db {
                 "t.project_id IN (SELECT id FROM project WHERE {})",
                 project_filter.join(" AND ")
             ));
-        } else if !q.include_archived {
+        } else if !include_archived {
             // Deleting a project deletes its tasks, so only archived projects
             // need excluding. NOT IN over that short list keeps the planner on
             // the sort-order index instead of looking tasks up per project.
@@ -263,6 +274,10 @@ impl Db {
         if q.undated {
             filters.push("coalesce(t.due_date, '~') = '~'".into());
         }
+        if let Some(from) = q.completed_from {
+            filters.push("t.completed_at >= ?".into());
+            args.push(Value::Integer(from));
+        }
         if let Some(parent) = q.parent_id {
             filters.push("t.parent_id = ?".into());
             args.push(parent.into());
@@ -309,7 +324,8 @@ impl Db {
                            t.progress, 0)
                     END,
                     t.recurrence_rule IS NOT NULL,
-                    (SELECT x.title FROM task x WHERE x.id = t.parent_id)
+                    (SELECT x.title FROM task x WHERE x.id = t.parent_id),
+                    t.archived_at
              FROM page
              JOIN task t ON t.rid = page.rid
              JOIN project p ON p.id = t.project_id
@@ -353,6 +369,7 @@ impl Db {
                     progress: r.get(22)?,
                     recurring: r.get(23)?,
                     parent_title: r.get(24)?,
+                    archived_at: r.get(25)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

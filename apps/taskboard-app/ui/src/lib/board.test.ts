@@ -39,6 +39,7 @@ const row = (over: Partial<TaskRow>): TaskRow => ({
   progress: 0,
   recurring: false,
   parent_title: null,
+  archived_at: null,
   ...over,
 })
 

@@ -12,6 +12,7 @@ pub mod markdown;
 pub mod model;
 pub mod notify;
 pub mod order;
+mod pins;
 pub mod planning;
 mod projects;
 pub mod query;

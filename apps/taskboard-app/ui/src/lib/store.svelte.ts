@@ -11,9 +11,10 @@ import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
 import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
-import { isoDate, todayIso } from './format'
+import { isoDate, plural, todayIso } from './format'
 import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
-import { adoptLegacySectionPrefs, visibleTabs } from './layout.svelte'
+import { adoptLegacySectionPrefs, clearLegacyPins, legacyPins, visibleTabs } from './layout.svelte'
+import { pinsToMigrate } from './pins'
 import { toast } from './toast.svelte'
 
 export type Scope =
@@ -95,6 +96,8 @@ export const app = $state({
   views: [] as SavedView[],
   /** Sidebar sections in order (data; visibility is a layout preference). */
   sections: [] as Section[],
+  /** Pinned project ids, in order (stored in the database). */
+  pinned: [] as Id[],
   /** The saved view last opened; cleared when the scope changes. */
   activeViewId: null as Id | null,
 })
@@ -295,10 +298,33 @@ export function setScope(scope: Scope) {
   if (isPage(app.view)) app.view = visibleTabs()[0] ?? 'table'
 }
 
+/** Pins made before they moved into the database (once, then gone). */
+async function migrateLegacyPins(current: Id[], projects: ProjectSummary[]) {
+  const next = pinsToMigrate(legacyPins(), current, new Set(projects.map((p) => p.id)))
+  if (!next) return
+  try {
+    app.pinned = await ipc.setPinnedProjects(next)
+    clearLegacyPins()
+  } catch {
+    // Kept on this device; the next start tries again.
+  }
+}
+
+/** Pins a project (last, or before another pinned one); pinning a pinned one moves it. */
+export async function pinProject(id: Id, before: Id | null = null) {
+  const next = await act(() => ipc.pinProject(id, before))
+  if (next) app.pinned = next
+}
+
+export async function unpinProject(id: Id) {
+  const next = await act(() => ipc.unpinProject(id))
+  if (next) app.pinned = next
+}
+
 export async function refreshMeta() {
   if (!inTauri) return
   try {
-    const [clients, projects, counts, history, statuses, views, sections] = await Promise.all([
+    const [clients, projects, counts, history, statuses, views, sections, pinned] = await Promise.all([
       ipc.listClients(),
       ipc.listProjects(),
       ipc.sidebarCounts(),
@@ -306,7 +332,10 @@ export async function refreshMeta() {
       ipc.allStatuses(),
       ipc.savedViews(),
       ipc.listSections(),
+      ipc.pinnedProjects(),
     ])
+    app.pinned = pinned
+    void migrateLegacyPins(pinned, projects)
     app.sections = sections
     adoptLegacySectionPrefs(sections)
     app.views = views
@@ -336,6 +365,22 @@ export async function act<T>(run: () => Promise<T>, done?: string): Promise<T | 
     toast(errorMessage(err), { kind: 'error' })
     return undefined
   }
+}
+
+/** Adds a Waiting column (in progress, amber) to every project without one. */
+export async function addWaitingEverywhere() {
+  const n = await act(() => ipc.addStatusEverywhere('Waiting', 'active', '70'))
+  if (n === undefined) return
+  if (n) toast(`Added a Waiting column to ${plural(n, 'project')}`, { action: { label: 'Undo', run: () => void undo() } })
+  else toast('Every project already has a Waiting column')
+}
+
+/** Archives a list's completed tasks (top-level, done or cancelled) as one undo step. */
+export async function archiveCompleted(query: TaskQuery = scopeQuery()) {
+  const n = await act(() => ipc.archiveCompleted(query))
+  if (n === undefined) return
+  if (n) toast(`Archived ${plural(n, 'completed task')}`, { action: { label: 'Undo', run: () => void undo() } })
+  else toast('No completed tasks to archive here')
 }
 
 export async function undo() {

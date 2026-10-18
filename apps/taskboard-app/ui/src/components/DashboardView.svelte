@@ -116,7 +116,8 @@
 
     <section class="panel mt-3">
       <h3 class="title">Projects <span class="font-normal text-subtle">· progress and open tasks over 14 days</span></h3>
-      <div class="grid gap-x-6 gap-y-3 md:grid-cols-2">
+      <!-- As many columns as fit: two on a laptop, four on a wide screen. -->
+      <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,360px),1fr))] gap-x-6 gap-y-3">
         {#each d.projects as p (p.project_id)}
           <button class="proj text-left" onclick={() => setScope({ kind: 'project', id: p.project_id })}>
             <div class="flex items-center gap-2">

@@ -222,8 +222,16 @@ which also runs a self-test (spawns the exe, handshake, `tools/list`).
   `core:window:allow-set-theme`, `window-state:default`, dialog open/save,
   and opener URLs restricted to `http(s)://`. Each new plugin adds only the
   permissions it needs.
-- No network requests of its own; no telemetry. Logs contain timings and
-  errors, never task content.
+- One network request of its own: the update check (Settings → Updates; can
+  be turned off) fetches `latest.json` from GitHub releases. Updates are
+  verified against the public key in `tauri.conf.json` and the version they
+  were signed for (`requireSignedVersion`) before anything runs; the webview
+  gets no updater permissions, only the app's `check_update` /
+  `install_update` commands (`src-tauri/src/updates.rs`). No telemetry. Logs
+  contain timings and errors, never task content.
+- UI errors that escape the code's own handling (and views or dialogs that
+  fail to render, caught by `<svelte:boundary>`) are logged through
+  `log_ui_error`; the user sees a short message instead of a blank window.
 - Markdown rendering (M2+) happens in core and is sanitized before the UI sees it.
 
 ## 7. Pinned versions (2026-10-16)

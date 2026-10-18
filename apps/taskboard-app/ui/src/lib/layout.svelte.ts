@@ -26,6 +26,15 @@ export const COUNT_LABELS: Record<CountId, { name: string; hint: string }> = {
   projects: { name: 'Project counts', hint: 'Open tasks next to each project' },
 }
 
+/** Resizable panels: limits and defaults (px). */
+export const SIDEBAR = { min: 208, max: 400, default: 264 }
+export const PANEL = { min: 320, max: 640, default: 380 }
+
+function clampWidth(v: unknown, range: { min: number; max: number; default: number }): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : range.default
+  return Math.max(range.min, Math.min(range.max, n))
+}
+
 const NAV_ORDER: NavId[] = ['today', 'upcoming', 'inbox', 'all', 'meetings', 'dashboard']
 const TABS: TabId[] = ['table', 'board', 'calendar']
 const KEY = 'taskboard.layout'
@@ -33,8 +42,12 @@ const KEY = 'taskboard.layout'
 type Stored = {
   nav: { id: NavId; visible: boolean }[]
   sections: Record<SectionId, boolean>
-  /** Pinned project ids, in the order shown at the top of the sidebar. */
+  /** Pins from before they moved to the database; migrated once, then empty. */
   pinned: string[]
+  /** Sidebar width (px), dragged at its right edge. */
+  sidebarWidth: number
+  /** Task details panel width (px), dragged at its left edge. */
+  panelWidth: number
   /** User sections hidden from the sidebar (ids). */
   hiddenSections: string[]
   /** Section names hidden before sections were user-defined ("Clients",
@@ -55,6 +68,8 @@ function defaults(): Stored {
     nav: NAV_ORDER.map((id) => ({ id, visible: true })),
     sections: { pinned: true, savedViews: true },
     pinned: [],
+    sidebarWidth: SIDEBAR.default,
+    panelWidth: PANEL.default,
     hiddenSections: [],
     legacyHidden: [],
     tabs: { table: true, board: true, calendar: true },
@@ -86,6 +101,8 @@ function load(): Stored {
       nav,
       sections: { pinned: old.pinned ?? true, savedViews: old.savedViews ?? true },
       pinned: Array.isArray(saved.pinned) ? saved.pinned : [],
+      sidebarWidth: clampWidth(saved.sidebarWidth, SIDEBAR),
+      panelWidth: clampWidth(saved.panelWidth, PANEL),
       hiddenSections: saved.hiddenSections ?? [],
       legacyHidden,
       tabs,
@@ -124,17 +141,25 @@ export function moveNav(id: NavId, dir: -1 | 1) {
   save()
 }
 
-/** Pins a project (at the end, or before another pinned one). */
-export function pinProject(id: string, before: string | null = null) {
-  const list = layout.pinned.filter((p) => p !== id)
-  const at = before ? list.indexOf(before) : -1
-  list.splice(at < 0 ? list.length : at, 0, id)
-  layout.pinned = list
+/** Pins kept by an older version, to hand to the database once. */
+/** Pins saved by versions before 0.5 (they now live in the database). */
+export function legacyPins(): string[] {
+  return layout.pinned
+}
+
+export function clearLegacyPins() {
+  if (!layout.pinned.length) return
+  layout.pinned = []
   save()
 }
 
-export function unpinProject(id: string) {
-  layout.pinned = layout.pinned.filter((p) => p !== id)
+export function setSidebarWidth(px: number) {
+  layout.sidebarWidth = clampWidth(px, SIDEBAR)
+  save()
+}
+
+export function setPanelWidth(px: number) {
+  layout.panelWidth = clampWidth(px, PANEL)
   save()
 }
 
@@ -191,8 +216,30 @@ export function visibleTabs(): TabId[] {
   return TABS.filter((t) => layout.tabs[t])
 }
 
-export function resetLayout() {
-  // Pins are the user's picks, not layout: they survive a reset.
-  Object.assign(layout, { ...defaults(), pinned: layout.pinned })
+/** Settings → Sidebar → Restore defaults: items, lists, counts, dots, width. */
+export function resetSidebarLayout() {
+  const d = defaults()
+  Object.assign(layout, {
+    nav: d.nav,
+    sections: d.sections,
+    hiddenSections: d.hiddenSections,
+    counts: d.counts,
+    sectionDots: d.sectionDots,
+    headerDot: d.headerDot,
+    sidebarWidth: d.sidebarWidth,
+  })
   save()
+}
+
+/** Settings → Views & table → Restore defaults (the table columns reset separately). */
+export function resetViewsLayout() {
+  const d = defaults()
+  Object.assign(layout, { tabs: d.tabs, quickAdd: d.quickAdd, panelWidth: d.panelWidth })
+  save()
+}
+
+/** Everything above at once. */
+export function resetLayout() {
+  resetSidebarLayout()
+  resetViewsLayout()
 }
