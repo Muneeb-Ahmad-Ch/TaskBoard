@@ -15,7 +15,7 @@
   Sections organize the sidebar. Each holds groups (clients, teams, areas…) and projects. Edit a section to rename it, recolor it, or change what its groups are called.
 </p>
 
-<section class="card">
+<section class="card" data-setting="sections">
   <h4 class="card-title">Sections <span class="font-normal tracking-normal normal-case">· point at a row to reorder it</span></h4>
   <ul aria-label="Sidebar sections">
     {#each app.sections as sec, i (sec.id)}

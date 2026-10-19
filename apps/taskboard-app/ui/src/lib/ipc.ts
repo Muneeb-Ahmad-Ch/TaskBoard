@@ -24,6 +24,7 @@ import type { SlotResult } from './bindings/SlotResult'
 import type { TimeEntryPatch } from './bindings/TimeEntryPatch'
 import type { WorkingDay } from './bindings/WorkingDay'
 import type { Category } from './bindings/Category'
+import type { DefaultColumn } from './bindings/DefaultColumn'
 import type { ClientPatch } from './bindings/ClientPatch'
 import type { DbInfo } from './bindings/DbInfo'
 import type { Direction } from './bindings/Direction'
@@ -127,6 +128,13 @@ export const ipc = {
   // board columns
   allStatuses: () => invoke<Status[]>('all_statuses'),
   createStatus: (input: NewStatus) => invoke<Status>('create_status', { input }),
+  /** Settings → Board columns: the columns new projects start with. */
+  defaultColumns: () => invoke<DefaultColumn[]>('default_columns'),
+  setDefaultColumns: (columns: DefaultColumn[]) => invoke<DefaultColumn[]>('set_default_columns', { columns }),
+  resetDefaultColumns: () => invoke<DefaultColumn[]>('reset_default_columns'),
+  projectsMissingColumns: () => invoke<number>('projects_missing_columns'),
+  /** Adds the default columns each project lacks (one undo step); returns how many projects changed. */
+  addMissingColumns: () => invoke<number>('add_missing_columns'),
   /** Adds a column (e.g. Waiting) to every project missing one by that name; returns how many got it. */
   addStatusEverywhere: (name: string, category: Category, color: string | null = null) =>
     invoke<number>('add_status_everywhere', { name, category, color }),

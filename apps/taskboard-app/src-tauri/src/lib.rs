@@ -588,6 +588,43 @@ async fn create_status(
     write(app, state, move |db| db.create_status(input)).await
 }
 
+/// Settings → Board columns: the columns new projects start with.
+#[tauri::command]
+async fn default_columns(
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<taskboard_core::DefaultColumn>> {
+    read(state, Db::default_columns).await
+}
+
+#[tauri::command]
+async fn set_default_columns(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    columns: Vec<taskboard_core::DefaultColumn>,
+) -> CmdResult<Vec<taskboard_core::DefaultColumn>> {
+    write(app, state, move |db| db.set_default_columns(columns)).await
+}
+
+#[tauri::command]
+async fn reset_default_columns(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> CmdResult<Vec<taskboard_core::DefaultColumn>> {
+    write(app, state, Db::reset_default_columns).await
+}
+
+/// How many projects lack one of the default columns.
+#[tauri::command]
+async fn projects_missing_columns(state: State<'_, AppState>) -> CmdResult<usize> {
+    read(state, Db::projects_missing_columns).await
+}
+
+/// Adds the default columns each project is missing (one undo step).
+#[tauri::command]
+async fn add_missing_columns(app: AppHandle, state: State<'_, AppState>) -> CmdResult<usize> {
+    write(app, state, Db::add_missing_columns).await
+}
+
 /// Adds a column (e.g. Waiting) to every project missing one by that name.
 #[tauri::command]
 async fn add_status_everywhere(
@@ -1098,6 +1135,11 @@ pub fn run() {
             all_statuses,
             create_status,
             add_status_everywhere,
+            default_columns,
+            set_default_columns,
+            reset_default_columns,
+            projects_missing_columns,
+            add_missing_columns,
             update_status,
             move_status,
             delete_status,

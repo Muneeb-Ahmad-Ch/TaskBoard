@@ -3,7 +3,7 @@
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { swatch } from '../lib/format'
   import { inTauri, ipc } from '../lib/ipc'
-  import { activeViewChanged, addWaitingEverywhere, app, applySavedView, archiveCompleted, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
+  import { activeViewChanged, addMissingColumns, app, applySavedView, archiveCompleted, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
   import { openChangelog } from '../lib/about'
   import { cal, newMeeting } from '../lib/cal.svelte'
@@ -44,7 +44,8 @@
       { id: 'zoom-in', group: 'View', label: 'Zoom in', hint: 'Ctrl +', run: zoomIn },
       { id: 'zoom-out', group: 'View', label: 'Zoom out', hint: 'Ctrl −', run: zoomOut },
       { id: 'zoom-reset', group: 'View', label: 'Reset zoom', hint: 'Ctrl 0', run: resetZoom },
-      { id: 'waiting', group: 'Actions', label: 'Add a “Waiting” column to every project', run: () => void addWaitingEverywhere() },
+      { id: 'columns', group: 'Actions', label: 'Board columns (statuses) for new projects…', run: () => { app.settingsSection = 'columns'; app.settingsOpen = true } },
+      { id: 'waiting', group: 'Actions', label: 'Add missing board columns (like “Waiting”) to every project', run: () => void addMissingColumns() },
       { id: 'settings', group: 'Actions', label: 'Settings…', run: () => (app.settingsOpen = true) },
       { id: 'ai', group: 'Actions', label: 'Connect an AI assistant…', run: () => { app.settingsSection = 'ai'; app.settingsOpen = true } },
       { id: 'shortcuts', group: 'Actions', label: 'Keyboard shortcuts', hint: '?', run: () => (app.shortcutsOpen = true) },

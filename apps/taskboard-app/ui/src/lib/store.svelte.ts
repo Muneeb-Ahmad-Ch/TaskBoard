@@ -367,12 +367,12 @@ export async function act<T>(run: () => Promise<T>, done?: string): Promise<T | 
   }
 }
 
-/** Adds a Waiting column (in progress, amber) to every project without one. */
-export async function addWaitingEverywhere() {
-  const n = await act(() => ipc.addStatusEverywhere('Waiting', 'active', '70'))
+/** Adds the default board columns (Waiting, …) each project is missing. */
+export async function addMissingColumns() {
+  const n = await act(() => ipc.addMissingColumns())
   if (n === undefined) return
-  if (n) toast(`Added a Waiting column to ${plural(n, 'project')}`, { action: { label: 'Undo', run: () => void undo() } })
-  else toast('Every project already has a Waiting column')
+  if (n) toast(`Added the missing columns to ${plural(n, 'project')}`, { action: { label: 'Undo', run: () => void undo() } })
+  else toast('Every project already has the default columns')
 }
 
 /** Archives a list's completed tasks (top-level, done or cancelled) as one undo step. */

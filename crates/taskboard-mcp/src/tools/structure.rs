@@ -214,6 +214,25 @@ pub(super) const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
+        name: "get_default_columns",
+        description: "The board columns new projects start with (Settings → Board columns), in order, with what each means.",
+        fields: &[],
+    },
+    Tool {
+        name: "set_default_columns",
+        description: "Sets the columns new projects start with (existing projects keep theirs; add_missing_columns brings them in line). Needs at least one open column (todo or active) and one done column; names must differ.",
+        fields: &[(
+            "columns",
+            r#"{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"category":{"type":"string","enum":["todo","active","done","cancelled"]},"color":{"type":"string","description":"Hue 0-359 as text, or gray; optional"}},"required":["name","category"]}}"#,
+            true,
+        )],
+    },
+    Tool {
+        name: "add_missing_columns",
+        description: "Adds the default columns each project is missing (e.g. Waiting), in one undo step; nothing is removed or renamed.",
+        fields: &[],
+    },
+    Tool {
         name: "add_status_everywhere",
         description: "Adds a board column to every project that has none by that name, in one undo step, e.g. Waiting (category active) for tasks waiting on someone's reply. It goes after the first column of its category, else before the finished ones.",
         fields: &[
@@ -361,6 +380,38 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
             db.create_status(from_args::<NewStatus>(args.clone())?)
                 .map_err(err)?,
         ),
+        "get_default_columns" => Ok(json!({ "columns": db.default_columns().map_err(err)? })),
+        "set_default_columns" => {
+            let list = args
+                .get("columns")
+                .and_then(Value::as_array)
+                .ok_or("columns must be a list")?;
+            let mut columns = Vec::with_capacity(list.len());
+            for c in list {
+                let mut c = c.clone();
+                // A color is optional: fill in the usual one for its meaning.
+                if let Value::Object(m) = &mut c
+                    && !m.contains_key("color")
+                {
+                    let color = match m.get("category").and_then(Value::as_str) {
+                        Some("active") => "262",
+                        Some("done") => "150",
+                        Some("cancelled") => "gray",
+                        _ => "230",
+                    };
+                    m.insert("color".into(), json!(color));
+                }
+                columns.push(
+                    serde_json::from_value::<taskboard_core::DefaultColumn>(c)
+                        .map_err(|e| format!("columns: {e}"))?,
+                );
+            }
+            Ok(json!({ "columns": db.set_default_columns(columns).map_err(err)? }))
+        }
+        "add_missing_columns" => {
+            let n = db.add_missing_columns().map_err(err)?;
+            Ok(json!({ "projects_updated": n }))
+        }
         "add_status_everywhere" => {
             #[derive(serde::Deserialize)]
             struct Input {

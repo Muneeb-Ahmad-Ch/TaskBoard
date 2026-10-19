@@ -53,7 +53,7 @@
   const skipped = $derived(!!updates.info && updates.skipped === updates.info.version)
 </script>
 
-<section class="card">
+<section class="card" data-setting="update-check">
   <div class="flex items-start gap-3 p-4">
     <span class="mt-0.5 shrink-0" aria-hidden="true">
       {#if updates.phase === 'checking' || updates.phase === 'downloading' || updates.phase === 'installing'}
@@ -118,14 +118,14 @@
 {/if}
 
 <section class="card">
-  <div class="set-row">
+  <div class="set-row" data-setting="update-auto">
     <div class="min-w-0 flex-1">
       <div class="text-[13px] font-medium">Check for updates automatically</div>
       <div class="mt-0.5 text-xs text-muted">At startup and every few hours. Only the latest version number is fetched from GitHub; nothing about your data is sent.</div>
     </div>
     <Switch label="Check for updates automatically" checked={updates.auto} onchange={setAutoCheck} />
   </div>
-  <div class="set-row">
+  <div class="set-row" data-setting="release-notes">
     <div class="min-w-0 flex-1">
       <div class="text-[13px] font-medium">Release notes</div>
       <div class="mt-0.5 text-xs text-muted">Every version and what changed.</div>

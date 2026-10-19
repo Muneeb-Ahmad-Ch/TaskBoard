@@ -64,7 +64,7 @@
   }
 </script>
 
-<section class="card">
+<section class="card" data-setting="archived-tasks">
   <h4 class="card-title">Archived tasks</h4>
   {#if !tasks.length}
     <p class="px-4 pb-3 text-xs text-muted">No archived tasks. Archive a task (right-click it, or select it and press A) to take it out of your lists without deleting it.</p>
@@ -92,7 +92,7 @@
   {/if}
 </section>
 
-<section class="card">
+<section class="card" data-setting="archived-projects">
   <h4 class="card-title">Archived groups and projects</h4>
   {#if !groups.length && !projects.length}
     <p class="px-4 pb-3 text-xs text-muted">Nothing archived. Archive a group or project from its right-click menu to hide it without losing anything.</p>

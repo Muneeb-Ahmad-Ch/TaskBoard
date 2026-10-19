@@ -2,7 +2,10 @@
   import ArchivedList from './ArchivedList.svelte'
   // Settings, organized by category (left) with the chosen page on the right.
   // Every change is saved immediately; there is no Save button.
-  import { Archive, Bell, Bot, CalendarDays, Check, Database, Download, ExternalLink, FolderOpen, FolderTree, Globe, Info, Mail, Minus, Monitor, Palette, PanelLeft, Plus, RefreshCw, RotateCcw, Table2, Upload } from '@lucide/svelte'
+  import { Archive, Bell, Bot, CalendarDays, Check, Columns3, Database, Download, ExternalLink, FolderOpen, FolderTree, Globe, Info, Mail, Minus, Monitor, Palette, PanelLeft, Plus, RefreshCw, RotateCcw, Search, Table2, Upload } from '@lucide/svelte'
+  import { tick } from 'svelte'
+  import { searchSettings, type SettingEntry } from '../lib/settingsIndex'
+  import BoardColumnsSettings from './BoardColumnsSettings.svelte'
   import type { AppSettings } from '../lib/bindings/AppSettings'
   import type { BackupInfo } from '../lib/bindings/BackupInfo'
   import type { DbInfo } from '../lib/bindings/DbInfo'
@@ -32,6 +35,7 @@
     { id: 'sidebar', label: 'Sidebar', icon: PanelLeft },
     { id: 'sections', label: 'Sections', icon: FolderTree },
     { id: 'views', label: 'Views & table', icon: Table2 },
+    { id: 'columns', label: 'Board columns', icon: Columns3 },
     { id: 'calendar', label: 'Calendar', icon: CalendarDays },
     { id: 'reminders', label: 'Reminders', icon: Bell },
     { id: 'data', label: 'Data & backups', icon: Database },
@@ -47,6 +51,7 @@
     sidebar: 'sidebar',
     sections: 'sections',
     views: 'views',
+    columns: 'columns',
     data: 'data',
     ai: 'ai',
     updates: 'updates',
@@ -185,6 +190,56 @@
     { v: 6, l: 'Saturday' },
   ]
   const current = $derived(PAGES.find((p) => p.id === page) ?? PAGES[0])
+
+  // ---------- search ----------
+  let query = $state('')
+  let active = $state(0)
+  let searchEl: HTMLInputElement | undefined = $state()
+  const results = $derived(searchSettings(query))
+  $effect(() => {
+    void query
+    active = 0
+  })
+  const pageLabel = (id: string) => PAGES.find((p) => p.id === id)?.label ?? ''
+
+  /** Opens the setting's page and points it out. */
+  async function go(r: SettingEntry | undefined) {
+    if (!r) return
+    query = ''
+    page = r.page
+    await tick()
+    // Some rows appear once their page has loaded its values.
+    for (let i = 0; i < 30; i++) {
+      const el = document.querySelector<HTMLElement>(`#settings-panel [data-setting="${r.anchor}"]`)
+      if (el) {
+        el.scrollIntoView({ block: 'center' })
+        el.classList.remove('flash')
+        void el.offsetWidth
+        el.classList.add('flash')
+        setTimeout(() => el.classList.remove('flash'), 1700)
+        return
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    }
+  }
+
+  function onSearchKey(e: KeyboardEvent) {
+    if (e.key === 'ArrowDown' && results.length) {
+      e.preventDefault()
+      active = (active + 1) % results.length
+    } else if (e.key === 'ArrowUp' && results.length) {
+      e.preventDefault()
+      active = (active - 1 + results.length) % results.length
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      void go(results[active])
+    } else if (e.key === 'Escape' && query) {
+      // First Escape clears the search; the next one closes Settings.
+      e.preventDefault()
+      e.stopPropagation()
+      query = ''
+    }
+  }
   const pct = (level: number) => `${Math.round(level * 100)}%`
   const zoomHint = $derived(
     zoom.applied < zoom.chosen
@@ -201,8 +256,39 @@
 {/snippet}
 
 <Modal title="Settings" {onclose} width={880} height={640} bare>
-  <div class="flex min-h-0 flex-1">
-    <div class="flex w-[200px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border p-2 max-[900px]:w-[168px]" role="tablist" aria-orientation="vertical" aria-label="Settings categories">
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="flex min-h-0 flex-1"
+    onkeydown={(e) => {
+      // Ctrl+F searches the settings (not the task list behind them).
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        e.stopPropagation()
+        searchEl?.focus()
+        searchEl?.select()
+      }
+    }}
+  >
+    <div class="flex w-[200px] shrink-0 flex-col border-r border-border max-[900px]:w-[168px]">
+    <div class="p-2 pb-1">
+      <label class="search">
+        <Search size={13} class="shrink-0" />
+        <input bind:this={searchEl} bind:value={query} type="search" placeholder="Search settings" aria-label="Search settings" onkeydown={onSearchKey} />
+      </label>
+    </div>
+    {#if query.trim()}
+      <div class="flex flex-col gap-0.5 overflow-y-auto p-2 pt-1" role="listbox" aria-label="Matching settings">
+        {#each results as r, i (r.anchor)}
+          <button role="option" aria-selected={i === active} class="result" onclick={() => void go(r)} onmouseenter={() => (active = i)}>
+            <span class="truncate text-[13px]">{r.label}</span>
+            <span class="truncate text-[11px] text-subtle">{pageLabel(r.page)}</span>
+          </button>
+        {:else}
+          <p class="px-2 py-1 text-xs text-muted">No settings match “{query.trim()}”.</p>
+        {/each}
+      </div>
+    {:else}
+    <div class="flex flex-col gap-0.5 overflow-y-auto p-2 pt-1" role="tablist" aria-orientation="vertical" aria-label="Settings categories">
       {#each PAGES as p (p.id)}
         <button
           role="tab"
@@ -227,6 +313,8 @@
         </button>
       {/each}
     </div>
+    {/if}
+    </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5" role="tabpanel" id="settings-panel" aria-labelledby="settings-tab-{page}">
       <div class="mb-4 flex items-center gap-3">
@@ -242,11 +330,11 @@
         <section class="card">
           <h4 class="card-title">Windows</h4>
           {#if appSettings}
-            <div class="set-row">
+            <div class="set-row" data-setting="autostart">
               {@render row('Start with Windows', 'Opens minimized in the tray when you sign in.')}
               <Switch label="Start with Windows" checked={appSettings.autostart} onchange={(v) => void setApp({ autostart: v })} />
             </div>
-            <div class="set-row">
+            <div class="set-row" data-setting="tray">
               {@render row('Keep running in the tray', 'Closing the window keeps Taskboard in the tray, so reminders still arrive.')}
               <Switch label="Keep running in the tray" checked={appSettings.close_to_tray} onchange={(v) => void setApp({ close_to_tray: v })} />
             </div>
@@ -254,22 +342,22 @@
         </section>
         <section class="card">
           <h4 class="card-title">Keyboard</h4>
-          <div class="set-row">
+          <div class="set-row" data-setting="quick-add-shortcut">
             {@render row('Quick add from anywhere', 'Works even when Taskboard is in the background.')}
             <kbd class="kbd">Ctrl + Shift + Space</kbd>
           </div>
-          <div class="set-row">
+          <div class="set-row" data-setting="palette">
             {@render row('Search and commands', 'Jump to any section, group, project or task, or run any action.')}
             <kbd class="kbd">Ctrl + K</kbd>
           </div>
-          <div class="set-row">
+          <div class="set-row" data-setting="shortcuts">
             {@render row('All keyboard shortcuts', '')}
             <button class="btn !h-7 text-xs" onclick={() => void openLink(SHORTCUTS_URL)}><ExternalLink size={13} /> View list</button>
           </div>
         </section>
       {:else if page === 'appearance'}
         <section class="card">
-          <div class="set-row">
+          <div class="set-row" data-setting="theme">
             {@render row('Theme', 'System follows your Windows setting.')}
             <div class="flex rounded-md border border-border bg-surface-1 p-0.5" role="radiogroup" aria-label="Theme">
               {#each THEMES as t (t.v)}
@@ -277,7 +365,7 @@
               {/each}
             </div>
           </div>
-          <div class="set-row">
+          <div class="set-row" data-setting="accent">
             {@render row('Accent color', 'Used for selection, buttons and highlights.')}
             <div class="flex max-w-[186px] flex-wrap justify-end gap-1.5" role="radiogroup" aria-label="Accent color">
               {#each ACCENTS as a (a.hue)}
@@ -285,7 +373,7 @@
               {/each}
             </div>
           </div>
-          <div class="set-row">
+          <div class="set-row" data-setting="zoom">
             {@render row('Zoom', zoomHint)}
             <div class="flex items-center gap-1" role="group" aria-label="Zoom">
               <button class="btn !h-7 !w-7 !px-0" aria-label="Zoom out" title="Zoom out (Ctrl −)" disabled={zoom.chosen <= LEVELS[0]} onclick={() => { zoomOut(); saved() }}><Minus size={14} /></button>
@@ -301,17 +389,19 @@
         <SectionsSettings onchange={saved} />
       {:else if page === 'views'}
         <ViewsSettings onchange={saved} />
+      {:else if page === 'columns'}
+        <BoardColumnsSettings onchange={saved} />
       {:else if page === 'updates'}
         <UpdatesSettings />
       {:else if page === 'calendar'}
         <section class="card">
-          <div class="set-row">
+          <div class="set-row" data-setting="week-start">
             {@render row('Week starts on', 'For the week and month views.')}
             <select class="field !h-8 !w-[140px]" aria-label="Week starts on" value={cal.weekStart} onchange={(e) => setWeekStart(Number(e.currentTarget.value))}>
               {#each WEEK_STARTS as w (w.v)}<option value={w.v}>{w.l}</option>{/each}
             </select>
           </div>
-          <div class="set-row">
+          <div class="set-row" data-setting="working-hours">
             {@render row('Working hours and days off', 'Used for daily capacity and the meeting-slot finder.')}
             <button class="btn !h-7 text-xs" onclick={() => { onclose(); cal.workingHoursOpen = true }}>Edit…</button>
           </div>
@@ -319,19 +409,19 @@
       {:else if page === 'reminders'}
         {#if notify}
           <section class="card">
-            <div class="set-row">
+            <div class="set-row" data-setting="reminders">
               {@render row('Show reminders', 'Windows notifications for meetings and timed tasks.')}
               <Switch label="Show reminders" checked={notify.enabled} onchange={(v) => setNotify({ enabled: v })} />
             </div>
-            <div class="set-row" class:dim={!notify.enabled}>
+            <div class="set-row" data-setting="meeting-reminder" class:dim={!notify.enabled}>
               {@render row('Meetings', 'Minutes before the meeting starts.')}
               <input type="number" class="field !h-8 !w-[90px]" min="0" max="1440" aria-label="Meeting reminder, minutes before" value={notify.meeting_lead_min} disabled={!notify.enabled} oninput={(e) => setNotify({ meeting_lead_min: minutesValue(e.currentTarget.value) }, 500)} />
             </div>
-            <div class="set-row" class:dim={!notify.enabled}>
+            <div class="set-row" data-setting="task-reminder" class:dim={!notify.enabled}>
               {@render row('Timed tasks', 'Minutes before the due time (0 = at the due time).')}
               <input type="number" class="field !h-8 !w-[90px]" min="0" max="1440" aria-label="Task reminder, minutes before" value={notify.task_lead_min} disabled={!notify.enabled} oninput={(e) => setNotify({ task_lead_min: minutesValue(e.currentTarget.value) }, 500)} />
             </div>
-            <div class="set-row" class:dim={!notify.enabled}>
+            <div class="set-row" data-setting="digest" class:dim={!notify.enabled}>
               {@render row('Morning summary', "A notification with today's meetings and due tasks.")}
               <div class="flex items-center gap-2">
                 <input type="time" class="field !h-8 !w-[116px]" aria-label="Morning summary time" value={notify.digest_time} disabled={!notify.enabled || !notify.digest} onchange={(e) => setNotify({ digest_time: e.currentTarget.value || '09:00' })} />
@@ -340,7 +430,7 @@
             </div>
           </section>
           <section class="card">
-            <div class="set-row">
+            <div class="set-row" data-setting="test-notification">
               {@render row('Test', 'Check that Windows shows Taskboard notifications.')}
               <button class="btn !h-7 text-xs" onclick={() => void ipc.testNotification().catch((err) => toast(errorMessage(err), { kind: 'error' }))}>Send a test notification</button>
             </div>
@@ -350,7 +440,7 @@
         <p class="mb-3 text-xs text-muted">Everything stays on this computer. A backup is made automatically every day, and before every upgrade, import and restore.</p>
         <section class="card">
           <h4 class="card-title">Backups</h4>
-          <div class="set-row">
+          <div class="set-row" data-setting="backups">
             {@render row('Back up now', 'Kept: 7 daily, 4 weekly and 12 monthly backups.')}
             <div class="flex flex-wrap justify-end gap-1.5">
               <button class="btn !h-7 text-xs" onclick={() => void backupNow()}><Archive size={13} /> Back up now</button>
@@ -374,7 +464,7 @@
         </section>
         <section class="card">
           <h4 class="card-title">Export</h4>
-          <div class="set-row">
+          <div class="set-row" data-setting="export">
             {@render row('Save a copy of your data', 'JSON has everything and can be imported back.')}
             <div class="flex flex-wrap justify-end gap-1.5">
               <button class="btn !h-7 text-xs" onclick={() => void exportTo('json')}><Download size={13} /> Everything (JSON)</button>
@@ -385,7 +475,7 @@
         </section>
         <section class="card">
           <h4 class="card-title">Import</h4>
-          <div class="set-row">
+          <div class="set-row" data-setting="import">
             {@render row('Bring in data', 'From a Taskboard export, a Todoist / Trello / Notion CSV, or a calendar file.')}
             <div class="flex flex-wrap justify-end gap-1.5">
               <button class="btn !h-7 text-xs" onclick={() => void importFrom('json')}><Upload size={13} /> Taskboard JSON</button>
@@ -396,7 +486,7 @@
         </section>
         <ArchivedList />
         <section class="card">
-          <div class="set-row">
+          <div class="set-row" data-setting="sample">
             {@render row('Sample workspace', 'A small example client in a Clients section, with projects, tasks and meetings to explore.')}
             <button class="btn !h-7 text-xs" onclick={() => void toggleSample()}>{hasSample ? 'Remove' : 'Add'}</button>
           </div>
@@ -404,7 +494,7 @@
       {:else if page === 'ai'}
         <AiSettings settings={appSettings} onchange={(patch) => void setApp(patch)} />
       {:else if page === 'about'}
-        <section class="card">
+        <section class="card" data-setting="about">
           <div class="flex items-center gap-4 p-4">
             <img src="/favicon.svg" alt="" class="size-14 shrink-0" />
             <div class="min-w-0 flex-1">
@@ -593,6 +683,55 @@
   }
   .saved {
     animation: saved 1.6s var(--ease-out) forwards;
+  }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding-inline: 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface-2);
+    color: var(--text-muted);
+  }
+  .search:focus-within {
+    border-color: var(--accent);
+  }
+  .search input {
+    min-width: 0;
+    flex: 1;
+    background: transparent;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+  }
+  .result {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    padding: 5px 8px;
+    border-radius: 6px;
+    text-align: left;
+  }
+  .result[aria-selected='true'] {
+    background: var(--accent-soft);
+  }
+  /* A setting found by search is pointed out briefly. */
+  :global(#settings-panel .flash) {
+    animation: settings-flash 1.6s var(--ease-out);
+    border-radius: var(--radius);
+  }
+  @keyframes -global-settings-flash {
+    0%,
+    35% {
+      box-shadow: 0 0 0 2px var(--accent);
+      background-color: var(--accent-soft);
+    }
+    100% {
+      box-shadow: 0 0 0 2px transparent;
+    }
   }
   @keyframes saved {
     0%,

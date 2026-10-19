@@ -95,9 +95,11 @@ needs permission (see [License](#license)).
   start with Windows, Windows notifications; zoom from 80% to 150%
   (Ctrl + / Ctrl −); keyboard-first and checked with axe-core against WCAG
   2.2 AA. Works down to small windows (the sidebar becomes a drawer).
-- **Make it yours** (Settings → Sidebar, Sections, Views & table): show, hide
-  and reorder sidebar items, sections, view tabs and table columns; resize
-  the sidebar, the task panel and columns by dragging their edges.
+- **Make it yours** (Settings → Sidebar, Sections, Views & table, Board
+  columns): show, hide and reorder sidebar items, sections, view tabs and
+  table columns; choose the board columns (statuses) new projects start
+  with; resize the sidebar, the task panel and columns by dragging their
+  edges. Settings has a search box: type "zoom" or "backup" to jump there.
 
 ## Work with an AI assistant
 

@@ -9,7 +9,23 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Settings → Board columns:** the columns (statuses) new projects start
+  with: rename them, change what each means (to do, in progress, done,
+  cancelled), recolor, reorder, add or remove. "Add to all projects" gives
+  every project the ones it's missing, in one undoable step. Assistants can
+  do the same (`get_default_columns`, `set_default_columns`,
+  `add_missing_columns`).
+- **Search in Settings:** type what you're after (zoom, backup, waiting,
+  tray, Claude…) and jump straight to it; Ctrl+F inside Settings.
+
+### Changed
+- Projects made before 0.5.0 get the **Waiting** column automatically, once.
+  Remove it from a project and it stays removed.
+
+### Fixed
+- The table's Status menu kept showing a project's old columns until the
+  view was reopened, so a new column (like Waiting) didn't appear in it.
 
 ## [0.5.0] - 2026-10-19
 

@@ -23,7 +23,7 @@
 
 <section class="card">
   <h4 class="card-title">Views</h4>
-  <div class="item">
+  <div class="item" data-setting="view-tabs">
     <span class="flex min-w-0 flex-1 flex-col">
       <span class="text-[13px]">View tabs</span>
       <span class="text-xs text-muted">Shown in the header; keep at least one</span>
@@ -37,7 +37,7 @@
       {/each}
     </div>
   </div>
-  <div class="item">
+  <div class="item" data-setting="quick-add-position">
     <span class="flex min-w-0 flex-1 flex-col">
       <span class="text-[13px]">Add-a-task box</span>
       <span class="text-xs text-muted">In the Table view; press N to jump to it from anywhere</span>
@@ -50,7 +50,7 @@
   </div>
 </section>
 
-<section class="card">
+<section class="card" data-setting="table-columns">
   <h4 class="card-title">Table columns <span class="font-normal tracking-normal normal-case">· point at a row to reorder it</span></h4>
   <ul aria-label="Table columns">
     {#each orderedColumns().filter((c) => c.id !== 'title') as col, i (col.id)}
@@ -66,7 +66,7 @@
   <p class="px-4 pb-3 text-xs text-muted">Task always comes first. In small windows some columns hide to fit. Drag a column's edge in the table to resize it.</p>
 </section>
 
-<section class="card">
+<section class="card" data-setting="panel-width">
   <h4 class="card-title">Task panel</h4>
   <div class="item">
     <input

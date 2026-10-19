@@ -22,6 +22,7 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Ctrl+= / Ctrl+− (or Ctrl + mouse wheel) | Zoom in / out (80% to 150%; capped so the window stays usable) |
 | Ctrl+0 | Reset zoom to 100% |
 | Esc | Close the open dialog, menu or task panel; on a subtask, go back to its parent first |
+| Ctrl+F in Settings | Search the settings |
 
 ## Quick Add syntax
 

@@ -53,7 +53,7 @@ fn load(tx: &Tx<'_>, id: Id) -> Result<Status> {
         .ok_or(Error::NotFound("status"))
 }
 
-fn siblings(tx: &Tx<'_>, project: Id) -> Result<Vec<Status>> {
+pub(crate) fn siblings(tx: &Tx<'_>, project: Id) -> Result<Vec<Status>> {
     let mut stmt = tx.conn().prepare(&format!(
         "SELECT {STATUS_COLS} FROM status WHERE project_id = ?1 AND deleted_at IS NULL
          ORDER BY sort_key"
@@ -75,7 +75,7 @@ fn default_color(category: Category) -> &'static str {
 
 /// Where a new column of `category` goes: after the first column of that
 /// category, else just before the finished columns, else at the end.
-fn slot_for(all: &[Status], category: Category) -> (Option<String>, Option<String>) {
+pub(crate) fn slot_for(all: &[Status], category: Category) -> (Option<String>, Option<String>) {
     let key = |i: usize| all.get(i).map(|s| s.sort_key.clone());
     if let Some(i) = all.iter().position(|s| s.category == category) {
         return (key(i), key(i + 1));

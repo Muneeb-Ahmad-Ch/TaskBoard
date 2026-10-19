@@ -85,7 +85,7 @@
   is undoable (Ctrl+Z) and shows up here as it happens. Nothing leaves this computer unless the assistant you connect sends it.
 </p>
 
-<section class="card">
+<section class="card" data-setting="ai-access">
   <div class="set-row">
     <div class="min-w-0 flex-1">
       <div class="text-[13px] font-medium">Let AI assistants read and change your data</div>
@@ -97,7 +97,7 @@
   </div>
 </section>
 
-<section class="card">
+<section class="card" data-setting="ai-connect">
   <h4 class="card-title">Connect an assistant</h4>
   {#each SNIPPETS as s (s.id)}
     <div class="set-row">
@@ -110,7 +110,7 @@
       </button>
     </div>
   {/each}
-  <div class="set-row">
+  <div class="set-row" data-setting="ai-test">
     <div class="min-w-0 flex-1">
       <div class="text-[13px] font-medium">Check that it works</div>
       <div class="mt-0.5 text-xs text-muted">

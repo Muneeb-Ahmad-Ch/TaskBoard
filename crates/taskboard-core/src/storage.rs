@@ -159,6 +159,7 @@ impl Db {
             batch: None,
         };
         db.ensure_inbox()?;
+        db.run_backfills()?;
         Ok(db)
     }
 

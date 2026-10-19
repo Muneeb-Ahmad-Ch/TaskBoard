@@ -253,3 +253,58 @@ fn the_server_answers_to_tb() {
     assert!(r["serverInfo"]["title"].as_str().unwrap().contains("tb"));
     assert!(r["instructions"].as_str().unwrap().contains("\"tb\""));
 }
+
+#[test]
+fn starter_columns_can_be_read_changed_and_applied() {
+    let mut s = server();
+    let cols = ok(&mut s, "get_default_columns", json!({}));
+    let names: Vec<&str> = cols["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "Backlog",
+            "To Do",
+            "In Progress",
+            "Waiting",
+            "Review",
+            "Done"
+        ]
+    );
+    // Change them (a color may be left out); new projects follow.
+    ok(
+        &mut s,
+        "set_default_columns",
+        json!({ "columns": [
+            { "name": "Ideas", "category": "todo" },
+            { "name": "Doing", "category": "active", "color": "262" },
+            { "name": "Shipped", "category": "done" }
+        ] }),
+    );
+    let p = project(&mut s, "Fresh");
+    let fresh = ok(&mut s, "list_statuses", json!({ "project_id": p }))["statuses"].clone();
+    let fresh: Vec<&str> = fresh
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(fresh, ["Ideas", "Doing", "Shipped"]);
+    // A list with nowhere for finished work is refused.
+    err(
+        &mut s,
+        "set_default_columns",
+        json!({ "columns": [{ "name": "Only", "category": "todo" }] }),
+    );
+    // Older projects get the missing ones in one step.
+    let r = ok(&mut s, "add_missing_columns", json!({}));
+    assert!(r["projects_updated"].as_u64().unwrap() >= 1, "{r}");
+    assert_eq!(
+        ok(&mut s, "add_missing_columns", json!({}))["projects_updated"],
+        0
+    );
+}

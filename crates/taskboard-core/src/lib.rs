@@ -3,6 +3,7 @@
 pub mod backup;
 mod clients;
 pub mod clock;
+pub mod columns;
 pub mod dashboard;
 pub mod error;
 pub mod events;
@@ -31,6 +32,7 @@ pub mod tx;
 pub mod views;
 
 pub use backup::BackupInfo;
+pub use columns::DefaultColumn;
 pub use dashboard::{ClientSummary, Dashboard, DayCount, ProjectProgress};
 pub use error::{Error, ErrorInfo, Result};
 pub use events::{

@@ -18,17 +18,6 @@ const COLS: &str = "p.id, p.client_id, p.name, p.code, p.color, p.icon, p.state,
                     p.deadline, p.is_inbox, p.sort_key, p.archived_at, p.created_at, p.updated_at,
                     p.section_id";
 
-/// Default workflow for new projects (SPEC §4.2). Waiting: the ball is in
-/// someone else's court (a reply, an approval); still open.
-const DEFAULT_STATUSES: [(&str, &str, Category); 6] = [
-    ("Backlog", "gray", Category::Todo),
-    ("To Do", "230", Category::Todo),
-    ("In Progress", "262", Category::Active),
-    ("Waiting", "70", Category::Active),
-    ("Review", "300", Category::Active),
-    ("Done", "150", Category::Done),
-];
-
 fn map(r: &Row<'_>) -> rusqlite::Result<Project> {
     Ok(Project {
         id: r.get(0)?,
@@ -64,18 +53,19 @@ pub(crate) fn map_status(r: &Row<'_>) -> rusqlite::Result<Status> {
 
 pub(crate) const STATUS_COLS: &str = "id, project_id, name, color, category, wip_limit, sort_key";
 
+/// A new project's columns: the starting workflow (Settings → Board columns).
 fn insert_default_statuses(tx: &mut Tx<'_>, project: Id) -> Result<()> {
     let mut last: Option<String> = None;
-    for (name, color, category) in DEFAULT_STATUSES {
+    for col in crate::columns::default_columns_in(tx.conn()) {
         let key = key_between(last.as_deref(), None)?;
         tx.insert(
             Table::Status,
             &[
                 ("id", Id::new().into()),
                 ("project_id", project.into()),
-                ("name", text(name)),
-                ("color", text(color)),
-                ("category", text(category.as_str())),
+                ("name", text(col.name)),
+                ("color", text(col.color)),
+                ("category", text(col.category.as_str())),
                 ("sort_key", text(key.clone())),
                 ("created_at", int(tx.now())),
             ],

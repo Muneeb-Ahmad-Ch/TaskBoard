@@ -36,7 +36,7 @@
 
 <p class="mb-3 text-xs text-muted">What the sidebar shows, and in which order. Hidden items stay available from search (Ctrl+K).</p>
 
-<section class="card">
+<section class="card" data-setting="sidebar-items">
   <h4 class="card-title">Items <span class="font-normal tracking-normal normal-case">· point at a row to reorder it</span></h4>
   <ul aria-label="Sidebar items">
     {#each layout.nav as item, i (item.id)}
@@ -56,7 +56,7 @@
   </ul>
 </section>
 
-<section class="card">
+<section class="card" data-setting="sidebar-details">
   <h4 class="card-title">Details</h4>
   <div class="grid grid-cols-2 gap-x-4 gap-y-1 px-4 pt-1 pb-3 max-[700px]:grid-cols-1" role="group" aria-label="Sidebar details">
     {#each details as d (d.id)}
@@ -71,7 +71,7 @@
   </div>
 </section>
 
-<section class="card">
+<section class="card" data-setting="sidebar-width">
   <h4 class="card-title">Width</h4>
   <div class="item">
     <input
