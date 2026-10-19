@@ -1,7 +1,7 @@
 {
   "$schema": "../ui/node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Taskboard",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "identifier": "app.taskboard.desktop",
   "build": {
     "frontendDist": "../ui/dist",

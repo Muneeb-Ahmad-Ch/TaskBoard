@@ -9,6 +9,10 @@ Download any version from the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.5.1] - 2026-10-19
+
 ### Added
 - **Settings → Board columns:** the columns (statuses) new projects start
   with: rename them, change what each means (to do, in progress, done,
@@ -312,7 +316,8 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.1...v0.4.0
