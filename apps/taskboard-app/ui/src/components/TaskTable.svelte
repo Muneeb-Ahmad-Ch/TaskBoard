@@ -60,7 +60,10 @@
   })
   /** Task has a width of its own (else it fills the free space). */
   const taskSized = $derived(layout.widths.title !== undefined)
-  const minWidth = $derived(36 + cols.reduce((sum, c) => sum + (c.id === 'title' && !taskSized ? TITLE_MIN : c.width), 0))
+  /** While an edge is dragged the table doesn't get narrower (spare room goes to
+   *  the empty end), so a scrolled view can't shift under the pointer. */
+  let dragFloor = $state(0)
+  const minWidth = $derived(Math.max(dragFloor, 36 + cols.reduce((sum, c) => sum + (c.id === 'title' && !taskSized ? TITLE_MIN : c.width), 0)))
   const gridTemplate = $derived(
     `36px ${cols.map((c) => (c.id === 'title' && !taskSized ? `minmax(${TITLE_MIN}px, 1fr)` : `${c.width}px`)).join(' ')}${taskSized ? ' minmax(0, 1fr)' : ''}`,
   )
@@ -92,6 +95,7 @@
     const handle = e.currentTarget as HTMLElement
     handle.setPointerCapture(e.pointerId)
     document.body.classList.add('col-resizing')
+    dragFloor = viewport?.scrollWidth ?? 0
     pinTask()
     const id = col.id
     const startX = e.clientX
@@ -104,6 +108,7 @@
       handle.removeEventListener('pointerup', up)
       handle.removeEventListener('pointercancel', up)
       document.body.classList.remove('col-resizing')
+      dragFloor = 0
       saveLayout()
     }
     handle.addEventListener('pointermove', move)
