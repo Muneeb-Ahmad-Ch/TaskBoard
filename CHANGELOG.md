@@ -9,6 +9,17 @@ Download any version from the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.5.0] - 2026-10-19
+
+### Upgrading
+- Install this version by hand once (0.4 and earlier can't update
+  themselves); from now on Taskboard updates itself from Settings → Updates.
+- The `-setup.exe` installs for your account and updates without an admin
+  prompt. If you installed the `.msi` before, you can uninstall it first;
+  your data and backups stay where they are.
+
 ### Added
 - **Updates in place:** Settings → Updates checks GitHub for a new version
   (at startup and every few hours; can be turned off), shows what's new, and
@@ -270,7 +281,8 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.3.0...v0.3.1
