@@ -733,7 +733,7 @@
           <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
           <span
             class="resizer"
-            class:last={ci === cols.length - 1 && !taskSized}
+            class:last={ci === cols.length - 1}
             role="separator"
             tabindex="0"
             aria-orientation="vertical"
