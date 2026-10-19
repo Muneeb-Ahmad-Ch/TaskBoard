@@ -488,7 +488,6 @@
 
   // ---------- cell menus ----------
   let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
-  const statusCache = new SvelteMap<Id, Status[]>()
   let datePicker: HTMLInputElement | undefined = $state()
   let pickFor: Id[] = []
   let estimating = $state<Id | null>(null)
@@ -502,11 +501,10 @@
   async function statusMenu(e: MouseEvent, row: TaskRow) {
     e.stopPropagation()
     const anchorEl = e.currentTarget as HTMLElement
-    let statuses = statusCache.get(row.project_id)
-    if (!statuses) {
-      statuses = await ipc.listStatuses(row.project_id)
-      statusCache.set(row.project_id, statuses)
-    }
+    // The app's live list (refreshed after every change, e.g. a column added
+    // from Ctrl+K or by an assistant); ask the database only if it isn't there.
+    let statuses: Status[] = app.statuses.filter((s) => s.project_id === row.project_id)
+    if (!statuses.length) statuses = await ipc.listStatuses(row.project_id)
     const r = anchorEl.getBoundingClientRect()
     menu = {
       x: r.left,
