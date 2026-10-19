@@ -157,6 +157,8 @@
   :global(.btn) {
     display: inline-flex;
     align-items: center;
+    /* Centered: icon-only buttons of a fixed width keep their icon in the middle. */
+    justify-content: center;
     gap: 0.4rem;
     height: 30px;
     padding-inline: 0.8rem;

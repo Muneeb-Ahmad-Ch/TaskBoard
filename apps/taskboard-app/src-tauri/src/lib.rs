@@ -879,6 +879,23 @@ async fn set_app_settings(
     Ok(saved)
 }
 
+/// How lists look (shared with assistants).
+#[tauri::command]
+async fn display_settings(
+    state: State<'_, AppState>,
+) -> CmdResult<taskboard_core::DisplaySettings> {
+    read(state, Db::display_settings).await
+}
+
+#[tauri::command]
+async fn set_display_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: taskboard_core::DisplaySettings,
+) -> CmdResult<taskboard_core::DisplaySettings> {
+    write(app, state, move |db| db.set_display_settings(settings)).await
+}
+
 /// Shows a sample reminder so the user can check Windows notifications work.
 #[tauri::command]
 fn test_notification(app: AppHandle) -> CmdResult<()> {
@@ -1179,6 +1196,8 @@ pub fn run() {
             set_notify_settings,
             app_settings,
             set_app_settings,
+            display_settings,
+            set_display_settings,
             test_notification,
             start_hidden,
             show_main_window,

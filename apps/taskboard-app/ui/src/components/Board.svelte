@@ -630,7 +630,7 @@
       {#if !singleProject}
         <span class="flex min-w-0 items-center gap-1 text-muted">
           <span class="size-1.5 shrink-0 rounded-full" style="background: {swatch(row.project_color)}"></span>
-          <span class="truncate">{row.client_name ? `${row.client_name} / ` : ''}{row.project_name}</span>
+          <span class="truncate">{row.client_name && !(app.display.hide_repeated_context && app.scope.kind === 'client') ? `${row.client_name} / ` : ''}{row.project_name}</span>
         </span>
       {/if}
       {#if row.due_date}

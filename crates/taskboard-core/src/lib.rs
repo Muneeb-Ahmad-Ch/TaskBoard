@@ -41,7 +41,7 @@ pub use events::{
 pub use exchange::ImportReport;
 pub use id::Id;
 pub use model::*;
-pub use notify::{AppSettings, Notification, NotificationKind, NotifySettings};
+pub use notify::{AppSettings, DisplaySettings, Notification, NotificationKind, NotifySettings};
 pub use planning::{
     ClientHours, DayOverride, DayPlan, FindSlots, Interval, LoggedTime, NewTimeEntry, OverrideKind,
     Slot, SlotDay, SlotResult, TimeEntryPatch, WorkingDay,

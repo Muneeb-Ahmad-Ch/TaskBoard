@@ -221,3 +221,18 @@ fn projects_from_before_waiting_get_it_once() {
     let db = Db::open(&path).unwrap();
     assert!(!names(&db, p.id).iter().any(|n| n == "Waiting"));
 }
+
+#[test]
+fn display_settings_default_to_hiding_repeated_names_and_round_trip() {
+    let mut db = Db::open_in_memory().unwrap();
+    assert!(db.display_settings().unwrap().hide_repeated_context);
+    let saved = db
+        .set_display_settings(DisplaySettings {
+            hide_repeated_context: false,
+        })
+        .unwrap();
+    assert!(!saved.hide_repeated_context);
+    assert!(!db.display_settings().unwrap().hide_repeated_context);
+    // A setting, not an undo step.
+    assert_eq!(db.history_state().unwrap().undo, None);
+}

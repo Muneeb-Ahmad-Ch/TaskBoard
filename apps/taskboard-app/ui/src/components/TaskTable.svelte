@@ -25,27 +25,31 @@
   const OVERSCAN = 12
 
   // ---------- columns ----------
-  // Order, visibility and widths are shared with Settings → Layout.
+  // Order, visibility and widths are shared with Settings → Views & table.
+  // Resizing works like a spreadsheet: dragging a column's right edge changes
+  // that column only, the columns after it move along, and the table scrolls
+  // sideways when it gets wider than the window. Task fills the free space
+  // until it has a width of its own (the first resize gives it one, so nothing
+  // else moves); double-clicking an edge fits the column to its content.
   type Col = ColumnDef
   const layout = tableLayout
   const saveLayout = saveTableLayout
-  /** Auto-hidden first when the table is too narrow (user-hidden ones stay hidden). */
   const TITLE_MIN = 180
+  const COL_MIN = 60
+  const COL_MAX = 900
+  /** Auto-hidden first when the table is too narrow (user-hidden ones stay hidden). */
   const SQUEEZE_ORDER: ColId[] = ['tags', 'estimate', 'progress', 'priority', 'status']
   let width = $state(1200)
-  /** While a column edge is being dragged, the columns on screen stay as they
-   *  were (none appears or vanishes under the pointer); they re-fit on release. */
-  let frozen = $state<ColId[] | null>(null)
+  /** In a project's (or the Inbox's) own list every row has the same project. */
+  const projectColumnRepeats = $derived(app.display.hide_repeated_context && (app.scope.kind === 'project' || app.scope.kind === 'inbox'))
+  /** In a group's own list every row has the same group. */
+  const groupRepeats = $derived(app.display.hide_repeated_context && app.scope.kind === 'client')
   const cols = $derived.by(() => {
-    const withWidth = (c: ColumnDef) => ({ ...c, width: layout.widths[c.id] ?? c.width })
-    if (frozen) {
-      const ids = frozen
-      return orderedColumns().filter((c) => ids.includes(c.id)).map(withWidth)
-    }
-    let list = orderedColumns().filter((c) => c.id === 'title' || !layout.hidden.includes(c.id)).map(withWidth)
-    // Decide with default widths: which columns fit depends on the window, never
-    // on how the user sized them, so resizing a column can't make another one
-    // appear or vanish (a wider column scrolls the table; room freed goes to Task).
+    let list = orderedColumns()
+      .filter((c) => c.id === 'title' || (!layout.hidden.includes(c.id) && !(c.id === 'project' && projectColumnRepeats)))
+      .map((c) => ({ ...c, width: layout.widths[c.id] ?? c.width }))
+    // Which columns fit depends on the window and default widths only, never on
+    // how they were sized, so resizing never makes another column appear or vanish.
     const fit = (c: Col) => COLUMN_DEFS.find((d) => d.id === c.id)?.width ?? c.width
     const need = () => 36 + TITLE_MIN + list.reduce((sum, c) => sum + (c.id === 'title' ? 0 : fit(c)), 0)
     for (const id of SQUEEZE_ORDER) {
@@ -54,108 +58,52 @@
     }
     return list
   })
-  /** Task fills the leftover space but never shrinks below this; a resize that
-   *  runs out of room on the right raises it, so the table scrolls instead. */
-  const titleMin = $derived(Math.max(TITLE_MIN, layout.widths.title ?? 0))
-  const minWidth = $derived(36 + titleMin + cols.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0))
+  /** Task has a width of its own (else it fills the free space). */
+  const taskSized = $derived(layout.widths.title !== undefined)
+  const minWidth = $derived(36 + cols.reduce((sum, c) => sum + (c.id === 'title' && !taskSized ? TITLE_MIN : c.width), 0))
   const gridTemplate = $derived(
-    `36px ${cols.map((c) => (c.id === 'title' ? `minmax(${titleMin}px, 1fr)` : `${c.width}px`)).join(' ')}`,
+    `36px ${cols.map((c) => (c.id === 'title' && !taskSized ? `minmax(${TITLE_MIN}px, 1fr)` : `${c.width}px`)).join(' ')}${taskSized ? ' minmax(0, 1fr)' : ''}`,
   )
+  const headerLabel = (c: Col) => (c.id === 'project' && groupRepeats ? 'Project' : c.label)
 
-  const COL_MIN = 70
-  const COL_MAX = 600
+  const clampWidth = (id: ColId, w: number) =>
+    Math.round(id === 'title' ? Math.max(TITLE_MIN, Math.min(2000, w)) : Math.max(COL_MIN, Math.min(COL_MAX, w)))
 
-  /**
-   * What a column's right-edge handle changes, so the edge follows the mouse.
-   * The Task column fills the remaining space, so:
-   * - Task's own handle takes width from (or gives it to) the columns to its right;
-   * - left of Task, a column just grows and Task gives way;
-   * - right of Task, the column trades width with the columns to its right
-   *   (nearest first), so Task and everything to the left stay put.
-   */
-  type Resize = { target: Col; sign: 1 | -1; after?: Col[] }
-  function resizeTarget(col: Col): Resize | null {
-    // By id: `cols` is rebuilt on every width change, so a handle's own
-    // column object goes stale between key presses.
-    const i = cols.findIndex((c) => c.id === col.id)
-    if (i < 0) return null
-    col = cols[i]
-    const next = cols[i + 1]
-    if (col.id === 'title') return next ? { target: col, sign: 1, after: cols.slice(i + 1) } : null
-    if (i < cols.findIndex((c) => c.id === 'title')) return { target: col, sign: 1 }
-    return next ? { target: col, sign: 1, after: cols.slice(i + 1) } : null
+  /** A column's header cell (after the checkbox column). */
+  function headerCell(id: ColId): HTMLElement | undefined {
+    const i = cols.findIndex((c) => c.id === id)
+    return i < 0 ? undefined : viewport?.querySelectorAll<HTMLElement>('[role="columnheader"]')[i + 1]
   }
 
-  function setWidth(id: ColId, w: number) {
-    layout.widths[id] = Math.round(Math.max(COL_MIN, Math.min(COL_MAX, w)))
+  /** The width a column has on screen right now. */
+  function shownWidth(id: ColId): number {
+    return headerCell(id)?.getBoundingClientRect().width ?? layout.widths[id] ?? COLUMN_DEFS.find((d) => d.id === id)?.width ?? 120
   }
 
-  /**
-   * Moves a handle by `dx` pixels from the starting widths (target, the columns
-   * after it, and Task's pixel width). Growing takes room from the columns to
-   * the right first; once they are at their minimum the column keeps growing
-   * and Task is held at its width, so the table scrolls sideways rather than
-   * the edge stopping under the mouse.
-   */
-  function applyResize(r: Resize, startA: number, startAfter: number[], taskPx: number, dx: number) {
-    const fill = r.target.id === 'title'
-    // Task never goes below its minimum; other columns stay within their limits.
-    let d = fill ? Math.max(TITLE_MIN - taskPx, dx) : Math.max(COL_MIN - startA, Math.min(COL_MAX - startA, dx * r.sign))
-    if (r.after) {
-      if (d > 0) {
-        // Growing takes room from the columns to the right, nearest first.
-        const room = startAfter.reduce((sum, w) => sum + Math.max(0, w - COL_MIN), 0)
-        let left = Math.min(d, room)
-        r.after.forEach((c, k) => {
-          const give = Math.min(left, Math.max(0, startAfter[k] - COL_MIN))
-          left -= give
-          setWidth(c.id, startAfter[k] - give)
-        })
-      } else {
-        // Shrinking: the next column takes the space.
-        d = Math.max(d, -(COL_MAX - startAfter[0]))
-        r.after.forEach((c, k) => setWidth(c.id, k === 0 ? startAfter[0] - d : startAfter[k]))
-      }
-      // Task's own edge moves by the whole drag (the table scrolls if it must);
-      // right of Task, Task and everything to its left stay put.
-      layout.widths.title = fill ? Math.max(TITLE_MIN, taskPx + d) : Math.max(TITLE_MIN, taskPx)
-    }
-    if (!fill) setWidth(r.target.id, startA + d)
-  }
-
-  /** Task's pixel width right now, for freezing it during a resize. */
-  function taskWidth(): number {
-    return viewport?.querySelector<HTMLElement>('[role="columnheader"]:nth-child(2)')?.getBoundingClientRect().width ?? TITLE_MIN
-  }
-
-  /** After a resize: Task's floor only matters while the table overflows. */
-  function settleTitleMin() {
-    const floor = layout.widths.title
-    if (floor && 36 + floor + cols.reduce((sum, c) => sum + (c.id === 'title' ? 0 : c.width), 0) <= width) delete layout.widths.title
+  /** Before a resize, Task keeps the width it has, so only the dragged column changes. */
+  function pinTask() {
+    if (layout.widths.title === undefined) layout.widths.title = clampWidth('title', shownWidth('title'))
   }
 
   function startResize(e: PointerEvent, col: Col) {
     if (e.button !== 0) return
-    const r = resizeTarget(col)
-    if (!r) return
     e.preventDefault()
     e.stopPropagation()
     const handle = e.currentTarget as HTMLElement
     handle.setPointerCapture(e.pointerId)
     document.body.classList.add('col-resizing')
+    pinTask()
+    const id = col.id
     const startX = e.clientX
-    const startA = r.target.width
-    const startAfter = (r.after ?? []).map((c) => c.width)
-    const taskPx = taskWidth()
-    frozen = cols.map((c) => c.id)
-    const move = (ev: PointerEvent) => applyResize(r, startA, startAfter, taskPx, ev.clientX - startX)
+    const start = layout.widths[id] ?? shownWidth(id)
+    const move = (ev: PointerEvent) => {
+      layout.widths[id] = clampWidth(id, start + ev.clientX - startX)
+    }
     const up = () => {
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', up)
       handle.removeEventListener('pointercancel', up)
       document.body.classList.remove('col-resizing')
-      frozen = null
-      settleTitleMin()
       saveLayout()
     }
     handle.addEventListener('pointermove', move)
@@ -163,30 +111,47 @@
     handle.addEventListener('pointercancel', up)
   }
 
-  /** Keyboard: ← / → resize by 16px; Home resets. */
+  /** Keyboard: ← / → resize by 16px (Shift: 48px); Enter fits; Home resets. */
   function resizeKey(e: KeyboardEvent, col: Col) {
-    const r = resizeTarget(col)
-    if (!r) return
-    const step = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0
-    // Read the saved widths: repeated keys can arrive before the next render.
-    const a = layout.widths[r.target.id] ?? r.target.width
-    const after = (r.after ?? []).map((c) => layout.widths[c.id] ?? c.width)
-    if (step) applyResize(r, a, after, taskWidth(), step)
-    else if (e.key === 'Home') delete layout.widths[r.target.id === 'title' && r.after ? r.after[0].id : r.target.id]
+    const step = (e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0) * (e.shiftKey ? 3 : 1)
+    if (step) {
+      pinTask()
+      layout.widths[col.id] = clampWidth(col.id, (layout.widths[col.id] ?? shownWidth(col.id)) + step)
+    } else if (e.key === 'Home') delete layout.widths[col.id]
+    else if (e.key === 'Enter') return autoFit(col)
     else return
     e.preventDefault()
     e.stopPropagation()
-    settleTitleMin()
     saveLayout()
   }
 
-  /** Double-click a handle: back to the default width. */
-  function resetWidth(col: Col) {
-    const r = resizeTarget(col)
-    if (!r) return
-    delete layout.widths[r.target.id]
-    if (r.after?.[0]) delete layout.widths[r.after[0].id]
-    delete layout.widths.title
+  /** The width `el` would take with no limit (text untruncated). */
+  function naturalWidth(el: HTMLElement): number {
+    const { width: w, maxWidth: mw, flex } = el.style
+    el.style.width = 'max-content'
+    el.style.maxWidth = 'none'
+    el.style.flex = 'none'
+    const px = el.getBoundingClientRect().width
+    el.style.width = w
+    el.style.maxWidth = mw
+    el.style.flex = flex
+    return px
+  }
+
+  /** Double-click an edge: fit the column to its widest content on screen. */
+  function autoFit(col: Col) {
+    const i = cols.findIndex((c) => c.id === col.id)
+    if (i < 0 || !viewport) return
+    const label = headerCell(col.id)?.querySelector<HTMLElement>('button')
+    // Cell padding (16) and room for the edge handle (8).
+    let widest = label ? naturalWidth(label) + 24 : 0
+    for (const row of viewport.querySelectorAll<HTMLElement>('[role="row"][aria-rowindex]')) {
+      const content = row.querySelectorAll<HTMLElement>('[role="gridcell"]')[i + 1]?.firstElementChild as HTMLElement | null
+      if (content) widest = Math.max(widest, naturalWidth(content) + 18)
+    }
+    if (!widest) return
+    pinTask()
+    layout.widths[col.id] = clampWidth(col.id, widest)
     saveLayout()
   }
 
@@ -757,32 +722,30 @@
     <div class="sticky top-0 z-10 grid h-9 items-center border-b border-border bg-surface-2 text-xs text-muted select-none" style="grid-template-columns: {gridTemplate}; min-width: {minWidth}px" role="row" tabindex="-1" oncontextmenu={columnsMenu}>
       <div role="columnheader" class="h-full"><button class="grid h-full w-full place-items-center text-subtle hover:text-text" title="Columns" aria-label="Choose columns" onclick={columnsMenu}><Columns3 size={14} /></button></div>
       {#each cols as col, ci (col.id)}
-        <div class="relative flex h-full items-center px-2 {col.align === 'right' ? 'justify-end' : ''}" role="columnheader" aria-sort={app.sort === col.sort ? (app.descending ? 'descending' : 'ascending') : 'none'}>
-          <button class="flex items-center gap-1 font-medium {col.sort ? 'hover:text-text' : 'cursor-default'}" onclick={() => sortBy(col)}>
-            {col.label}
+        <div class="relative flex h-full min-w-0 items-center px-2" role="columnheader" aria-sort={app.sort === col.sort ? (app.descending ? 'descending' : 'ascending') : 'none'}>
+          <button class="flex min-w-0 items-center gap-1 font-medium {col.sort ? 'hover:text-text' : 'cursor-default'}" onclick={() => sortBy(col)}>
+            <span class="truncate">{headerLabel(col)}</span>
             {#if col.sort && app.sort === col.sort}
               {#if app.descending}<ArrowDown size={12} />{:else}<ArrowUp size={12} />{/if}
             {/if}
           </button>
-          {#if resizeTarget(col)}
-            <!-- Focusable splitter (ARIA window-splitter pattern): ←/→ resize. -->
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
-            <span
-              class="resizer"
-              class:last={ci === cols.length - 1}
-              role="separator"
-              tabindex="0"
-              aria-orientation="vertical"
-              aria-label="Resize {col.label} column (arrow keys; double-click to reset)"
-              aria-valuemin={COL_MIN}
-              aria-valuemax={COL_MAX}
-              aria-valuenow={col.id === 'title' ? (cols[ci + 1]?.width ?? 0) : col.width}
-              title="Drag to resize · double-click to reset"
-              onpointerdown={(e) => startResize(e, col)}
-              ondblclick={() => resetWidth(col)}
-              onkeydown={(e) => resizeKey(e, col)}
-            ></span>
-          {/if}
+          <!-- Focusable splitter (ARIA window-splitter pattern): ←/→ resize. -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
+          <span
+            class="resizer"
+            class:last={ci === cols.length - 1 && !taskSized}
+            role="separator"
+            tabindex="0"
+            aria-orientation="vertical"
+            aria-label="Resize {headerLabel(col)} column (arrow keys; Enter or double-click fits it; Home resets)"
+            aria-valuemin={col.id === 'title' ? TITLE_MIN : COL_MIN}
+            aria-valuemax={col.id === 'title' ? 2000 : COL_MAX}
+            aria-valuenow={Math.round(col.id === 'title' && !taskSized ? TITLE_MIN : col.width)}
+            title="Drag to resize · double-click to fit"
+            onpointerdown={(e) => startResize(e, col)}
+            ondblclick={() => autoFit(col)}
+            onkeydown={(e) => resizeKey(e, col)}
+          ></span>
         </div>
       {/each}
     </div>
@@ -844,7 +807,7 @@
             </button>
             </div>
             {#each cols as col (col.id)}
-              <div class="cell min-w-0 px-2 {col.align === 'right' ? 'text-right' : ''}" role="gridcell">
+              <div class="cell min-w-0 px-2" role="gridcell">
                 {#if col.id === 'title'}
                   {#if renaming === row.id}
                     <input
@@ -871,7 +834,7 @@
                 {:else if col.id === 'project'}
                   <button class="cell-btn" title={projectPath.get(row.project_id)} onclick={(e) => projectMenu(e, row)}>
                     <span class="size-2 shrink-0 rounded-full" style="background: {swatch(row.project_color)}"></span>
-                    {#if row.client_name}<span class="truncate text-muted">{row.client_name}</span><span class="text-subtle">/</span>{/if}
+                    {#if row.client_name && !groupRepeats}<span class="truncate text-muted">{row.client_name}</span><span class="text-subtle">/</span>{/if}
                     <span class="truncate">{row.project_name}</span>
                   </button>
                 {:else if col.id === 'status'}
@@ -898,7 +861,7 @@
                 {:else if col.id === 'estimate'}
                   {#if estimating === row.id}
                     <input
-                      class="h-7 w-full rounded border border-accent bg-surface-1 px-1.5 text-right outline-none"
+                      class="h-7 w-full rounded border border-accent bg-surface-1 px-1.5 outline-none"
                       value={row.estimate_minutes ? minutes(row.estimate_minutes) : ''}
                       placeholder="1h30m"
                       use:autofocus
@@ -914,7 +877,7 @@
                       onblur={() => (estimating = null)}
                     />
                   {:else}
-                    <button class="cell-btn tabular w-full justify-end text-muted" onclick={(e) => { e.stopPropagation(); estimating = row.id }}>
+                    <button class="cell-btn tabular text-muted" onclick={(e) => { e.stopPropagation(); estimating = row.id }}>
                       {#if row.estimate_minutes}{minutes(row.estimate_minutes)}{:else}<span class="ghost">—</span>{/if}
                     </button>
                   {/if}

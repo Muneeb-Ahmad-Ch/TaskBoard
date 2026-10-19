@@ -688,4 +688,22 @@ fn assistants_cannot_change_app_settings_or_their_own_access() {
             || n.contains("import")),
         "{names:?}"
     );
+    // Settings an assistant may change: how lists look, start with Windows,
+    // keep running in the tray. Never the AI access switch itself.
+    let before = ok(&mut s, "get_settings", json!({}));
+    assert_eq!(before["hide_repeated_context"], true, "{before}");
+    assert!(before.get("ai_access").is_none(), "{before}");
+    let changed = ok(
+        &mut s,
+        "update_settings",
+        json!({ "hide_repeated_context": false, "keep_running_in_tray": false }),
+    );
+    assert_eq!(changed["hide_repeated_context"], false);
+    assert_eq!(changed["keep_running_in_tray"], false);
+    let refused = err(&mut s, "update_settings", json!({ "ai_access": false }));
+    assert!(refused.contains("ai_access"), "{refused}");
+    let after = ok(&mut s, "get_settings", json!({}));
+    assert_eq!(after["start_with_windows"], before["start_with_windows"]);
+    // The switch is untouched: tools still answer.
+    ok(&mut s, "get_overview", json!({}));
 }

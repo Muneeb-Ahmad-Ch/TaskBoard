@@ -2,6 +2,7 @@
 // scope/view and small cached lists that are re-fetched on `data-changed`.
 import type { Category } from './bindings/Category'
 import type { Client } from './bindings/Client'
+import type { DisplaySettings } from './bindings/DisplaySettings'
 import type { HistoryState } from './bindings/HistoryState'
 import type { Id } from './bindings/Id'
 import type { ProjectSummary } from './bindings/ProjectSummary'
@@ -98,6 +99,8 @@ export const app = $state({
   sections: [] as Section[],
   /** Pinned project ids, in order (stored in the database). */
   pinned: [] as Id[],
+  /** How lists look (Settings → Views & table); assistants can change it too. */
+  display: { hide_repeated_context: true } as DisplaySettings,
   /** The saved view last opened; cleared when the scope changes. */
   activeViewId: null as Id | null,
 })
@@ -324,7 +327,7 @@ export async function unpinProject(id: Id) {
 export async function refreshMeta() {
   if (!inTauri) return
   try {
-    const [clients, projects, counts, history, statuses, views, sections, pinned] = await Promise.all([
+    const [clients, projects, counts, history, statuses, views, sections, pinned, display] = await Promise.all([
       ipc.listClients(),
       ipc.listProjects(),
       ipc.sidebarCounts(),
@@ -333,8 +336,10 @@ export async function refreshMeta() {
       ipc.savedViews(),
       ipc.listSections(),
       ipc.pinnedProjects(),
+      ipc.displaySettings().catch(() => app.display),
     ])
     app.pinned = pinned
+    app.display = display
     void migrateLegacyPins(pinned, projects)
     app.sections = sections
     adoptLegacySectionPrefs(sections)
@@ -373,6 +378,19 @@ export async function addMissingColumns() {
   if (n === undefined) return
   if (n) toast(`Added the missing columns to ${plural(n, 'project')}`, { action: { label: 'Undo', run: () => void undo() } })
   else toast('Every project already has the default columns')
+}
+
+/** Changes how lists look (saved with the data, so assistants see it too). */
+export async function setDisplay(patch: Partial<DisplaySettings>) {
+  const next = { ...app.display, ...patch }
+  const before = app.display
+  app.display = next
+  try {
+    app.display = await ipc.setDisplaySettings(next)
+  } catch (err) {
+    app.display = before
+    toast(errorMessage(err), { kind: 'error' })
+  }
 }
 
 /** Archives a list's completed tasks (top-level, done or cancelled) as one undo step. */

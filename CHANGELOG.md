@@ -18,14 +18,29 @@ Download any version from the
   `add_missing_columns`).
 - **Search in Settings:** type what you're after (zoom, backup, waiting,
   tray, Claude…) and jump straight to it; Ctrl+F inside Settings.
+- **No repeated names:** in a group's list, rows show just the project; in a
+  project's list (and the Inbox), the Group / Project column is hidden; board
+  cards follow suit. Settings → Views & table → "Leave out names a list
+  already shows" (on by default).
+- **Assistants can change settings** (`get_settings`, `update_settings`): that
+  option, Start with Windows and Keep running in the tray. The AI access
+  switch, restoring backups and imports stay in the app.
 
 ### Changed
+- **Column resizing works like a spreadsheet:** dragging a column's edge
+  changes that column only, the columns after it move along, and the table
+  scrolls sideways when it's wider than the window. Every column can be
+  resized, the last one too; double-click an edge (or press Enter on it) to
+  fit the column to its content, Home to reset it.
+- Estimate is aligned like the other columns.
 - Projects made before 0.5.0 get the **Waiting** column automatically, once.
   Remove it from a project and it stays removed.
 
 ### Fixed
 - The table's Status menu kept showing a project's old columns until the
   view was reopened, so a new column (like Waiting) didn't appear in it.
+- The zoom − and + buttons in Settings → Appearance had their icons off
+  center.
 
 ## [0.5.0] - 2026-10-19
 

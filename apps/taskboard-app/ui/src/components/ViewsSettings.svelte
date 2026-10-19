@@ -5,6 +5,7 @@
   import { layout, PANEL, resetViewsLayout, setPanelWidth, setQuickAddPlacement, setTab, TAB_LABELS, type TabId } from '../lib/layout.svelte'
   import { moveColumn, orderedColumns, resetTableLayout, setColumnVisible, tableLayout } from '../lib/tableLayout.svelte'
   import { toast } from '../lib/toast.svelte'
+  import { app, setDisplay } from '../lib/store.svelte'
   import Switch from './Switch.svelte'
 
   let { onchange = () => {} }: { onchange?: () => void } = $props()
@@ -47,6 +48,16 @@
         <button role="radio" aria-checked={layout.quickAdd === value} class="seg" onclick={() => { setQuickAddPlacement(value as 'top' | 'bottom'); onchange() }}>{label}</button>
       {/each}
     </div>
+  </div>
+</section>
+
+<section class="card" data-setting="repeated-context">
+  <div class="item">
+    <span class="flex min-w-0 flex-1 flex-col">
+      <span class="text-[13px]">Leave out names a list already shows</span>
+      <span class="text-xs text-muted">In a group's list, rows show just the project; in a project's list (and the Inbox), the Group / Project column is hidden. Applies to the board too.</span>
+    </span>
+    <Switch label="Leave out names a list already shows" checked={app.display.hide_repeated_context} onchange={(v) => { void setDisplay({ hide_repeated_context: v }); onchange() }} />
   </div>
 </section>
 

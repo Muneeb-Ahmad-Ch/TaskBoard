@@ -1,8 +1,9 @@
-//! Everything else: dashboard, undo / redo, saved views, reminders, backups.
+//! Everything else: dashboard, undo / redo, saved views, reminders, settings,
+//! backups.
 //!
-//! Deliberately absent: app settings (start with Windows, tray, AI access —
-//! an assistant must not switch its own access on), restoring backups and
-//! importing, which replace data wholesale.
+//! Deliberately absent: the AI access switch (an assistant must never turn
+//! its own access on or off), restoring backups and importing, which replace
+//! data wholesale.
 
 use serde_json::{Map, Value, json};
 use taskboard_core::{Db, NotifySettings, SavedViewPatch};
@@ -72,6 +73,20 @@ pub(super) const TOOLS: &[Tool] = &[
         name: "delete_saved_view",
         description: "Deletes a saved view (the tasks it showed are untouched).",
         fields: &[("id", ID, true)],
+    },
+    Tool {
+        name: "get_settings",
+        description: "Settings an assistant may change: hide_repeated_context (in a group's or project's list, leave out the name every row shares), start_with_windows, keep_running_in_tray. The AI access switch exists only in the app.",
+        fields: &[],
+    },
+    Tool {
+        name: "update_settings",
+        description: "Changes any of hide_repeated_context, start_with_windows, keep_running_in_tray (only the fields given). The AI access switch, restoring backups and importing are only in the app.",
+        fields: &[
+            ("hide_repeated_context", BOOL, false),
+            ("start_with_windows", BOOL, false),
+            ("keep_running_in_tray", BOOL, false),
+        ],
     },
     Tool {
         name: "get_reminder_settings",
@@ -166,6 +181,25 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
             db.delete_saved_view(id_arg(args, "id")?).map_err(err)?;
             Ok(json!({ "deleted": true }))
         }
+        "get_settings" => settings_json(db),
+        "update_settings" => {
+            let flag = |k: &str| args.get(k).and_then(Value::as_bool);
+            let mut display = db.display_settings().map_err(err)?;
+            if let Some(v) = flag("hide_repeated_context") {
+                display.hide_repeated_context = v;
+                db.set_display_settings(display).map_err(err)?;
+            }
+            // The AI access switch is read and written back unchanged.
+            let mut app = db.app_settings().map_err(err)?;
+            let start = flag("start_with_windows");
+            let tray = flag("keep_running_in_tray");
+            if start.is_some() || tray.is_some() {
+                app.autostart = start.unwrap_or(app.autostart);
+                app.close_to_tray = tray.unwrap_or(app.close_to_tray);
+                db.set_app_settings(app).map_err(err)?;
+            }
+            settings_json(db)
+        }
         "get_reminder_settings" => to_value(db.notify_settings().map_err(err)?),
         "update_reminder_settings" => {
             let mut current = serde_json::to_value(db.notify_settings().map_err(err)?)
@@ -250,4 +284,14 @@ fn view_spec(db: &Db, mut base: Map<String, Value>, args: &Args) -> Result<Value
         );
     }
     Ok(Value::Object(base))
+}
+
+fn settings_json(db: &Db) -> ToolResult {
+    let display = db.display_settings().map_err(err)?;
+    let app = db.app_settings().map_err(err)?;
+    Ok(json!({
+        "hide_repeated_context": display.hide_repeated_context,
+        "start_with_windows": app.autostart,
+        "keep_running_in_tray": app.close_to_tray,
+    }))
 }

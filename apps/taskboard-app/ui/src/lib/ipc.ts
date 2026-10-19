@@ -25,6 +25,7 @@ import type { TimeEntryPatch } from './bindings/TimeEntryPatch'
 import type { WorkingDay } from './bindings/WorkingDay'
 import type { Category } from './bindings/Category'
 import type { DefaultColumn } from './bindings/DefaultColumn'
+import type { DisplaySettings } from './bindings/DisplaySettings'
 import type { ClientPatch } from './bindings/ClientPatch'
 import type { DbInfo } from './bindings/DbInfo'
 import type { Direction } from './bindings/Direction'
@@ -172,6 +173,9 @@ export const ipc = {
   notifySettings: () => invoke<NotifySettings>('notify_settings'),
   setNotifySettings: (settings: NotifySettings) => invoke<NotifySettings>('set_notify_settings', { settings }),
   appSettings: () => invoke<AppSettings>('app_settings'),
+  /** How lists look (shared with assistants). */
+  displaySettings: () => invoke<DisplaySettings>('display_settings'),
+  setDisplaySettings: (settings: DisplaySettings) => invoke<DisplaySettings>('set_display_settings', { settings }),
   /** Settings → AI assistants: how to connect, and who has. */
   mcpInfo: () => invoke<McpInfo>('mcp_info'),
   mcpSelfTest: () => invoke<McpTest>('mcp_self_test'),

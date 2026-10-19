@@ -60,6 +60,27 @@ pub struct AppSettings {
     pub ai_access: bool,
 }
 
+/// How lists look; stored with the data so assistants can change it too
+/// (Settings → Views & table).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default)]
+#[ts(export)]
+pub struct DisplaySettings {
+    /// In a group's list, rows leave out the group's name; in a project's
+    /// list (and the Inbox), the Group / Project column is hidden.
+    pub hide_repeated_context: bool,
+}
+
+impl Default for DisplaySettings {
+    fn default() -> Self {
+        Self {
+            hide_repeated_context: true,
+        }
+    }
+}
+
+const DISPLAY_KEY: &str = "display";
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -156,6 +177,16 @@ impl Db {
 
     pub fn app_settings(&self) -> Result<AppSettings> {
         self.setting(APP_KEY)
+    }
+
+    /// How lists look (shared by the app and assistants).
+    pub fn display_settings(&self) -> Result<DisplaySettings> {
+        self.setting(DISPLAY_KEY)
+    }
+
+    pub fn set_display_settings(&mut self, s: DisplaySettings) -> Result<DisplaySettings> {
+        self.set_setting(DISPLAY_KEY, &s)?;
+        Ok(s)
     }
 
     pub fn set_app_settings(&mut self, s: AppSettings) -> Result<AppSettings> {

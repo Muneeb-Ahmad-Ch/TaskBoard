@@ -52,7 +52,9 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Right-click, Menu key or Shift+F10 | Row menu: open, rename, done, duplicate, archive, delete (acts on the selection) |
 | Ctrl+A | Select all loaded rows |
 | Esc | Clear selection |
-| ← / → on a column's resize handle | Make the column narrower / wider (double-click the handle to reset) |
+| ← / → on a column's edge (Shift: bigger steps) | Make that column narrower / wider; the columns after it move along |
+| Enter or double-click on a column's edge | Fit the column to its content |
+| Home on a column's edge | Default width (on Task: fill the free space again) |
 
 ## Board
 

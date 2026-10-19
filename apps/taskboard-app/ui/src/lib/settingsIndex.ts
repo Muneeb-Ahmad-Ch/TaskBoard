@@ -41,6 +41,7 @@ export const SETTINGS: SettingEntry[] = [
   S('sections', 'Sections', 'sections', 'clients personal teams groups rename section new section delete reorder area categories'),
   S('views', 'View tabs', 'view-tabs', 'table board calendar tabs views'),
   S('views', 'Add-a-task box position', 'quick-add-position', 'quick add input top bottom new task box'),
+  S('views', 'Leave out names a list already shows', 'repeated-context', 'repeated redundant repeat same company client group project name column hide'),
   S('views', 'Table columns', 'table-columns', 'columns hide show reorder priority due progress estimate tags group project'),
   S('views', 'Task panel width', 'panel-width', 'panel details width resize'),
   S('columns', 'Board columns for new projects', 'columns-default', 'status statuses waiting backlog to do in progress review done cancelled workflow kanban stage'),

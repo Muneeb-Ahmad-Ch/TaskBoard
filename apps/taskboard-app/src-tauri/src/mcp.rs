@@ -43,11 +43,15 @@ pub fn spawn_change_watcher(app: AppHandle, db: Arc<Mutex<Db>>) {
         .name("change-watcher".into())
         .spawn(move || {
             let mut last: Option<i64> = None;
+            let mut autostart: Option<bool> = None;
             loop {
                 std::thread::sleep(Duration::from_millis(1200));
-                let version = match db.lock() {
-                    Ok(db) => db.data_version().ok(),
-                    Err(_) => None,
+                let (version, start) = match db.lock() {
+                    Ok(db) => (
+                        db.data_version().ok(),
+                        db.app_settings().ok().map(|s| s.autostart),
+                    ),
+                    Err(_) => (None, None),
                 };
                 let Some(version) = version else { continue };
                 if last.is_some_and(|v| v != version) {
@@ -55,8 +59,17 @@ pub fn spawn_change_watcher(app: AppHandle, db: Arc<Mutex<Db>>) {
                     if let Err(err) = app.emit("data-changed", ()) {
                         tracing::warn!(%err, "failed to emit data-changed");
                     }
+                    // An assistant turned "Start with Windows" on or off.
+                    if let Some(start) = start
+                        && autostart.is_some_and(|a| a != start)
+                    {
+                        crate::desktop::sync_autostart(&app, start);
+                    }
                 }
                 last = Some(version);
+                if start.is_some() {
+                    autostart = start;
+                }
             }
         })
         .map(|_| ())

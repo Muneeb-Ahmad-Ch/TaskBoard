@@ -281,7 +281,7 @@
         {#each results as r, i (r.anchor)}
           <button role="option" aria-selected={i === active} class="result" onclick={() => void go(r)} onmouseenter={() => (active = i)}>
             <span class="truncate text-[13px]">{r.label}</span>
-            <span class="truncate text-[11px] text-subtle">{pageLabel(r.page)}</span>
+            <span class="truncate text-[11px] text-muted">{pageLabel(r.page)}</span>
           </button>
         {:else}
           <p class="px-2 py-1 text-xs text-muted">No settings match “{query.trim()}”.</p>

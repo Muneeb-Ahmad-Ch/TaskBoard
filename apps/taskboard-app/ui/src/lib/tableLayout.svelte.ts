@@ -20,7 +20,7 @@ export const COLUMN_DEFS: ColumnDef[] = [
   { id: 'priority', label: 'Priority', width: 104, sort: 'priority' },
   { id: 'due', label: 'Due', width: 136, sort: 'due' },
   { id: 'progress', label: 'Progress', width: 118 },
-  { id: 'estimate', label: 'Estimate', width: 88, align: 'right' },
+  { id: 'estimate', label: 'Estimate', width: 96 },
   { id: 'tags', label: 'Tags', width: 150 },
 ]
 
