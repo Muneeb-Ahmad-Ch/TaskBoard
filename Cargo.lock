@@ -4338,7 +4338,7 @@ checksum = "61c41af27dd6d1e27b1b16b489db798443478cef1f06a660c96db617ba5de3b1"
 
 [[package]]
 name = "taskboard-app"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "jiff",
  "serde",
@@ -4364,7 +4364,7 @@ dependencies = [
 
 [[package]]
 name = "taskboard-cli"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -4378,7 +4378,7 @@ dependencies = [
 
 [[package]]
 name = "taskboard-core"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "ammonia",
  "csv",
@@ -4398,7 +4398,7 @@ dependencies = [
 
 [[package]]
 name = "taskboard-mcp"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "jiff",
  "serde",

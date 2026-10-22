@@ -9,6 +9,10 @@ Download any version from the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.5.2] - 2026-10-22
+
 ### Added
 - **Filter** the table and the board (header → Filter): priority, status,
   tags (any of them), project, due date (overdue, today, next 7 days, has a
@@ -341,7 +345,8 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.0...v0.4.1
