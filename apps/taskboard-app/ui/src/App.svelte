@@ -25,6 +25,8 @@
   import EventDialog from './components/EventDialog.svelte'
   import FindSlotDialog from './components/FindSlotDialog.svelte'
   import MeetingsView from './components/MeetingsView.svelte'
+  import RemindersView from './components/RemindersView.svelte'
+  import ReminderDialog from './components/ReminderDialog.svelte'
   import WorkingHoursDialog from './components/WorkingHoursDialog.svelte'
   import { cal } from './lib/cal.svelte'
   import { layout } from './lib/layout.svelte'
@@ -85,7 +87,7 @@
   /** View tabs the user chose to show (Settings → Layout); keys 1–3 follow them. */
   const shownViews = $derived(views.filter((v) => layout.tabs[v.id as 'table' | 'board' | 'calendar']))
   const current = $derived(views.find((v) => v.id === app.view) ?? views[0])
-  const pageTitle = $derived(app.view === 'dashboard' ? 'Dashboard' : app.view === 'meetings' ? 'Meetings' : null)
+  const pageTitle = $derived(app.view === 'dashboard' ? 'Dashboard' : app.view === 'meetings' ? 'Meetings' : app.view === 'reminders' ? 'Reminders' : null)
   // Hiding the tab you are on moves you to the first visible one.
   $effect(() => {
     if (!isPage(app.view) && !shownViews.some((v) => v.id === app.view) && shownViews[0]) app.view = shownViews[0].id
@@ -161,6 +163,7 @@
     void app.deleteSection
     void cal.draft
     void app.shortcutsOpen
+    void app.reminderDialog
     untrack(() => (app.sidebarOpen = false))
   })
 
@@ -313,6 +316,8 @@
           <DashboardView />
         {:else if app.view === 'meetings'}
           <MeetingsView />
+        {:else if app.view === 'reminders'}
+          <RemindersView />
         {:else}
           <div class="grid flex-1 place-items-center rounded-[var(--radius)] border border-dashed border-border-strong">
             <div class="text-center">
@@ -345,6 +350,7 @@
 {#if cal.findSlotOpen}<FindSlotDialog onclose={() => (cal.findSlotOpen = false)} />{/if}
 {#if app.settingsOpen}<SettingsDialog onclose={() => (app.settingsOpen = false)} />{/if}
 {#if app.shortcutsOpen}<ShortcutsDialog onclose={() => (app.shortcutsOpen = false)} />{/if}
+{#if app.reminderDialog}<ReminderDialog onclose={() => (app.reminderDialog = false)} />{/if}
 {#if dnd.item && !dnd.external}
   <!-- What is being dragged; the sidebar marks where it would land. -->
   <div class="drag-ghost" style="left: {dnd.x + 14}px; top: {dnd.y + 10}px" aria-hidden="true">

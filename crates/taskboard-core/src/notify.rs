@@ -118,7 +118,7 @@ pub struct Notification {
     pub event_id: Option<Id>,
 }
 
-fn fmt_hm(ms: i64) -> String {
+pub(crate) fn fmt_hm(ms: i64) -> String {
     let (tz, _) = local_zone();
     jiff::Timestamp::from_millisecond(ms)
         .map(|t| {
@@ -128,7 +128,7 @@ fn fmt_hm(ms: i64) -> String {
         .unwrap_or_default()
 }
 
-fn local_ms(date: Date, time: Time) -> Option<i64> {
+pub(crate) fn local_ms(date: Date, time: Time) -> Option<i64> {
     let (tz, _) = local_zone();
     tz.to_zoned(date.to_datetime(time))
         .ok()

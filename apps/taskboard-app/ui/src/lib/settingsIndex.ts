@@ -35,7 +35,7 @@ export const SETTINGS: SettingEntry[] = [
   S('appearance', 'Theme', 'theme', 'dark light system mode night'),
   S('appearance', 'Accent color', 'accent', 'color colour highlight'),
   S('appearance', 'Zoom', 'zoom', 'scale size text size bigger smaller font magnify'),
-  S('sidebar', 'Sidebar items', 'sidebar-items', 'today upcoming inbox meetings all work dashboard pinned saved views hide show order navigation'),
+  S('sidebar', 'Sidebar items', 'sidebar-items', 'today upcoming inbox meetings reminders repeating all work dashboard pinned saved views hide show order navigation'),
   S('sidebar', 'Counts and color dots', 'sidebar-details', 'count counts badge numbers overdue dot dots section project header'),
   S('sidebar', 'Sidebar width', 'sidebar-width', 'resize width narrow wide'),
   S('sections', 'Sections', 'sections', 'clients personal teams groups rename section new section delete reorder area categories'),

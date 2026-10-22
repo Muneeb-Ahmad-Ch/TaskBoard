@@ -6,6 +6,9 @@ import type { AppSettings } from './bindings/AppSettings'
 import type { BackupInfo } from './bindings/BackupInfo'
 import type { ImportReport } from './bindings/ImportReport'
 import type { Dashboard } from './bindings/Dashboard'
+import type { ReminderQuery } from './bindings/ReminderQuery'
+import type { RepeatingItem } from './bindings/RepeatingItem'
+import type { UpcomingReminders } from './bindings/UpcomingReminders'
 import type { Notification } from './bindings/Notification'
 import type { NotifySettings } from './bindings/NotifySettings'
 import type { Client } from './bindings/Client'
@@ -130,6 +133,9 @@ export const ipc = {
   allStatuses: () => invoke<Status[]>('all_statuses'),
   /** Tags in use, most used first. */
   listTags: () => invoke<string[]>('list_tags'),
+  /** Reminders page: what will remind you in a window, and every repeating series. */
+  upcomingReminders: (query: ReminderQuery) => invoke<UpcomingReminders>('upcoming_reminders', { query }),
+  repeating: () => invoke<RepeatingItem[]>('repeating'),
   createStatus: (input: NewStatus) => invoke<Status>('create_status', { input }),
   /** Settings → Board columns: the columns new projects start with. */
   defaultColumns: () => invoke<DefaultColumn[]>('default_columns'),

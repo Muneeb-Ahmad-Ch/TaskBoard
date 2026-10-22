@@ -24,11 +24,11 @@ export type Scope =
   | { kind: 'inbox' | 'today' | 'upcoming' | 'all' }
   | { kind: 'section' | 'client' | 'project'; id: Id }
 
-export type View = 'table' | 'board' | 'calendar' | 'dashboard' | 'meetings'
+export type View = 'table' | 'board' | 'calendar' | 'dashboard' | 'meetings' | 'reminders'
 
 /** Pages that are not task lists (they ignore the sidebar scope). */
-export function isPage(view: View = app.view): view is 'dashboard' | 'meetings' {
-  return view === 'dashboard' || view === 'meetings'
+export function isPage(view: View = app.view): view is 'dashboard' | 'meetings' | 'reminders' {
+  return view === 'dashboard' || view === 'meetings' || view === 'reminders'
 }
 export type Lanes = 'none' | 'client' | 'project' | 'priority'
 
@@ -99,6 +99,8 @@ export const app = $state({
   /** Bumped to ask the Quick Add box to focus itself. */
   quickAddFocus: 0,
   shortcutsOpen: false,
+  /** The New reminder dialog. */
+  reminderDialog: false,
   /** Settings section to scroll to when Settings opens (e.g. 'layout'). */
   settingsSection: null as string | null,
   /** Navigation drawer, used instead of the sidebar on narrow windows. */
@@ -117,7 +119,7 @@ export const app = $state({
 /** What a saved view remembers (stored as JSON in `saved_view.spec_json`). */
 export type ViewSpec = {
   scope: Scope
-  view: Exclude<View, 'dashboard' | 'meetings'>
+  view: Exclude<View, 'dashboard' | 'meetings' | 'reminders'>
   search: string
   showDone: boolean
   sort: TaskSort

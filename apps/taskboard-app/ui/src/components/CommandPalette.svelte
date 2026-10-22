@@ -39,6 +39,8 @@
       { id: 'v-cal', group: 'View', label: 'Calendar view', hint: '3', run: () => (app.view = 'calendar') },
       { id: 'v-dash', group: 'View', label: 'Dashboard', run: () => (app.view = 'dashboard') },
       { id: 'v-meet', group: 'View', label: 'Meetings', run: () => (app.view = 'meetings') },
+      { id: 'v-rem', group: 'View', label: 'Reminders and repeating tasks', run: () => (app.view = 'reminders') },
+      { id: 'new-reminder', group: 'Actions', label: 'New reminder…', run: () => (app.reminderDialog = true) },
       { id: 'layout', group: 'Actions', label: 'Customize the sidebar…', run: () => { app.settingsSection = 'sidebar'; app.settingsOpen = true } },
       { id: 'sections', group: 'Actions', label: 'Edit sections…', run: () => { app.settingsSection = 'sections'; app.settingsOpen = true } },
       { id: 'views', group: 'Actions', label: 'Customize views and table columns…', run: () => { app.settingsSection = 'views'; app.settingsOpen = true } },

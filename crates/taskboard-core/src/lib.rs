@@ -29,6 +29,7 @@ mod statuses;
 pub mod storage;
 mod tasks;
 pub mod tx;
+pub mod upcoming;
 pub mod views;
 
 pub use backup::BackupInfo;
@@ -53,4 +54,5 @@ pub use sections::{NewSection, Section, SectionDelete, SectionPatch, Setup};
 pub use statuses::{NewStatus, StatusPatch};
 pub use storage::{Db, DbInfo, HistoryState};
 pub use tasks::MoveTask;
+pub use upcoming::{ReminderItem, ReminderKind, ReminderQuery, RepeatingItem, UpcomingReminders};
 pub use views::{ProjectRef, QuickAddPreview, SidebarCounts, TaskSummary};

@@ -1,7 +1,7 @@
 // What the sidebar and the view switcher show, and in which order. A per-device
 // UI preference (like the theme); hidden items stay reachable from Ctrl+K.
 
-export type NavId = 'today' | 'upcoming' | 'inbox' | 'all' | 'meetings' | 'dashboard'
+export type NavId = 'today' | 'upcoming' | 'inbox' | 'all' | 'meetings' | 'reminders' | 'dashboard'
 export type TabId = 'table' | 'board' | 'calendar'
 /** Fixed sidebar sections (user sections are hidden by id, see `hiddenSections`). */
 export type SectionId = 'pinned' | 'savedViews'
@@ -12,6 +12,7 @@ export const NAV_LABELS: Record<NavId, string> = {
   inbox: 'Inbox',
   all: 'All work',
   meetings: 'Meetings',
+  reminders: 'Reminders',
   dashboard: 'Dashboard',
 }
 export const TAB_LABELS: Record<TabId, string> = { table: 'Table', board: 'Board', calendar: 'Calendar' }
@@ -20,7 +21,7 @@ export const SECTION_LABELS: Record<SectionId, string> = { pinned: 'Pinned proje
 /** Numbers the sidebar can show next to items; each can be turned off. */
 export type CountId = 'views' | 'overdue' | 'sections' | 'projects'
 export const COUNT_LABELS: Record<CountId, { name: string; hint: string }> = {
-  views: { name: 'View counts', hint: 'Tasks in Today, Upcoming and Inbox; meetings left today' },
+  views: { name: 'View counts', hint: 'Tasks in Today, Upcoming and Inbox; meetings and reminders left today' },
   overdue: { name: 'Overdue badge', hint: 'Red count of overdue tasks on Today' },
   sections: { name: 'Section counts', hint: 'Groups and projects next to each section name' },
   projects: { name: 'Project counts', hint: 'Open tasks next to each project' },
@@ -35,7 +36,7 @@ function clampWidth(v: unknown, range: { min: number; max: number; default: numb
   return Math.max(range.min, Math.min(range.max, n))
 }
 
-const NAV_ORDER: NavId[] = ['today', 'upcoming', 'inbox', 'all', 'meetings', 'dashboard']
+const NAV_ORDER: NavId[] = ['today', 'upcoming', 'inbox', 'all', 'meetings', 'reminders', 'dashboard']
 const TABS: TabId[] = ['table', 'board', 'calendar']
 const KEY = 'taskboard.layout'
 

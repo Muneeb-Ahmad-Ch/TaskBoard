@@ -852,3 +852,50 @@ fn saved_views_keep_filters_grouping_and_board_order() {
         .contains("group_by")
     );
 }
+
+#[test]
+fn reminders_and_repeating_series() {
+    let mut s = server();
+    let p = project(&mut s, "Home");
+    let tomorrow = {
+        let d = jiff::Zoned::now().date().tomorrow().unwrap();
+        d.to_string()
+    };
+    ok(
+        &mut s,
+        "add_task",
+        json!({ "text": "Call the bank", "project_id": p, "due_date": tomorrow, "due_time": "09:00" }),
+    );
+    ok(
+        &mut s,
+        "add_task",
+        json!({ "text": "Pay rent every month", "project_id": p, "due_date": tomorrow }),
+    );
+    let r = ok(&mut s, "list_reminders", json!({ "days": 70 }));
+    assert_eq!(r["reminders_on"], true);
+    let items = r["items"].as_array().unwrap();
+    let bank = items
+        .iter()
+        .find(|i| i["title"] == "Call the bank")
+        .unwrap();
+    assert_eq!(bank["time"], "09:00");
+    assert_eq!(bank["remind_at"], format!("{tomorrow}T09:00"));
+    let rent: Vec<_> = items.iter().filter(|i| i["title"] == "Pay rent").collect();
+    assert!(rent.len() >= 2, "{rent:?}");
+    assert_eq!(rent[1]["projected"], true);
+    assert!(
+        rent[0]["repeat"]
+            .as_str()
+            .unwrap()
+            .starts_with("Every month")
+    );
+    let only_meetings = ok(&mut s, "list_reminders", json!({ "kinds": ["meeting"] }));
+    assert_eq!(only_meetings["items"], json!([]));
+    let rep = ok(&mut s, "list_repeating", json!({}));
+    let list = rep["items"].as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["title"], "Pay rent");
+    assert_eq!(list[0]["next_date"], tomorrow);
+    assert!(err(&mut s, "list_reminders", json!({ "days": 9999 })).contains("days"));
+    assert!(err(&mut s, "list_reminders", json!({ "kinds": ["alarm"] })).contains("kinds"));
+}

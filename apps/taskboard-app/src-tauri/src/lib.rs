@@ -18,9 +18,9 @@ use taskboard_core::{
     Direction, ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask,
     NewClient, NewEvent, NewProject, NewSection, NewStatus, NewTask, NewTimeEntry, NotifySettings,
     Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectPlace, ProjectSummary,
-    QuickAddPreview, SavedView, SavedViewPatch, Section, SectionDelete, SectionPatch, Setup,
+    QuickAddPreview, ReminderQuery, RepeatingItem, SavedView, SavedViewPatch, Section, SectionDelete, SectionPatch, Setup,
     SidebarCounts, SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery,
-    TaskSummary, TimeEntryPatch, WorkingDay,
+    TaskSummary, TimeEntryPatch, UpcomingReminders, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -573,6 +573,21 @@ async fn delete_project(app: AppHandle, state: State<'_, AppState>, id: Id) -> C
 }
 
 // ---------- board columns ----------
+
+// ---------- reminders page ----------
+
+#[tauri::command]
+async fn upcoming_reminders(
+    state: State<'_, AppState>,
+    query: ReminderQuery,
+) -> CmdResult<UpcomingReminders> {
+    read(state, move |db| db.upcoming_reminders(&query, taskboard_core::clock::now_ms())).await
+}
+
+#[tauri::command]
+async fn repeating(state: State<'_, AppState>) -> CmdResult<Vec<RepeatingItem>> {
+    read(state, |db| db.repeating(taskboard_core::clock::now_ms())).await
+}
 
 #[tauri::command]
 async fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
@@ -1156,6 +1171,8 @@ pub fn run() {
             delete_project,
             all_statuses,
             list_tags,
+            upcoming_reminders,
+            repeating,
             create_status,
             add_status_everywhere,
             default_columns,

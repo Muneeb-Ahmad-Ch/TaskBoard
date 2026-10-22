@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte'
-  import { Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Pin, Plus, Search, Settings, Star, CalendarDays, User, Video } from '@lucide/svelte'
+  import { Bell, Bookmark, ChevronRight, Inbox, LayoutDashboard, Layers, MoreHorizontal, Pin, Plus, Search, Settings, Star, CalendarDays, User, Video } from '@lucide/svelte'
   import type { Client } from '../lib/bindings/Client'
   import type { Section } from '../lib/bindings/Section'
   import type { Direction } from '../lib/bindings/Direction'
@@ -231,18 +231,37 @@
   }
 
   // ---------- top navigation (order and visibility from layout) ----------
-  const NAV_ICONS = { today: Star, upcoming: CalendarDays, inbox: Inbox, all: Layers, meetings: Video, dashboard: LayoutDashboard }
+  const NAV_ICONS = { today: Star, upcoming: CalendarDays, inbox: Inbox, all: Layers, meetings: Video, reminders: Bell, dashboard: LayoutDashboard }
+  /** Sidebar items that open a page rather than a task list. */
+  const PAGES: NavId[] = ['meetings', 'reminders', 'dashboard']
   const shownNav = $derived(layout.nav.filter((n) => n.visible).map((n) => n.id))
 
   function navActive(id: NavId): boolean {
-    if (id === 'meetings' || id === 'dashboard') return app.view === id
-    return isActive({ kind: id })
+    if (PAGES.includes(id)) return app.view === id
+    return isActive({ kind: id as 'today' | 'upcoming' | 'inbox' | 'all' })
   }
 
   function navGo(id: NavId) {
-    if (id === 'meetings' || id === 'dashboard') app.view = id
+    if (id === 'meetings' || id === 'reminders' || id === 'dashboard') app.view = id
     else setScope({ kind: id })
   }
+
+  /** Reminders still to fire today, for the Reminders badge. */
+  let remindersLeft = $state(0)
+  $effect(() => {
+    void app.dataVersion
+    if (!shownNav.includes('reminders')) return
+    let stale = false
+    ipc
+      .upcomingReminders({ days: 1 })
+      .then((r) => {
+        if (!stale) remindersLeft = r.items.filter((i) => i.remind_at !== null && i.remind_at > Date.now()).length
+      })
+      .catch(() => {})
+    return () => {
+      stale = true
+    }
+  })
 
   /** Meetings still ahead today, for the Meetings badge. */
   let meetingsLeft = $state(0)
@@ -471,7 +490,7 @@
         <Icon size={15} />
         <span class="flex-1 text-left">{NAV_LABELS[id]}</span>
         <!-- Meetings swaps its count for a + on hover. -->
-        <span class="counts flex items-center gap-2 {id === 'meetings' ? 'group-hover:invisible group-focus-within:invisible' : ''}">
+        <span class="counts flex items-center gap-2 {id === 'meetings' || id === 'reminders' ? 'group-hover:invisible group-focus-within:invisible' : ''}">
         {#if id === 'today'}
           {#if app.counts?.overdue && layout.counts.overdue}<span class="badge-danger tabular" title="Overdue">{app.counts.overdue}</span>{/if}
           {#if app.counts?.today && layout.counts.views}<span class="tabular text-xs text-subtle">{app.counts.today}</span>{/if}
@@ -481,6 +500,8 @@
           {#if app.counts?.inbox && layout.counts.views}<span class="tabular text-xs text-subtle">{app.counts.inbox}</span>{/if}
         {:else if id === 'meetings'}
           {#if meetingsLeft && layout.counts.views}<span class="tabular text-xs text-subtle" title="Meetings left today">{meetingsLeft}</span>{/if}
+        {:else if id === 'reminders'}
+          {#if remindersLeft && layout.counts.views}<span class="tabular text-xs text-subtle" title="Reminders left today">{remindersLeft}</span>{/if}
         {/if}
         </span>
       </button>
@@ -490,6 +511,13 @@
           aria-label="New meeting"
           title="New meeting"
           onclick={newMeeting}
+        ><Plus size={14} /></button>
+      {:else if id === 'reminders'}
+        <button
+          class="icon-btn absolute top-[3px] right-1 opacity-0 group-hover:opacity-100 focus:opacity-100"
+          aria-label="New reminder"
+          title="New reminder"
+          onclick={() => (app.reminderDialog = true)}
         ><Plus size={14} /></button>
       {/if}
       </div>

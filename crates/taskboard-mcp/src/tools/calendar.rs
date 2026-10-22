@@ -1,11 +1,12 @@
 //! Calendar: meetings and time blocks (whole series, one occurrence, or this
-//! and following), working hours, days off, free slots and day plans.
+//! and following), reminders and repeating series, working hours, days off,
+//! free slots and day plans.
 
 use jiff::ToSpan;
 use serde_json::{Value, json};
 use taskboard_core::{
     DayOverride, Db, EventKind, EventPatch, FindSlots, Interval, NewEvent, OccurrencePatch,
-    OverrideKind, WorkingDay,
+    OverrideKind, ReminderKind, ReminderQuery, WorkingDay,
 };
 
 use super::{
@@ -235,6 +236,36 @@ pub(super) const TOOLS: &[Tool] = &[
         fields: &[("from", DAY, true), ("to", DAY, true)],
     },
     Tool {
+        name: "list_reminders",
+        description: "What will remind the user, day by day: tasks with a due time, meetings (and time blocks if asked), plus every repeating task with its next repeats, even ones not created yet (projected: true). Overdue ones come first. remind_at is when the notification fires (null when none will). Use it for \"what reminders do I have\" or \"when is rent due next\".",
+        fields: &[
+            (
+                "from",
+                r#"{"type":"string","description":"First day, YYYY-MM-DD (default today)"}"#,
+                false,
+            ),
+            (
+                "days",
+                r#"{"type":"integer","description":"Days to look ahead, 1-366 (default 30)"}"#,
+                false,
+            ),
+            (
+                "kinds",
+                r#"{"type":"array","items":{"type":"string","enum":["task","meeting","block"]},"description":"Default task and meeting"}"#,
+                false,
+            ),
+        ],
+    },
+    Tool {
+        name: "list_repeating",
+        description: "Every repeating task, meeting series and time-block series, soonest next date first, with its rule in words. To stop a task repeating: update_task with recurrence_rule null.",
+        fields: &[(
+            "kinds",
+            r#"{"type":"array","items":{"type":"string","enum":["task","meeting","block"]},"description":"Default all"}"#,
+            false,
+        )],
+    },
+    Tool {
         name: "get_hours",
         description: "Planned (meetings, blocks) and logged minutes per group between two dates.",
         fields: &[("from", DAY, true), ("to", DAY, true)],
@@ -293,6 +324,8 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
             Ok(json!({ "cleared": date }))
         }
         "find_slots" => find_slots(db, args),
+        "list_reminders" => list_reminders(db, args),
+        "list_repeating" => list_repeating(db, args),
         "get_day_plans" => {
             let (from, to) = date_range(args, 92)?;
             let plans = db.day_plans(&from, &to).map_err(err)?;
@@ -316,6 +349,59 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
         }
         _ => Err(format!("tool \"{name}\" has no handler")),
     }
+}
+
+fn reminder_kinds(args: &Args) -> Result<Vec<ReminderKind>, String> {
+    match args.get("kinds") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(list)) => list
+            .iter()
+            .map(|v| match v.as_str() {
+                Some("task") => Ok(ReminderKind::Task),
+                Some("meeting") => Ok(ReminderKind::Meeting),
+                Some("block") => Ok(ReminderKind::Block),
+                _ => Err(format!("kinds must be task, meeting or block, got {v}")),
+            })
+            .collect(),
+        Some(_) => Err("kinds must be a list".to_owned()),
+    }
+}
+
+fn list_reminders(db: &mut Db, args: &Args) -> ToolResult {
+    let q = ReminderQuery {
+        from: str_arg(args, "from").map(str::to_owned),
+        days: args.get("days").and_then(Value::as_i64),
+        kinds: reminder_kinds(args)?,
+    };
+    let r = db
+        .upcoming_reminders(&q, taskboard_core::clock::now_ms())
+        .map_err(err)?;
+    Ok(json!({
+        "reminders_on": r.reminders_on,
+        "meeting_lead_min": r.meeting_lead_min,
+        "task_lead_min": r.task_lead_min,
+        "from": r.from,
+        "to": r.to,
+        "items": r.items.iter().map(|i| json!({
+            "kind": i.kind, "title": i.title, "date": i.date, "time": i.time,
+            "remind_at": i.remind_at.map(iso), "repeat": i.repeat, "projected": i.projected,
+            "overdue": i.overdue, "task_id": i.task_id, "event_id": i.event_id,
+            "project_name": i.project_name, "group_name": i.client_name, "meeting_url": i.meeting_url,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+fn list_repeating(db: &mut Db, args: &Args) -> ToolResult {
+    let kinds = reminder_kinds(args)?;
+    let list = db.repeating(taskboard_core::clock::now_ms()).map_err(err)?;
+    Ok(json!({
+        "items": list.iter().filter(|r| kinds.is_empty() || kinds.contains(&r.kind)).map(|r| json!({
+            "kind": r.kind, "title": r.title, "repeat": r.describe, "rule": r.rule,
+            "after_completion": r.after_completion, "next_date": r.next_date, "next_time": r.next_time,
+            "task_id": r.task_id, "event_id": r.event_id, "project_name": r.project_name,
+            "group_name": r.client_name,
+        })).collect::<Vec<_>>(),
+    }))
 }
 
 fn event_json(e: &taskboard_core::Event) -> ToolResult {
