@@ -21,6 +21,15 @@ pub enum TaskSort {
     Created,
     Updated,
     Title,
+    /// Board column: to do, then active, then finished; board order within.
+    Status,
+    /// Group name, then project name.
+    Project,
+    Progress,
+    /// Tasks without an estimate come last either way.
+    Estimate,
+    /// By the first tag alphabetically; untagged tasks come last either way.
+    Tags,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, TS)]
@@ -48,6 +57,18 @@ pub struct TaskQuery {
     /// merge same-named statuses across projects.
     #[ts(optional)]
     pub status_name: Option<String>,
+    /// Only tasks in any of these columns (by name, case-insensitive).
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub status_names: Vec<String>,
+    /// Only tasks with any of these priorities.
+    #[ts(as = "Option<Vec<Priority>>", optional)]
+    pub priorities: Vec<Priority>,
+    /// Only tasks with any of these tags (case-insensitive, leading # ignored).
+    #[ts(as = "Option<Vec<String>>", optional)]
+    pub tags: Vec<String>,
+    /// Only tasks in any of these projects.
+    #[ts(as = "Option<Vec<Id>>", optional)]
+    pub project_ids: Vec<Id>,
     #[ts(optional)]
     pub due_from: Option<String>,
     #[ts(optional)]
@@ -55,6 +76,9 @@ pub struct TaskQuery {
     /// Only tasks without a due date (the calendar's "unscheduled" list).
     #[ts(as = "Option<bool>", optional)]
     pub undated: bool,
+    /// Only tasks with a due date.
+    #[ts(as = "Option<bool>", optional)]
+    pub dated: bool,
     /// Only direct subtasks of this task.
     #[ts(optional)]
     pub parent_id: Option<Id>,
@@ -69,6 +93,11 @@ pub struct TaskQuery {
     /// Only tasks completed at or after this moment (Unix ms), e.g. "done today".
     #[ts(optional)]
     pub completed_from: Option<i64>,
+    /// Only tasks added at or after / at or before this moment (Unix ms).
+    #[ts(optional)]
+    pub created_from: Option<i64>,
+    #[ts(optional)]
+    pub created_to: Option<i64>,
     #[ts(as = "Option<TaskSort>", optional)]
     pub sort: TaskSort,
     #[ts(as = "Option<bool>", optional)]
@@ -114,6 +143,8 @@ pub struct TaskRow {
     pub parent_title: Option<String>,
     /// When the task was archived (only seen with `include_archived` / `archived_only`).
     pub archived_at: Option<i64>,
+    /// When the task was added (Unix ms).
+    pub created_at: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, TS)]
@@ -138,6 +169,15 @@ pub(crate) fn fts_query(input: &str) -> Option<String> {
     (!terms.is_empty()).then(|| terms.join(" "))
 }
 
+/// A task's 0–100 progress (see `TaskRow::progress`), over `task t`.
+const PROGRESS: &str = "CASE WHEN t.completed_at IS NOT NULL THEN 100
+     ELSE coalesce(
+       (SELECT CAST(round(avg(CASE WHEN x.completed_at IS NOT NULL THEN 100
+                                   ELSE coalesce(x.progress, 0) END)) AS INTEGER)
+          FROM task x WHERE x.parent_id = t.id AND x.deleted_at IS NULL),
+       t.progress, 0)
+END";
+
 /// ORDER BY clauses written to match the migration-3 indexes exactly, so
 /// SQLite can walk an index in order and stop after one page.
 fn order_by(sort: TaskSort, desc: bool) -> String {
@@ -158,6 +198,30 @@ fn order_by(sort: TaskSort, desc: bool) -> String {
         TaskSort::Created => format!("t.created_at {dir}, t.rid {dir}"),
         TaskSort::Updated => format!("t.updated_at {dir}, t.rid {dir}"),
         TaskSort::Title => format!("t.title COLLATE NOCASE {dir}, t.rid {dir}"),
+        // The rest sort by values outside `task`, so they can't walk an index.
+        TaskSort::Status => format!(
+            "(SELECT CASE s.category WHEN 'todo' THEN 0 WHEN 'active' THEN 1
+                                     WHEN 'done' THEN 2 ELSE 3 END
+                FROM status s WHERE s.id = t.status_id) {dir},
+             (SELECT s.sort_key FROM status s WHERE s.id = t.status_id) {dir},
+             (SELECT s.name FROM status s WHERE s.id = t.status_id) COLLATE NOCASE {dir},
+             t.sort_key {dir}, t.rid {dir}"
+        ),
+        TaskSort::Project => format!(
+            "(SELECT coalesce(c.name, '') FROM project p LEFT JOIN client c ON c.id = p.client_id
+                WHERE p.id = t.project_id) COLLATE NOCASE {dir},
+             (SELECT p.name FROM project p WHERE p.id = t.project_id) COLLATE NOCASE {dir},
+             t.project_id {dir}, t.sort_key {dir}, t.rid {dir}"
+        ),
+        TaskSort::Progress => format!("{PROGRESS} {dir}, t.sort_key {dir}, t.rid {dir}"),
+        TaskSort::Estimate => format!(
+            "t.estimate_minutes IS NULL, t.estimate_minutes {dir}, t.sort_key {dir}, t.rid {dir}"
+        ),
+        TaskSort::Tags => {
+            let first = "(SELECT min(g.name COLLATE NOCASE) FROM task_tag tt
+                            JOIN tag g ON g.id = tt.tag_id WHERE tt.task_id = t.id)";
+            format!("{first} IS NULL, {first} {dir}, t.sort_key {dir}, t.rid {dir}")
+        }
     }
 }
 
@@ -168,6 +232,22 @@ impl Db {
     pub fn list_tasks(&self, q: &TaskQuery) -> Result<TaskPage> {
         let (where_sql, mut args) = self.task_filter(q)?;
         self.task_page(q, &where_sql, &mut args)
+    }
+
+    /// Tags on live, unarchived tasks, most used first (for filter pickers).
+    pub fn tag_names(&self) -> Result<Vec<String>> {
+        let mut stmt = self.conn().prepare(
+            "SELECT g.name FROM tag g
+               JOIN task_tag tt ON tt.tag_id = g.id
+               JOIN task t ON t.id = tt.task_id
+              WHERE g.deleted_at IS NULL AND t.deleted_at IS NULL AND t.archived_at IS NULL
+              GROUP BY g.id
+              ORDER BY count(*) DESC, g.name COLLATE NOCASE",
+        )?;
+        let names = stmt
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(names)
     }
 
     /// WHERE clause (over `task t`) and its arguments for a query.
@@ -250,6 +330,36 @@ impl Db {
             );
             args.push(text(name.trim()));
         }
+        if !q.status_names.is_empty() {
+            let marks = vec!["?"; q.status_names.len()].join(", ");
+            filters.push(format!(
+                "t.status_id IN (SELECT id FROM status WHERE name COLLATE NOCASE IN ({marks})
+                                 AND deleted_at IS NULL)"
+            ));
+            args.extend(q.status_names.iter().map(|n| text(n.trim())));
+        }
+        if !q.priorities.is_empty() {
+            let marks = vec!["?"; q.priorities.len()].join(", ");
+            filters.push(format!("t.priority IN ({marks})"));
+            args.extend(q.priorities.iter().map(|p| Value::Integer(p.as_i64())));
+        }
+        if !q.tags.is_empty() {
+            let marks = vec!["?"; q.tags.len()].join(", ");
+            filters.push(format!(
+                "t.id IN (SELECT tt.task_id FROM task_tag tt JOIN tag g ON g.id = tt.tag_id
+                          WHERE g.name COLLATE NOCASE IN ({marks}))"
+            ));
+            args.extend(
+                q.tags
+                    .iter()
+                    .map(|t| text(t.trim().trim_start_matches('#'))),
+            );
+        }
+        if !q.project_ids.is_empty() {
+            let marks = vec!["?"; q.project_ids.len()].join(", ");
+            filters.push(format!("t.project_id IN ({marks})"));
+            args.extend(q.project_ids.iter().map(|&p| Value::from(p)));
+        }
         if let Some(tag) = q.tag.as_deref().map(|t| t.trim().trim_start_matches('#')) {
             filters.push(
                 "t.id IN (SELECT tt.task_id FROM task_tag tt JOIN tag g ON g.id = tt.tag_id
@@ -273,6 +383,17 @@ impl Db {
         }
         if q.undated {
             filters.push("coalesce(t.due_date, '~') = '~'".into());
+        }
+        if q.dated {
+            filters.push("coalesce(t.due_date, '~') < '~'".into());
+        }
+        if let Some(from) = q.created_from {
+            filters.push("t.created_at >= ?".into());
+            args.push(Value::Integer(from));
+        }
+        if let Some(to) = q.created_to {
+            filters.push("t.created_at <= ?".into());
+            args.push(Value::Integer(to));
         }
         if let Some(from) = q.completed_from {
             filters.push("t.completed_at >= ?".into());
@@ -316,16 +437,10 @@ impl Db {
                        AND x.completed_at IS NOT NULL),
                     (SELECT group_concat(g.name, char(31)) FROM task_tag tt
                        JOIN tag g ON g.id = tt.tag_id WHERE tt.task_id = t.id),
-                    CASE WHEN t.completed_at IS NOT NULL THEN 100
-                         ELSE coalesce(
-                           (SELECT CAST(round(avg(CASE WHEN x.completed_at IS NOT NULL THEN 100
-                                                       ELSE coalesce(x.progress, 0) END)) AS INTEGER)
-                              FROM task x WHERE x.parent_id = t.id AND x.deleted_at IS NULL),
-                           t.progress, 0)
-                    END,
+                    {PROGRESS},
                     t.recurrence_rule IS NOT NULL,
                     (SELECT x.title FROM task x WHERE x.id = t.parent_id),
-                    t.archived_at
+                    t.archived_at, t.created_at
              FROM page
              JOIN task t ON t.rid = page.rid
              JOIN project p ON p.id = t.project_id
@@ -370,6 +485,7 @@ impl Db {
                     recurring: r.get(23)?,
                     parent_title: r.get(24)?,
                     archived_at: r.get(25)?,
+                    created_at: r.get(26)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

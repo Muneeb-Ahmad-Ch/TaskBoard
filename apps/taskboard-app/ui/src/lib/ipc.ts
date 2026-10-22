@@ -128,6 +128,8 @@ export const ipc = {
 
   // board columns
   allStatuses: () => invoke<Status[]>('all_statuses'),
+  /** Tags in use, most used first. */
+  listTags: () => invoke<string[]>('list_tags'),
   createStatus: (input: NewStatus) => invoke<Status>('create_status', { input }),
   /** Settings → Board columns: the columns new projects start with. */
   defaultColumns: () => invoke<DefaultColumn[]>('default_columns'),

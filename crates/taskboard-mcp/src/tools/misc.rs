@@ -13,8 +13,13 @@ use super::{Args, BOOL, ID, STR, Tool, ToolResult, err, id_arg, str_arg, to_valu
 const SCOPE: &str =
     r#"{"type":"string","enum":["today","upcoming","inbox","all","section","group","project"]}"#;
 const VIEW: &str = r#"{"type":"string","enum":["table","board","calendar"]}"#;
-const SORT: &str =
-    r#"{"type":"string","enum":["manual","due","priority","created","updated","title"]}"#;
+const SORT: &str = r#"{"type":"string","enum":["manual","due","priority","created","updated","title","status","project","progress","estimate","tags"],"description":"created = when added; status = board column order; tags = first tag"}"#;
+const BOARD_SORT: &str = r#"{"type":"string","enum":["manual","due","priority","created","updated","title","progress","estimate","project"],"description":"Card order in board columns; manual = the order cards were dragged into"}"#;
+const NAMES: &str = r#"{"type":"array","items":{"type":"string"}}"#;
+const PRIORITIES: &str = r#"{"type":"array","items":{"type":"string","enum":["none","low","med","high","urgent"]},"description":"Filter: any of these priorities"}"#;
+const DUE_FILTER: &str = r#"{"type":["string","null"],"enum":["overdue","today","week","none","dated",null],"description":"Filter: overdue, due today, due in the next 7 days, no due date, or has one"}"#;
+const ADDED_FILTER: &str = r#"{"type":["string","null"],"enum":["today","week","month",null],"description":"Filter: added today, in the last 7 days or the last 30 days"}"#;
+const GROUP_BY: &str = r#"{"type":"string","enum":["none","status","priority","project","group","due","added"],"description":"Table grouping"}"#;
 const LANES: &str = r#"{"type":"string","enum":["none","group","project","priority"],"description":"Board swimlanes"}"#;
 
 pub(super) const TOOLS: &[Tool] = &[
@@ -40,7 +45,7 @@ pub(super) const TOOLS: &[Tool] = &[
     },
     Tool {
         name: "add_saved_view",
-        description: "Saves a view for the sidebar: which list (scope, plus scope_id for a section, group or project), how it is shown and sorted, and an optional search.",
+        description: "Saves a view for the sidebar: which list (scope, plus scope_id for a section, group or project), how it is shown, sorted and grouped, an optional search, and filters (priorities, statuses, tags, project_ids, due, added) like the app's Filter menu.",
         fields: &[
             ("name", STR, true),
             ("scope", SCOPE, true),
@@ -51,6 +56,15 @@ pub(super) const TOOLS: &[Tool] = &[
             ("sort", SORT, false),
             ("descending", BOOL, false),
             ("lanes", LANES, false),
+            ("priorities", PRIORITIES, false),
+            ("statuses", NAMES, false),
+            ("tags", NAMES, false),
+            ("project_ids", NAMES, false),
+            ("due", DUE_FILTER, false),
+            ("added", ADDED_FILTER, false),
+            ("group_by", GROUP_BY, false),
+            ("board_sort", BOARD_SORT, false),
+            ("board_descending", BOOL, false),
         ],
     },
     Tool {
@@ -67,6 +81,15 @@ pub(super) const TOOLS: &[Tool] = &[
             ("sort", SORT, false),
             ("descending", BOOL, false),
             ("lanes", LANES, false),
+            ("priorities", PRIORITIES, false),
+            ("statuses", NAMES, false),
+            ("tags", NAMES, false),
+            ("project_ids", NAMES, false),
+            ("due", DUE_FILTER, false),
+            ("added", ADDED_FILTER, false),
+            ("group_by", GROUP_BY, false),
+            ("board_sort", BOARD_SORT, false),
+            ("board_descending", BOOL, false),
         ],
     },
     Tool {
@@ -160,6 +183,15 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
                 "sort",
                 "descending",
                 "lanes",
+                "priorities",
+                "statuses",
+                "tags",
+                "project_ids",
+                "due",
+                "added",
+                "group_by",
+                "board_sort",
+                "board_descending",
             ];
             let spec_json = if spec_changes.iter().any(|k| args.contains_key(*k)) {
                 Some(view_spec(db, base, args)?.to_string())
@@ -283,7 +315,110 @@ fn view_spec(db: &Db, mut base: Map<String, Value>, args: &Args) -> Result<Value
             json!(if l == "group" { "client" } else { l }),
         );
     }
+    if let Some(g) = str_arg(args, "group_by") {
+        let g = match g {
+            "group" => "client",
+            "none" | "status" | "priority" | "project" | "due" | "added" => g,
+            other => return Err(format!("unknown group_by {other:?}")),
+        };
+        base.insert("groupBy".into(), json!(g));
+    }
+    base.entry("groupBy").or_insert(json!("none"));
+    if let Some(v) = str_arg(args, "board_sort") {
+        base.insert("boardSort".into(), json!(v));
+    }
+    base.entry("boardSort").or_insert(json!("manual"));
+    if let Some(v) = args.get("board_descending").and_then(Value::as_bool) {
+        base.insert("boardDescending".into(), json!(v));
+    }
+    base.entry("boardDescending").or_insert(json!(false));
+    let mut filter = base
+        .get("filter")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    view_filter(&mut filter, args)?;
+    base.insert("filter".into(), Value::Object(filter));
     Ok(Value::Object(base))
+}
+
+/// The Filter menu part of a view spec (keys as the app stores them).
+fn view_filter(filter: &mut Map<String, Value>, args: &Args) -> Result<(), String> {
+    let names = |key: &str, strip_hash: bool| -> Result<Option<Vec<String>>, String> {
+        match args.get(key) {
+            None => Ok(None),
+            Some(Value::Null) => Ok(Some(Vec::new())),
+            Some(Value::Array(list)) => list
+                .iter()
+                .map(|v| {
+                    let s = v
+                        .as_str()
+                        .ok_or_else(|| format!("{key} must be a list of names"))?;
+                    let s = if strip_hash {
+                        s.trim().trim_start_matches('#')
+                    } else {
+                        s
+                    }
+                    .trim();
+                    Ok(s.to_owned())
+                })
+                .filter(|r| !matches!(r, Ok(s) if s.is_empty()))
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some),
+            Some(_) => Err(format!("{key} must be a list")),
+        }
+    };
+    if let Some(list) = names("priorities", false)? {
+        if let Some(bad) = list
+            .iter()
+            .find(|p| !["none", "low", "med", "high", "urgent"].contains(&p.as_str()))
+        {
+            return Err(format!(
+                "priorities must be none, low, med, high or urgent, got {bad:?}"
+            ));
+        }
+        filter.insert("priorities".into(), json!(list));
+    }
+    if let Some(list) = names("statuses", false)? {
+        filter.insert("statuses".into(), json!(list));
+    }
+    if let Some(list) = names("tags", true)? {
+        filter.insert("tags".into(), json!(list));
+    }
+    if let Some(list) = names("project_ids", false)? {
+        let mut ids = Vec::with_capacity(list.len());
+        for id in list {
+            ids.push(super::parse_id("project_ids", &json!(id))?);
+        }
+        filter.insert("projects".into(), json!(ids));
+    }
+    for (key, allowed) in [
+        ("due", &["overdue", "today", "week", "none", "dated"][..]),
+        ("added", &["today", "week", "month"][..]),
+    ] {
+        match args.get(key) {
+            None => {}
+            Some(Value::Null) => {
+                filter.insert(key.into(), Value::Null);
+            }
+            Some(Value::String(v)) if allowed.contains(&v.as_str()) => {
+                filter.insert(key.into(), json!(v));
+            }
+            Some(other) => {
+                return Err(format!(
+                    "{key} must be one of {} or null, got {other}",
+                    allowed.join(", ")
+                ));
+            }
+        }
+    }
+    for key in ["priorities", "statuses", "tags", "projects"] {
+        filter.entry(key).or_insert(json!([]));
+    }
+    for key in ["due", "added"] {
+        filter.entry(key).or_insert(Value::Null);
+    }
+    Ok(())
 }
 
 fn settings_json(db: &Db) -> ToolResult {

@@ -575,6 +575,11 @@ async fn delete_project(app: AppHandle, state: State<'_, AppState>, id: Id) -> C
 // ---------- board columns ----------
 
 #[tauri::command]
+async fn list_tags(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
+    read(state, Db::tag_names).await
+}
+
+#[tauri::command]
 async fn all_statuses(state: State<'_, AppState>) -> CmdResult<Vec<Status>> {
     read(state, Db::all_statuses).await
 }
@@ -1150,6 +1155,7 @@ pub fn run() {
             set_project_archived,
             delete_project,
             all_statuses,
+            list_tags,
             create_status,
             add_status_everywhere,
             default_columns,

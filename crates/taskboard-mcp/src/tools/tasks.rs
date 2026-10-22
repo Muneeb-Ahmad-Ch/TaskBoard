@@ -3,18 +3,20 @@
 
 use serde_json::{Value, json};
 use taskboard_core::error::invalid;
-use taskboard_core::{Category, Db, Id, MoveTask, NewTask, TaskPatch, TaskQuery, TaskSort};
+use taskboard_core::{
+    Category, Db, Id, MoveTask, NewTask, Priority, TaskPatch, TaskQuery, TaskSort,
+};
 
 use super::{
     Args, BOOL, DATE, ID, IDS, INT, NULLABLE_ID, PRIORITY, STATUS_NAME, STR, TAGS, TIME, Tool,
-    ToolResult, bool_arg, err, from_args, id_arg, id_or_ids, opt_id, parse_point, str_arg,
-    tasks_label, today, without,
+    ToolResult, bool_arg, err, from_args, id_arg, id_or_ids, opt_id, parse_id, parse_point,
+    str_arg, tasks_label, today, without,
 };
 
 pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "list_tasks",
-        description: "Tasks matching filters, soonest due first. Defaults to open, top-level, unarchived tasks (subtasks appear under their parent in get_task). Use search for free text, due_from/due_to for a date window, status_name for one board column, completed_since for \"what did I finish today\".",
+        description: "Tasks matching filters, soonest due first. Defaults to open, top-level, unarchived tasks (subtasks appear under their parent in get_task). Use search for free text, due_from/due_to for a date window, statuses / priorities / tags / project_ids to narrow like the app's Filter menu (any of the listed values), completed_since for \"what did I finish today\", added_since for what was added recently. Sort by any table column.",
         fields: &[
             ("project_id", ID, false),
             ("group_id", ID, false),
@@ -32,6 +34,26 @@ pub(super) const TOOLS: &[Tool] = &[
                 false,
             ),
             (
+                "statuses",
+                r#"{"type":"array","items":{"type":"string"},"description":"Only tasks in any of these board columns, by name, any case"}"#,
+                false,
+            ),
+            (
+                "priorities",
+                r#"{"type":"array","items":{"type":"string","enum":["none","low","med","high","urgent"]},"description":"Only tasks with any of these priorities"}"#,
+                false,
+            ),
+            (
+                "tags",
+                r#"{"type":"array","items":{"type":"string"},"description":"Only tasks with any of these tags"}"#,
+                false,
+            ),
+            (
+                "project_ids",
+                r#"{"type":"array","items":{"type":"string"},"description":"Only tasks in any of these projects"}"#,
+                false,
+            ),
+            (
                 "due_from",
                 r#"{"type":"string","description":"YYYY-MM-DD inclusive"}"#,
                 false,
@@ -44,6 +66,21 @@ pub(super) const TOOLS: &[Tool] = &[
             (
                 "undated",
                 r#"{"type":"boolean","description":"Only tasks without a due date"}"#,
+                false,
+            ),
+            (
+                "dated",
+                r#"{"type":"boolean","description":"Only tasks with a due date"}"#,
+                false,
+            ),
+            (
+                "added_since",
+                r#"{"type":"string","description":"Only tasks added at or after this local date (YYYY-MM-DD) or date-time"}"#,
+                false,
+            ),
+            (
+                "added_until",
+                r#"{"type":"string","description":"Only tasks added on or before this local date (YYYY-MM-DD) or date-time"}"#,
                 false,
             ),
             (
@@ -68,7 +105,7 @@ pub(super) const TOOLS: &[Tool] = &[
             ),
             (
                 "sort",
-                r#"{"type":"string","enum":["manual","due","priority","created","updated","title"],"description":"manual = board order"}"#,
+                r#"{"type":"string","enum":["manual","due","priority","created","updated","title","status","project","progress","estimate","tags"],"description":"manual = board order; created = when added; status = board column order; tags = first tag"}"#,
                 false,
             ),
             ("descending", BOOL, false),
@@ -383,6 +420,11 @@ fn list_tasks(db: &mut Db, args: &Args) -> ToolResult {
         "created" => TaskSort::Created,
         "updated" => TaskSort::Updated,
         "title" => TaskSort::Title,
+        "status" => TaskSort::Status,
+        "project" => TaskSort::Project,
+        "progress" => TaskSort::Progress,
+        "estimate" => TaskSort::Estimate,
+        "tags" => TaskSort::Tags,
         other => return Err(format!("unknown sort {other:?}")),
     };
     let (include_archived, archived_only) = match str_arg(args, "archived") {
@@ -397,6 +439,14 @@ fn list_tasks(db: &mut Db, args: &Args) -> ToolResult {
         }
     };
     let parent_id = opt_id(args, "parent_id")?;
+    let point = |key: &str, end_of_day: bool| match str_arg(args, key) {
+        Some(s) => parse_point(key, s, end_of_day).map(Some),
+        None => Ok(None),
+    };
+    let mut project_ids = Vec::new();
+    for v in list_arg(args, "project_ids")? {
+        project_ids.push(parse_id("project_ids", v)?);
+    }
     let q = TaskQuery {
         project_id: opt_id(args, "project_id")?,
         client_id: opt_id(args, "group_id")?,
@@ -414,6 +464,21 @@ fn list_tasks(db: &mut Db, args: &Args) -> ToolResult {
         due_from: str_arg(args, "due_from").map(str::to_owned),
         due_to: str_arg(args, "due_to").map(str::to_owned),
         undated: bool_arg(args, "undated", false),
+        dated: bool_arg(args, "dated", false),
+        status_names: strings_arg(args, "statuses")?,
+        tags: strings_arg(args, "tags")?,
+        priorities: list_arg(args, "priorities")?
+            .iter()
+            .map(|v| {
+                serde_json::from_value::<Priority>(v.clone()).map_err(|_| {
+                    format!("priorities must be none, low, med, high or urgent, got {v}")
+                })
+            })
+            .collect::<Result<_, _>>()?,
+        project_ids,
+        created_from: point("added_since", false)?,
+        // A plain date covers that whole day.
+        created_to: point("added_until", true)?.map(|end| end - 1),
         completed_from,
         parent_id,
         top_level: parent_id.is_none(),
@@ -440,6 +505,29 @@ fn list_tasks(db: &mut Db, args: &Args) -> ToolResult {
     }))
 }
 
+/// An optional list argument (absent or null = empty).
+fn list_arg<'a>(args: &'a Args, key: &str) -> Result<&'a [Value], String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(&[]),
+        Some(Value::Array(list)) => Ok(list),
+        Some(_) => Err(format!("{key} must be a list")),
+    }
+}
+
+/// An optional list of non-empty strings.
+fn strings_arg(args: &Args, key: &str) -> Result<Vec<String>, String> {
+    list_arg(args, key)?
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| format!("{key} must be a list of names"))
+        })
+        .collect()
+}
+
 pub(super) fn row_json(r: &taskboard_core::TaskRow) -> Value {
     json!({
         "id": r.id, "title": r.title, "status": r.status_name, "category": r.category, "priority": r.priority,
@@ -447,7 +535,7 @@ pub(super) fn row_json(r: &taskboard_core::TaskRow) -> Value {
         "parent_id": r.parent_id, "parent_title": r.parent_title, "start_date": r.start_date, "due_date": r.due_date,
         "due_time": r.due_time, "estimate_minutes": r.estimate_minutes, "tags": r.tags, "progress": r.progress,
         "subtasks": { "done": r.subtasks_done, "total": r.subtasks_total }, "recurring": r.recurring,
-        "completed_at": r.completed_at, "archived_at": r.archived_at,
+        "completed_at": r.completed_at, "archived_at": r.archived_at, "created_at": r.created_at,
     })
 }
 

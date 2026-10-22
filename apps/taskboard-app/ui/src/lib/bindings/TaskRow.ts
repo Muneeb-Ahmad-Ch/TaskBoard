@@ -19,4 +19,8 @@ parent_title: string | null,
 /**
  * When the task was archived (only seen with `include_archived` / `archived_only`).
  */
-archived_at: number | null, };
+archived_at: number | null, 
+/**
+ * When the task was added (Unix ms).
+ */
+created_at: number, };

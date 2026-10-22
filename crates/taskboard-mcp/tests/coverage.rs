@@ -707,3 +707,148 @@ fn assistants_cannot_change_app_settings_or_their_own_access() {
     // The switch is untouched: tools still answer.
     ok(&mut s, "get_overview", json!({}));
 }
+
+#[test]
+fn list_tasks_filters_like_the_table_and_sorts_by_any_column() {
+    let mut s = server();
+    let web = project(&mut s, "Website");
+    let app = project(&mut s, "App");
+    let add = |s: &mut Server, args: Value| id(&ok(s, "add_task", args));
+    let a = add(
+        &mut s,
+        json!({ "text": "Alpha", "project_id": web, "priority": "high", "tags": ["design"], "due_date": "2026-01-05", "estimate_minutes": 30 }),
+    );
+    add(
+        &mut s,
+        json!({ "text": "Bravo", "project_id": web, "priority": "low", "tags": ["client"], "estimate_minutes": 120 }),
+    );
+    add(
+        &mut s,
+        json!({ "text": "Charlie", "project_id": app, "priority": "urgent", "due_date": "2026-01-02" }),
+    );
+    ok(
+        &mut s,
+        "update_task",
+        json!({ "id": a, "status": "Waiting" }),
+    );
+    let titles = |v: &Value| -> Vec<String> {
+        v["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["title"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let r = ok(
+        &mut s,
+        "list_tasks",
+        json!({ "priorities": ["high", "urgent"], "sort": "title" }),
+    );
+    assert_eq!(titles(&r), ["Alpha", "Charlie"]);
+    let r = ok(
+        &mut s,
+        "list_tasks",
+        json!({ "statuses": ["waiting", "In Progress"] }),
+    );
+    assert_eq!(titles(&r), ["Alpha"]);
+    let r = ok(
+        &mut s,
+        "list_tasks",
+        json!({ "tags": ["#Client", "design"], "sort": "title" }),
+    );
+    assert_eq!(titles(&r), ["Alpha", "Bravo"]);
+    let r = ok(&mut s, "list_tasks", json!({ "project_ids": [app] }));
+    assert_eq!(titles(&r), ["Charlie"]);
+    let r = ok(
+        &mut s,
+        "list_tasks",
+        json!({ "dated": true, "sort": "title" }),
+    );
+    assert_eq!(titles(&r), ["Alpha", "Charlie"]);
+    let r = ok(&mut s, "list_tasks", json!({ "sort": "estimate" }));
+    assert_eq!(titles(&r), ["Alpha", "Bravo", "Charlie"]);
+    let r = ok(
+        &mut s,
+        "list_tasks",
+        json!({ "sort": "status", "descending": true }),
+    );
+    assert_eq!(titles(&r)[0], "Alpha");
+    for sort in ["project", "progress", "tags", "status", "estimate"] {
+        assert_eq!(
+            ok(&mut s, "list_tasks", json!({ "sort": sort }))["total"],
+            3,
+            "{sort}"
+        );
+    }
+    // Every row says when it was added; added_since / added_until narrow by it.
+    assert!(r["tasks"][0]["created_at"].as_i64().unwrap() > 0);
+    assert_eq!(
+        ok(&mut s, "list_tasks", json!({ "added_since": "2000-01-01" }))["total"],
+        3
+    );
+    assert_eq!(
+        ok(&mut s, "list_tasks", json!({ "added_until": "2000-01-01" }))["total"],
+        0
+    );
+    assert!(err(&mut s, "list_tasks", json!({ "priorities": ["huge"] })).contains("priorities"));
+    assert!(err(&mut s, "list_tasks", json!({ "tags": "design" })).contains("tags"));
+}
+
+#[test]
+fn saved_views_keep_filters_grouping_and_board_order() {
+    let mut s = server();
+    let p = project(&mut s, "Website");
+    let v = ok(
+        &mut s,
+        "add_saved_view",
+        json!({
+            "name": "Hot",
+            "scope": "all",
+            "priorities": ["high", "urgent"],
+            "statuses": ["Waiting"],
+            "tags": ["#client"],
+            "project_ids": [p],
+            "due": "overdue",
+            "added": "week",
+            "group_by": "group",
+            "sort": "progress",
+            "board_sort": "priority",
+            "board_descending": true,
+        }),
+    );
+    let spec: Value = serde_json::from_str(v["spec_json"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        spec["filter"],
+        json!({ "priorities": ["high", "urgent"], "statuses": ["Waiting"], "tags": ["client"], "projects": [p], "due": "overdue", "added": "week" })
+    );
+    assert_eq!(spec["groupBy"], "client");
+    assert_eq!(spec["sort"], "progress");
+    assert_eq!(spec["boardSort"], "priority");
+    assert_eq!(spec["boardDescending"], true);
+    // Only the fields given change; an empty list or null clears one.
+    let u = ok(
+        &mut s,
+        "update_saved_view",
+        json!({ "id": v["id"], "priorities": [], "due": null }),
+    );
+    let spec: Value = serde_json::from_str(u["spec_json"].as_str().unwrap()).unwrap();
+    assert_eq!(spec["filter"]["priorities"], json!([]));
+    assert_eq!(spec["filter"]["due"], Value::Null);
+    assert_eq!(spec["filter"]["statuses"], json!(["Waiting"]));
+    assert!(
+        err(
+            &mut s,
+            "add_saved_view",
+            json!({ "name": "x", "scope": "all", "due": "soon" })
+        )
+        .contains("due")
+    );
+    assert!(
+        err(
+            &mut s,
+            "add_saved_view",
+            json!({ "name": "x", "scope": "all", "group_by": "color" })
+        )
+        .contains("group_by")
+    );
+}
