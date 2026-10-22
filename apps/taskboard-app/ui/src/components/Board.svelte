@@ -10,7 +10,7 @@
   import { buildColumns, buildLanes, laneKey, type Column, type SectionOf } from '../lib/board'
   import { dueLabel, isOverdue, minutes, PALETTE, swatch } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
-  import { act, app, archiveCompleted, inboxId, scopeProjectId, scopeProjectIds, scopeQuery, sectionById, type Lanes } from '../lib/store.svelte'
+  import { act, app, archiveCompleted, inboxId, listQuery, scopeProjectId, scopeProjectIds, sectionById, type Lanes } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import Progress from './Progress.svelte'
@@ -19,15 +19,22 @@
   const COLLAPSE_KEY = 'taskboard.board.collapsed'
 
   // ---------- columns & data ----------
-  const columns = $derived(buildColumns(app.statuses, scopeProjectIds()))
+  /** Every column of the projects in view (column actions work on these). */
+  const allColumns = $derived(buildColumns(app.statuses, scopeProjectIds()))
+  /** The columns shown: all, or those picked in Filter → Status. */
+  const columns = $derived(
+    app.filter.statuses.length ? allColumns.filter((c) => app.filter.statuses.some((s) => s.trim().toLowerCase() === c.key)) : allColumns,
+  )
   const colKeys = $derived(columns.map((c) => c.key).join('|'))
-  const singleProject = $derived(columns.length > 0 && columns[0].status !== null)
+  const singleProject = $derived(allColumns.length > 0 && allColumns[0].status !== null)
+  /** Cards follow a sort instead of the order they were dragged into. */
+  const sorted = $derived(app.boardSort !== 'manual')
   const baseKey = $derived(
     JSON.stringify({
-      ...scopeQuery(),
+      ...listQuery(),
       categories: [],
-      sort: 'manual',
-      descending: false,
+      sort: app.boardSort,
+      descending: app.boardDescending,
       top_level: !app.boardSubtasks,
     }),
   )
@@ -243,6 +250,12 @@
     const priorityChange =
       app.lanes === 'priority' && target.lane !== row.priority ? (target.lane as Priority) : null
 
+    // A sorted column decides the order itself: a card can change column, not place.
+    if (sorted && statusId === row.status_id && !priorityChange) {
+      toast('Cards are sorted, so they keep their place. To arrange them by hand, choose Sort → Board order.')
+      return flushReload()
+    }
+
     // Nothing to do if it lands where it already is.
     const source = cellRows(fromKey, laneKey(row, app.lanes, sectionOf))
     const at = source.findIndex((r) => r.id === row.id)
@@ -279,7 +292,7 @@
     data.set(target.col, { rows, total: to.total + 1 })
 
     try {
-      await ipc.moveTask(row.id, { status_id: statusId, above: above?.id, below: below?.id })
+      await ipc.moveTask(row.id, sorted ? { status_id: statusId } : { status_id: statusId, above: above?.id, below: below?.id })
       if (priorityChange) await ipc.updateTask(row.id, { priority: priorityChange })
     } catch (err) {
       toast(errorMessage(err), { kind: 'error' })
@@ -403,6 +416,7 @@
   }
 
   function indicatorAt(colKey: string, lane: string, slot: number): boolean {
+    if (sorted) return false
     return !!over && over.col === colKey && over.lane === lane && over.index === slot
   }
 
@@ -473,8 +487,8 @@
       return
     }
     const archive = archiveItems(col)
-    const index = columns.findIndex((c) => c.key === col.key)
-    const others = columns.filter((c) => c.key !== col.key && c.status)
+    const index = allColumns.findIndex((c) => c.key === col.key)
+    const others = allColumns.filter((c) => c.key !== col.key && c.status)
     menu = {
       ...at,
       items: [
@@ -506,12 +520,12 @@
         {
           label: 'Move left',
           disabled: index === 0,
-          run: () => void act(() => ipc.moveStatus(st.id, columns[index - 2]?.status?.id ?? null)),
+          run: () => void act(() => ipc.moveStatus(st.id, allColumns[index - 2]?.status?.id ?? null)),
         },
         {
           label: 'Move right',
-          disabled: index === columns.length - 1,
-          run: () => void act(() => ipc.moveStatus(st.id, columns[index + 1]?.status?.id ?? null)),
+          disabled: index === allColumns.length - 1,
+          run: () => void act(() => ipc.moveStatus(st.id, allColumns[index + 1]?.status?.id ?? null)),
         },
         'separator',
         ...others.map((o) => ({
@@ -572,7 +586,7 @@
     addingColumn = false
     const project = scopeProjectId()
     if (!name.trim() || !project) return
-    const lastOpen = [...columns].reverse().find((c) => c.category === 'todo' || c.category === 'active')
+    const lastOpen = [...allColumns].reverse().find((c) => c.category === 'todo' || c.category === 'active')
     await act(() =>
       ipc.createStatus({ project_id: project, name: name.trim(), category: 'active', after: lastOpen?.status?.id }),
     )
@@ -659,7 +673,7 @@
 
 {#snippet cell(col: Column, lane: string)}
   {@const rows = cellRows(col.key, lane)}
-  <div class="cell" class:collapsed={collapsed[col.key]} data-cell="1" data-col={col.key} data-lane={lane}>
+  <div class="cell" class:collapsed={collapsed[col.key]} class:drop={sorted && over?.col === col.key && over.lane === lane} data-cell="1" data-col={col.key} data-lane={lane}>
     {#if !collapsed[col.key]}
       {#each slots(rows) as { row, slot } (row.id)}
         {#if slot >= 0 && indicatorAt(col.key, lane, slot)}<div class="indicator"></div>{/if}
@@ -708,7 +722,11 @@
     {#if !singleProject && columns.length}
       <span class="min-w-0 truncate text-subtle" title="Columns combine same-named statuses across {scopeProjectIds().length} projects">Columns from {scopeProjectIds().length} projects</span>
     {/if}
-    <span class="ml-auto hidden shrink-0 whitespace-nowrap text-subtle 2xl:inline">Drag cards, or Space to pick up · arrows · Space to drop</span>
+    {#if sorted}
+      <span class="ml-auto shrink-0 whitespace-nowrap text-subtle">Sorted · drag a card to another column to move it</span>
+    {:else}
+      <span class="ml-auto hidden shrink-0 whitespace-nowrap text-subtle 2xl:inline">Drag cards, or Space to pick up · arrows · Space to drop</span>
+    {/if}
   </div>
 
   <div bind:this={board} class="board min-h-0 flex-1 overflow-auto rounded-[var(--radius)]" style="--col-w: {colWidth}px">
@@ -867,6 +885,10 @@
     padding: 6px;
     border-radius: var(--radius);
     background: color-mix(in oklch, var(--surface-3) 55%, transparent);
+  }
+  /* Sorted columns: the whole column lights up as the drop target. */
+  .cell.drop {
+    box-shadow: inset 0 0 0 2px color-mix(in oklch, var(--accent) 60%, transparent);
   }
   .cell.collapsed {
     width: 44px;

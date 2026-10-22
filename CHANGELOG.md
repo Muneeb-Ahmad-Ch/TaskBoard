@@ -9,7 +9,32 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Filter** the table and the board (header → Filter): priority, status,
+  tags (any of them), project, due date (overdue, today, next 7 days, has a
+  date, no date) and date added (today, last 7 or 30 days). Filters show as
+  chips above the list; remove one with its ×, or Clear all. Saved views
+  remember them.
+- **Group the table** (header → Group) by status, priority, project, group,
+  due date or date added. Click a group's header (or press Enter, ← / → on
+  it) to fold it.
+- **Sort the board's cards** (header → Sort) by due date, priority, name,
+  project, progress, estimate, date added or last change, or keep your own
+  order (Board order). Sorted cards can still be dragged to another column.
+- **Added column** in the table: when each task was added (hover for the
+  exact time). Sort by it, newest first.
+- Ctrl+K: clear filters, show overdue / high-priority / recently added
+  tasks, sort by date added, group the table.
+- **Assistants** can filter the same way: `list_tasks` takes `statuses`,
+  `priorities`, `tags`, `project_ids`, `dated`, `added_since` /
+  `added_until`, sorts by any column, and returns when each task was added
+  (`created_at`). Saved views (`add_saved_view`, `update_saved_view`) keep
+  filters, grouping and the board's card order.
+
+### Changed
+- **Every table column sorts:** Group / Project, Status, Progress, Estimate
+  and Tags join Task, Priority and Due. Click a header to sort; click again
+  to reverse.
 
 ## [0.5.1] - 2026-10-19
 

@@ -15,7 +15,7 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Ctrl+K | Command palette: jump to sections/groups/projects, search tasks, run any action (works while typing) |
 | N | Focus Quick Add |
 | ? | Show all keyboard shortcuts |
-| / or Ctrl+F | Filter tasks |
+| / or Ctrl+F | Search tasks (Filter, Sort and Group sit next to the search box) |
 | 1 / 2 / 3 | The visible view tabs, left to right (Table / Board / Calendar by default) |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z or Ctrl+Y | Redo |
@@ -55,6 +55,8 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | ← / → on a column's edge (Shift: bigger steps) | Make that column narrower / wider; the columns after it move along |
 | Enter or double-click on a column's edge | Fit the column to its content |
 | Home on a column's edge | Default width (on Task: fill the free space again) |
+| Click a column header | Sort by it; click again to reverse |
+| Enter, Space or ← / → on a group header | Fold or unfold the group (when the table is grouped) |
 
 ## Board
 
@@ -62,7 +64,7 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 |---|---|
 | Tab | Focus a card |
 | Enter | Open the task |
-| Space | Pick up the card; ← → change column, ↑ ↓ change position; Space drops, Esc cancels |
+| Space | Pick up the card; ← → change column, ↑ ↓ change position (Board order only); Space drops, Esc cancels |
 | Right-click, Menu key or Shift+F10 | Card menu: open, done, duplicate, archive, delete |
 
 ## Sidebar

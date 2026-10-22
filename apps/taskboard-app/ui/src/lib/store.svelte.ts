@@ -12,7 +12,9 @@ import type { SidebarCounts } from './bindings/SidebarCounts'
 import type { Status } from './bindings/Status'
 import type { TaskQuery } from './bindings/TaskQuery'
 import type { TaskSort } from './bindings/TaskSort'
+import { applyFilter, NO_FILTER, type TaskFilter } from './filters'
 import { isoDate, plural, todayIso } from './format'
+import type { GroupBy } from './grouping'
 import { errorMessage, inTauri, ipc, onEvent, onIntegrityFailed } from './ipc'
 import { adoptLegacySectionPrefs, clearLegacyPins, legacyPins, visibleTabs } from './layout.svelte'
 import { pinsToMigrate } from './pins'
@@ -73,6 +75,13 @@ export const app = $state({
   showDone: false,
   sort: 'due' as TaskSort,
   descending: false,
+  /** Filter menu picks, shared by the table and the board. */
+  filter: { ...NO_FILTER } as TaskFilter,
+  /** Table grouping. */
+  groupBy: 'none' as GroupBy,
+  /** Card order on the board ('manual' = the order cards were dragged into). */
+  boardSort: 'manual' as TaskSort,
+  boardDescending: false,
   /** Task shown in the detail panel. */
   openTaskId: null as Id | null,
   /** Bumped on every data change; views re-query when it changes. */
@@ -114,6 +123,21 @@ export type ViewSpec = {
   sort: TaskSort
   descending: boolean
   lanes: Lanes
+  filter: TaskFilter
+  groupBy: GroupBy
+  boardSort: TaskSort
+  boardDescending: boolean
+}
+
+/** A saved view's spec with defaults for what older versions didn't save. */
+function fullSpec(spec: Partial<ViewSpec>): Partial<ViewSpec> {
+  return {
+    ...spec,
+    filter: { ...NO_FILTER, ...spec.filter },
+    groupBy: spec.groupBy ?? 'none',
+    boardSort: spec.boardSort ?? 'manual',
+    boardDescending: spec.boardDescending ?? false,
+  }
 }
 
 export function currentSpec(): ViewSpec {
@@ -125,6 +149,10 @@ export function currentSpec(): ViewSpec {
     sort: app.sort,
     descending: app.descending,
     lanes: app.lanes,
+    filter: $state.snapshot(app.filter),
+    groupBy: app.groupBy,
+    boardSort: app.boardSort,
+    boardDescending: app.boardDescending,
   }
 }
 
@@ -138,7 +166,7 @@ function parseSpec(json: string): Partial<ViewSpec> {
 }
 
 export function applySavedView(v: SavedView) {
-  const spec = parseSpec(v.spec_json)
+  const spec = fullSpec(parseSpec(v.spec_json))
   // Views saved before sections existed may point at the old "personal" list.
   const known = ['inbox', 'today', 'upcoming', 'all', 'section', 'client', 'project']
   setScope(spec.scope && known.includes(spec.scope.kind) ? spec.scope : { kind: 'all' })
@@ -148,6 +176,10 @@ export function applySavedView(v: SavedView) {
   app.sort = spec.sort ?? 'due'
   app.descending = spec.descending ?? false
   app.lanes = spec.lanes ?? 'none'
+  app.filter = { ...NO_FILTER, ...spec.filter }
+  app.groupBy = spec.groupBy ?? 'none'
+  app.boardSort = spec.boardSort ?? 'manual'
+  app.boardDescending = spec.boardDescending ?? false
   app.activeViewId = v.id
 }
 
@@ -163,7 +195,7 @@ function canonical(value: unknown): string {
 /** True when the open saved view's filters were changed since it was opened. */
 export function activeViewChanged(): boolean {
   const v = app.views.find((x) => x.id === app.activeViewId)
-  return !!v && canonical(parseSpec(v.spec_json)) !== canonical(currentSpec())
+  return !!v && canonical(fullSpec(parseSpec(v.spec_json))) !== canonical(currentSpec())
 }
 
 export async function saveCurrentView(name: string) {
@@ -275,6 +307,15 @@ export function scopeQuery(): TaskQuery {
   return q
 }
 
+/** The list on screen: the scope narrowed by the Filter menu. */
+export function listQuery(): TaskQuery {
+  return applyFilter(scopeQuery(), app.filter, new Date())
+}
+
+export function clearFilter() {
+  app.filter = { ...NO_FILTER }
+}
+
 /** Projects whose tasks the current scope can show. */
 export function scopeProjectIds(): Id[] {
   const s = app.scope
@@ -297,6 +338,11 @@ export function setScope(scope: Scope) {
   app.scope = scope
   app.openTaskId = null
   app.activeViewId = null
+  // A project picked in the Filter menu only makes sense where it is listed.
+  if (app.filter.projects.length) {
+    const here = new Set(scopeProjectIds())
+    app.filter.projects = app.filter.projects.filter((id) => here.has(id))
+  }
   // Picking a list leaves the dashboard.
   if (isPage(app.view)) app.view = visibleTabs()[0] ?? 'table'
 }

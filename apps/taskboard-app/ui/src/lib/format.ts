@@ -38,6 +38,18 @@ export function dueLabel(iso: string | null): string {
   return monthDay.format(date)
 }
 
+const dateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+
+/** When a task was added (Unix ms): "Today", "Yesterday", "Oct 3", "Oct 3, 2025". */
+export function addedLabel(ms: number): string {
+  return dueLabel(isoDate(new Date(ms)))
+}
+
+/** The full moment, for a tooltip: "Oct 3, 2026, 10:05 AM". */
+export function addedTitle(ms: number): string {
+  return dateTime.format(new Date(ms))
+}
+
 export function isOverdue(iso: string | null, done: boolean): boolean {
   return !!iso && !done && dayDiff(iso) < 0
 }

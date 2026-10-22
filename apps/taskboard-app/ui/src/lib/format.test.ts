@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cap, dueLabel, isDueToday, isOverdue, isoDate, minutes, parseMinutes, plural, singular, todayIso } from './format'
+import { addedLabel, addedTitle, cap, dueLabel, isDueToday, isOverdue, isoDate, minutes, parseMinutes, plural, singular, todayIso } from './format'
 
 const shift = (days: number) => {
   const d = new Date()
@@ -50,5 +50,23 @@ describe('words', () => {
     expect(singular('Families')).toBe('family')
     expect(singular('Branches')).toBe('branch')
     expect(singular('Personal')).toBe('personal')
+  })
+})
+
+describe('added', () => {
+  const at = (days: number) => {
+    const d = new Date()
+    d.setDate(d.getDate() + days)
+    d.setHours(10, 5)
+    return d.getTime()
+  }
+  it('says today and yesterday, else the date', () => {
+    expect(addedLabel(at(0))).toBe('Today')
+    expect(addedLabel(at(-1))).toBe('Yesterday')
+    expect(addedLabel(at(-3))).toBe(dueLabel(shift(-3)))
+  })
+  it('the tooltip has the date and time', () => {
+    expect(addedTitle(at(-3))).toMatch(/\d{4}/)
+    expect(addedTitle(at(-3))).toMatch(/10:05|10\.05/)
   })
 })

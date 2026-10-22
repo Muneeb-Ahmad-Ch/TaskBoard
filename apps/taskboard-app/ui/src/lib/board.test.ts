@@ -40,6 +40,7 @@ const row = (over: Partial<TaskRow>): TaskRow => ({
   recurring: false,
   parent_title: null,
   archived_at: null,
+  created_at: 0,
   ...over,
 })
 

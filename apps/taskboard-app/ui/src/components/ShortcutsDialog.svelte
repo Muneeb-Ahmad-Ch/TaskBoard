@@ -11,7 +11,7 @@
       rows: [
         ['Ctrl+K', 'Search and commands (works while typing)'],
         ['N', 'Add a task'],
-        ['/ or Ctrl+F', 'Filter tasks'],
+        ['/ or Ctrl+F', 'Search tasks (Filter, Sort and Group are next to it)'],
         ['1 / 2 / 3', 'Switch view tab'],
         ['Ctrl+Z', 'Undo'],
         ['Ctrl+Shift+Z or Ctrl+Y', 'Redo'],
@@ -30,6 +30,8 @@
         ['Delete', 'Delete (undoable)'],
         ['Ctrl+A', 'Select all loaded rows'],
         ['Esc', 'Clear selection'],
+        ['Click a column header', 'Sort by it; again to reverse'],
+        ['Enter or ← → on a group header', 'Fold or unfold the group'],
       ],
     },
     {

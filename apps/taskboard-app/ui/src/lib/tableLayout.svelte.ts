@@ -2,26 +2,28 @@
 // Settings → Layout; a per-device UI preference stored in localStorage.
 import type { TaskSort } from './bindings/TaskSort'
 
-export type ColId = 'title' | 'project' | 'status' | 'priority' | 'due' | 'progress' | 'estimate' | 'tags'
+export type ColId = 'title' | 'project' | 'status' | 'priority' | 'due' | 'progress' | 'estimate' | 'tags' | 'added'
 
 export interface ColumnDef {
   id: ColId
   label: string
   /** Default width in px; the Task column (0) fills the remaining space. */
   width: number
-  sort?: TaskSort
-  align?: 'right'
+  sort: TaskSort
+  /** The first click sorts newest / highest first. */
+  firstDescending?: boolean
 }
 
 export const COLUMN_DEFS: ColumnDef[] = [
   { id: 'title', label: 'Task', width: 0, sort: 'title' },
-  { id: 'project', label: 'Group / Project', width: 230 },
-  { id: 'status', label: 'Status', width: 130 },
+  { id: 'project', label: 'Group / Project', width: 230, sort: 'project' },
+  { id: 'status', label: 'Status', width: 130, sort: 'status' },
   { id: 'priority', label: 'Priority', width: 104, sort: 'priority' },
   { id: 'due', label: 'Due', width: 136, sort: 'due' },
-  { id: 'progress', label: 'Progress', width: 118 },
-  { id: 'estimate', label: 'Estimate', width: 96 },
-  { id: 'tags', label: 'Tags', width: 150 },
+  { id: 'progress', label: 'Progress', width: 118, sort: 'progress', firstDescending: true },
+  { id: 'estimate', label: 'Estimate', width: 96, sort: 'estimate' },
+  { id: 'tags', label: 'Tags', width: 150, sort: 'tags' },
+  { id: 'added', label: 'Added', width: 112, sort: 'created', firstDescending: true },
 ]
 
 /** Columns that can move; Task always stays first (it stretches to fill). */

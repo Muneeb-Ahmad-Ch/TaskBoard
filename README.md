@@ -49,13 +49,19 @@ needs permission (see [License](#license)).
   use daily.
 - **Three views of the same data.**
   - *Table*: virtualized (50,000 tasks scroll smoothly), inline editing,
-    sorting, resizable columns, multi-select bulk edits, a right-click menu
-    on every row. Above it, the **schedule strip** shows the list's meetings
-    and time blocks coming up (a client's calls next to its tasks).
+    sorting by any column, grouping (by status, priority, project, group,
+    due date or date added) with collapsible groups, resizable columns, an
+    Added column, multi-select bulk edits, a right-click menu on every row.
+    Above it, the **schedule strip** shows the list's meetings and time
+    blocks coming up (a client's calls next to its tasks).
   - *Board*: drag and drop (mouse or keyboard), custom columns per project,
-    WIP limits, swimlanes by group / project / priority.
+    WIP limits, swimlanes by group / project / priority, and card order by
+    hand or sorted (due date, priority, date added…).
   - *Calendar*: month, week, day and agenda; drag to create, move and resize;
     working hours shading and daily capacity.
+- **Filter** the table and the board by priority, status, tag, project, due
+  date (overdue, today, next 7 days, no date) and date added; what's on
+  shows as chips you can remove one by one.
 - **Board columns that match how work flows**: Backlog, To Do, In Progress,
   **Waiting** (on someone's reply or approval), Review, Done, or your own.
   Ctrl+K → "Add a Waiting column to every project" brings older projects up

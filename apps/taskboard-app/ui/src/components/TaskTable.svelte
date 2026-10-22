@@ -1,6 +1,6 @@
 <script lang="ts">
   import { beginDrag } from '../lib/dnd.svelte'
-  import { Archive, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Circle, CircleDot, CircleDashed, Columns3, Hourglass, Inbox, ListTodo, Repeat, Search, Star, Trash2, X } from '@lucide/svelte'
+  import { Archive, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, CircleDashed, Columns3, Hourglass, Inbox, ListFilter, ListTodo, Repeat, Search, Star, Trash2, X } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Id } from '../lib/bindings/Id'
@@ -9,11 +9,13 @@
   import type { TaskPatch } from '../lib/bindings/TaskPatch'
   import type { TaskQuery } from '../lib/bindings/TaskQuery'
   import type { TaskRow } from '../lib/bindings/TaskRow'
-  import type { TaskSort } from '../lib/bindings/TaskSort'
   import type { TaskSummary } from '../lib/bindings/TaskSummary'
-  import { dueLabel, isOverdue, isTyping, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
+  import { buildColumns } from '../lib/board'
+  import { filterCount } from '../lib/filters'
+  import { addedLabel, addedTitle, dueLabel, isOverdue, isTyping, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
+  import { flattenGroups, groupRows, type GroupItem } from '../lib/grouping'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
-  import { act, app, archiveCompleted, scopeQuery, sectionById } from '../lib/store.svelte'
+  import { act, app, archiveCompleted, clearFilter, listQuery, scopeProjectIds, sectionById } from '../lib/store.svelte'
   import { layout as viewLayout } from '../lib/layout.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
@@ -38,7 +40,7 @@
   const COL_MIN = 60
   const COL_MAX = 900
   /** Auto-hidden first when the table is too narrow (user-hidden ones stay hidden). */
-  const SQUEEZE_ORDER: ColId[] = ['tags', 'estimate', 'progress', 'priority', 'status']
+  const SQUEEZE_ORDER: ColId[] = ['added', 'tags', 'estimate', 'progress', 'priority', 'status']
   let width = $state(1200)
   /** In a project's (or the Inbox's) own list every row has the same project. */
   const projectColumnRepeats = $derived(app.display.hide_repeated_context && (app.scope.kind === 'project' || app.scope.kind === 'inbox'))
@@ -171,13 +173,51 @@
   let scrollTop = $state(0)
   let height = $state(600)
 
-  const queryKey = $derived(JSON.stringify(scopeQuery()))
+  const queryKey = $derived(JSON.stringify(listQuery()))
+
+  // ---------- grouping ----------
+  // Grouped, the whole list is loaded (up to GROUP_CAP rows) and drawn as
+  // group headers + rows; each group keeps the list's sort order.
+  const GROUP_CAP = 5000
+  const grouped = $derived(app.groupBy !== 'none')
+  const collapsedGroups = new SvelteSet<string>()
+  $effect(() => {
+    void app.groupBy
+    untrack(() => collapsedGroups.clear())
+  })
+  const items = $derived.by((): GroupItem[] => {
+    if (!grouped) return []
+    const rows = [...pages.keys()].sort((a, b) => a - b).flatMap((k) => pages.get(k) ?? [])
+    const ctx = {
+      columns: buildColumns(app.statuses, scopeProjectIds()).map((c) => c.key),
+      projects: app.projects.map((p) => p.id),
+      clients: app.clients.map((c) => c.id),
+      now: new Date(),
+    }
+    return flattenGroups(groupRows(rows, app.groupBy, ctx), collapsedGroups)
+  })
+  /** Lines in the list: rows, plus group headers when grouped. */
+  const count = $derived(grouped ? items.length : total)
+
+  function groupAt(i: number) {
+    const item = grouped ? items[i] : undefined
+    return item?.kind === 'group' ? item : undefined
+  }
+
+  function toggleGroup(key: string) {
+    if (collapsedGroups.has(key)) collapsedGroups.delete(key)
+    else collapsedGroups.add(key)
+  }
   /** The sticky header sits inside the scroller, above row 0. */
   const HEADER = 36
   const first = $derived(Math.max(0, Math.floor((scrollTop - HEADER) / ROW) - OVERSCAN))
-  const last = $derived(Math.min(total, Math.ceil((scrollTop + height) / ROW) + OVERSCAN))
+  const last = $derived(Math.min(count, Math.ceil((scrollTop + height) / ROW) + OVERSCAN))
 
   function rowAt(i: number): TaskRow | undefined {
+    if (grouped) {
+      const item = items[i]
+      return item?.kind === 'row' ? item.row : undefined
+    }
     return pages.get(Math.floor(i / PAGE))?.[i % PAGE]
   }
 
@@ -198,15 +238,41 @@
     }
   }
 
+  /** Grouped: every row (up to GROUP_CAP), in pages of PAGE so edits find them. */
+  async function fetchAll(gen: number) {
+    if (!inTauri) return
+    try {
+      const q = JSON.parse(queryKey)
+      const next = new Map<number, TaskRow[]>()
+      let offset = 0
+      let all = 0
+      do {
+        const result = await ipc.listTasks({ ...q, offset, limit: 1000 })
+        if (gen !== generation) return
+        all = result.total
+        for (let k = 0; k < result.rows.length; k += PAGE) next.set((offset + k) / PAGE, result.rows.slice(k, k + PAGE))
+        offset += result.rows.length
+        if (!result.rows.length) break
+      } while (offset < Math.min(all, GROUP_CAP))
+      pages.clear()
+      for (const [k, rows] of next) pages.set(k, rows)
+      total = all
+      loaded = true
+    } catch (err) {
+      if (gen === generation) toast(errorMessage(err), { kind: 'error' })
+    }
+  }
+
   function visiblePages(): number[] {
     const from = Math.floor(first / PAGE)
     const to = Math.floor(Math.max(first, last - 1) / PAGE)
     return Array.from({ length: to - from + 1 }, (_, k) => from + k)
   }
 
-  // New query → start over at the top. Depends on `queryKey` only.
+  // New query or grouping → start over at the top.
   $effect(() => {
     void queryKey
+    void grouped
     untrack(() => {
       generation++
       pages.clear()
@@ -218,7 +284,8 @@
       cursor = -1
       if (viewport) viewport.scrollTop = 0
       scrollTop = 0
-      void fetchPage(0, generation)
+      if (grouped) void fetchAll(generation)
+      else void fetchPage(0, generation)
     })
   })
 
@@ -228,6 +295,7 @@
     if (!app.dataVersion) return
     untrack(() => {
       generation++
+      if (grouped) return void fetchAll(generation)
       const keep = new Set(visiblePages())
       for (const p of [...pages.keys()]) if (!keep.has(p)) pages.delete(p)
       inflight.clear()
@@ -237,6 +305,7 @@
 
   // Scrolling into unloaded pages.
   $effect(() => {
+    if (grouped) return
     for (const p of visiblePages()) if (!pages.has(p)) void fetchPage(p, generation)
   })
 
@@ -295,7 +364,11 @@
 
   function select(i: number, e?: MouseEvent | KeyboardEvent) {
     const row = rowAt(i)
-    if (!row) return
+    if (!row) {
+      // A group header takes the cursor (Enter / ←→ open and close it), not the selection.
+      if (groupAt(i)) cursor = i
+      return
+    }
     if (e?.shiftKey && anchor >= 0) {
       selected.clear()
       for (let k = Math.min(anchor, i); k <= Math.max(anchor, i); k++) {
@@ -330,12 +403,19 @@
     if (renaming || isTyping(e)) return
     const move = (d: number) => {
       e.preventDefault()
-      const i = Math.max(0, Math.min(total - 1, (cursor < 0 ? -1 : cursor) + d))
+      const i = Math.max(0, Math.min(count - 1, (cursor < 0 ? -1 : cursor) + d))
       select(i, e.shiftKey ? e : undefined)
       scrollIntoView(i)
       if (app.openTaskId) app.openTaskId = rowAt(i)?.id ?? null
     }
     const current = rowAt(cursor)
+    const head = groupAt(cursor)
+    const opens = head?.collapsed ? e.key === 'ArrowRight' : e.key === 'ArrowLeft'
+    if (head && (e.key === 'Enter' || e.key === ' ' || opens)) {
+      e.preventDefault()
+      toggleGroup(head.group.key)
+      return
+    }
     switch (e.key) {
       case 'ArrowDown':
       case 'j':
@@ -373,7 +453,8 @@
       case 'a':
         if (e.ctrlKey) {
           e.preventDefault()
-          for (const rows of pages.values()) for (const r of rows) selected.add(r.id)
+          if (grouped) for (const item of items) item.kind === 'row' && selected.add(item.row.id)
+          else for (const rows of pages.values()) for (const r of rows) selected.add(r.id)
         } else if (!e.altKey && !e.metaKey && selected.size) {
           e.preventDefault()
           void archiveSelected()
@@ -656,11 +737,10 @@
   }
 
   function sortBy(col: Col) {
-    if (!col.sort) return
     if (app.sort === col.sort) app.descending = !app.descending
     else {
       app.sort = col.sort
-      app.descending = false
+      app.descending = !!col.firstDescending
     }
   }
 
@@ -675,6 +755,8 @@
   const empty = $derived.by(() => {
     const add = `Add one ${viewLayout.quickAdd === 'top' ? 'above' : 'below'}, or press N.`
     const showDone = { label: 'Show completed', run: () => (app.showDone = true) }
+    if (filterCount(app.filter))
+      return { icon: ListFilter, title: 'No tasks match the filters', body: 'Change the filters, or clear them to see the whole list.', action: { label: 'Clear filters', run: clearFilter } }
     if (app.search.trim())
       return app.showDone || app.scope.kind === 'today' || app.scope.kind === 'upcoming'
         ? { icon: Search, title: 'No matching tasks', body: 'Try a different search.', action: null }
@@ -716,7 +798,7 @@
     bind:this={viewport}
     class="relative min-h-0 flex-1 overflow-auto outline-none"
     role="grid"
-    aria-rowcount={total}
+    aria-rowcount={count}
     aria-multiselectable="true"
     tabindex="0"
     onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
@@ -728,9 +810,9 @@
       <div role="columnheader" class="h-full"><button class="grid h-full w-full place-items-center text-subtle hover:text-text" title="Columns" aria-label="Choose columns" onclick={columnsMenu}><Columns3 size={14} /></button></div>
       {#each cols as col, ci (col.id)}
         <div class="relative flex h-full min-w-0 items-center px-2" role="columnheader" aria-sort={app.sort === col.sort ? (app.descending ? 'descending' : 'ascending') : 'none'}>
-          <button class="flex min-w-0 items-center gap-1 font-medium {col.sort ? 'hover:text-text' : 'cursor-default'}" onclick={() => sortBy(col)}>
+          <button class="flex min-w-0 items-center gap-1 font-medium hover:text-text" title="Sort by {headerLabel(col).toLowerCase()}" onclick={() => sortBy(col)}>
             <span class="truncate">{headerLabel(col)}</span>
-            {#if col.sort && app.sort === col.sort}
+            {#if app.sort === col.sort}
               {#if app.descending}<ArrowDown size={12} />{:else}<ArrowUp size={12} />{/if}
             {/if}
           </button>
@@ -767,10 +849,34 @@
         </div>
       </div>
     {/if}
-    <div style="height: {total * ROW}px; min-width: {minWidth}px" class="relative">
+    <div style="height: {count * ROW}px; min-width: {minWidth}px" class="relative">
       {#each { length: last - first } as _, k (first + k)}
         {@const i = first + k}
         {@const row = rowAt(i)}
+        {@const head = groupAt(i)}
+        {#if head}
+          <div
+            class="row group-row absolute inset-x-0 flex items-center border-b border-border"
+            class:cursor={i === cursor}
+            style="top: {i * ROW}px; height: {ROW}px"
+            role="row"
+            tabindex="-1"
+            aria-rowindex={i + 1}
+            aria-expanded={!head.collapsed}
+            onclick={() => {
+              cursor = i
+              toggleGroup(head.group.key)
+            }}
+            onkeydown={() => {}}
+          >
+            <div role="gridcell" class="sticky left-0 flex h-full min-w-0 items-center gap-2 px-3">
+              {#if head.collapsed}<ChevronRight size={14} class="shrink-0 text-subtle" />{:else}<ChevronDown size={14} class="shrink-0 text-subtle" />{/if}
+              {#if head.group.color}<span class="size-2 shrink-0 rounded-full" style="background: {head.group.color.startsWith('var') ? head.group.color : swatch(head.group.color, 0.62, 0.13)}"></span>{/if}
+              <span class="truncate font-medium">{head.group.label}</span>
+              <span class="tabular text-xs text-subtle">{head.group.rows.length}</span>
+            </div>
+          </div>
+        {:else}
         <div
           class="row absolute inset-x-0 grid items-center border-b border-border"
           class:selected={row && selected.has(row.id)}
@@ -890,6 +996,8 @@
                   <span class="flex gap-1 overflow-hidden">
                     {#each row.tags as tag (tag)}<span class="tag">#{tag}</span>{/each}
                   </span>
+                {:else if col.id === 'added'}
+                  <span class="tabular block truncate text-muted" title="Added {addedTitle(row.created_at)}">{addedLabel(row.created_at)}</span>
                 {/if}
               </div>
             {/each}
@@ -898,6 +1006,7 @@
             <div class="mx-2 h-3 w-1/2 rounded bg-surface-3"></div>
           {/if}
         </div>
+        {/if}
       {/each}
     </div>
   </div>
@@ -915,6 +1024,9 @@
       <button class="bulk ml-auto" onclick={() => selected.clear()}><X size={13} /> Clear</button>
     {:else if summary}
       <span class="tabular">{plural(summary.total, 'task')}</span>
+      {#if grouped && total > GROUP_CAP}
+        <span class="text-subtle" title="Narrow the list with a filter or search to group the rest">· grouping the first {GROUP_CAP.toLocaleString()}</span>
+      {/if}
       {#if summary.total && app.showDone}
         <span aria-hidden="true">·</span>
         <span class="flex items-center gap-2">
@@ -951,6 +1063,10 @@
   }
   .row.selected {
     background: var(--accent-soft);
+  }
+  .group-row {
+    background: var(--surface-1);
+    cursor: pointer;
   }
   /* Dimmed details (a due time, the group / project slash) stay readable on
      the selection color. */

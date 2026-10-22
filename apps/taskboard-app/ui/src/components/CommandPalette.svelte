@@ -1,9 +1,11 @@
 <script lang="ts">
   import { CornerDownLeft, Search } from '@lucide/svelte'
   import type { TaskRow } from '../lib/bindings/TaskRow'
+  import { filterCount, NO_FILTER } from '../lib/filters'
   import { swatch } from '../lib/format'
+  import { GROUP_LABEL, type GroupBy } from '../lib/grouping'
   import { inTauri, ipc } from '../lib/ipc'
-  import { activeViewChanged, addMissingColumns, app, applySavedView, archiveCompleted, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
+  import { activeViewChanged, addMissingColumns, app, applySavedView, archiveCompleted, clearFilter, pinProject, redo, setScope, undo, unpinProject, updateActiveView } from '../lib/store.svelte'
   import { setThemePref } from '../lib/theme.svelte'
   import { openChangelog } from '../lib/about'
   import { cal, newMeeting } from '../lib/cal.svelte'
@@ -75,6 +77,23 @@
     if (active && activeViewChanged())
       list.push({ id: 'sv-update', group: 'Actions', label: `Update view “${active.name}” with current filters`, run: () => void updateActiveView() })
     list.push({ id: 'new-section', group: 'Actions', label: 'New section…', run: () => (app.sectionDialog = { id: null }) })
+    // Filter, sort and group (the header's Filter / Sort / Group buttons do more).
+    const listName = app.view === 'board' ? 'board' : 'table'
+    const toList = () => {
+      if (app.view !== 'board') app.view = 'table'
+    }
+    if (filterCount(app.filter)) list.push({ id: 'f-clear', group: 'Filter', label: 'Clear filters', run: clearFilter })
+    list.push(
+      { id: 'f-overdue', group: 'Filter', label: 'Show only overdue tasks', run: () => { toList(); app.filter = { ...NO_FILTER, due: 'overdue' } } },
+      { id: 'f-urgent', group: 'Filter', label: 'Show only high and urgent priority', run: () => { toList(); app.filter = { ...app.filter, priorities: ['urgent', 'high'] } } },
+      { id: 'f-added', group: 'Filter', label: 'Show only tasks added in the last 7 days', run: () => { toList(); app.filter = { ...app.filter, added: 'week' } } },
+      { id: 'sort-added', group: 'Filter', label: `Sort ${listName} by date added, newest first`, run: () => {
+        toList()
+        if (app.view === 'board') { app.boardSort = 'created'; app.boardDescending = true } else { app.sort = 'created'; app.descending = true }
+      } },
+    )
+    for (const g of ['status', 'priority', 'project', 'client', 'due', 'added', 'none'] as GroupBy[])
+      if (g !== app.groupBy) list.push({ id: `group-${g}`, group: 'Filter', label: g === 'none' ? 'Table: no grouping' : `Group table by ${GROUP_LABEL[g].toLowerCase()}`, run: () => { app.view = 'table'; app.groupBy = g } })
     for (const s of app.sections)
       list.push({ id: `s-${s.id}`, group: 'Sections', label: s.name, color: s.color, run: () => setScope({ kind: 'section', id: s.id }) })
     for (const c of app.clients)

@@ -16,6 +16,8 @@
   import TaskTable from './components/TaskTable.svelte'
   import ScopeStats from './components/ScopeStats.svelte'
   import ScheduleStrip from './components/ScheduleStrip.svelte'
+  import ListControls from './components/ListControls.svelte'
+  import FilterChips from './components/FilterChips.svelte'
   import { errorMessage, inTauri, ipc } from './lib/ipc'
   import { toast } from './lib/toast.svelte'
   import Toasts from './components/Toasts.svelte'
@@ -258,9 +260,13 @@
 
       <label class="search flex h-7 w-56 shrink items-center max-[1180px]:w-44 max-[820px]:w-32 gap-1.5 rounded-md border border-border bg-surface-2 px-2 text-muted focus-within:border-accent">
         <Search size={13} />
-        <input bind:this={searchInput} bind:value={app.search} class="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-subtle" placeholder="Filter tasks  /" aria-label="Filter tasks" onkeydown={(e) => e.key === 'Escape' && ((app.search = ''), e.currentTarget.blur())} />
-        {#if app.search}<button aria-label="Clear filter" onclick={() => (app.search = '')}><X size={13} /></button>{/if}
+        <input bind:this={searchInput} bind:value={app.search} class="min-w-0 flex-1 bg-transparent text-text outline-none placeholder:text-subtle" placeholder="Search tasks  /" aria-label="Search tasks" onkeydown={(e) => e.key === 'Escape' && ((app.search = ''), e.currentTarget.blur())} />
+        {#if app.search}<button aria-label="Clear search" onclick={() => (app.search = '')}><X size={13} /></button>{/if}
       </label>
+
+      {#if app.view === 'table' || app.view === 'board'}
+        <ListControls />
+      {/if}
 
       {#if canHideDone}
         <button
@@ -290,6 +296,7 @@
         {#if app.view === 'table'}
           <ScheduleStrip />
           {#if layout.quickAdd === 'top'}<QuickAdd placement="top" />{/if}
+          <FilterChips />
           {#if isEmpty && !welcomeDismissed}
             <Welcome ondismiss={dismissWelcome} />
           {:else}
@@ -298,6 +305,7 @@
           <!-- At the bottom (default) quick add sits under the list, like a chat box. -->
           {#if layout.quickAdd === 'bottom'}<div class="mt-auto"><QuickAdd placement="bottom" /></div>{/if}
         {:else if app.view === 'board'}
+          <FilterChips />
           <Board />
         {:else if app.view === 'calendar'}
           <Calendar />
