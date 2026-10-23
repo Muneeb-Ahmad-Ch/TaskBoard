@@ -188,7 +188,7 @@ pub(super) const TOOLS: &[Tool] = &[
     },
     Tool {
         name: "find_slots",
-        description: "Free time for a meeting of duration_min between two dates, inside your working hours (and the group's, in its time zone, when group_id is given), avoiding meetings and blocks. At most 92 days.",
+        description: "Free time for a meeting of duration_min between two dates, inside your working hours (and the group's, in its time zone, when group_id is given), avoiding meetings and blocks. At most 31 days; meetings of 5 minutes to 8 hours.",
         fields: &[
             ("from", DAY, true),
             ("to", DAY, true),
@@ -232,7 +232,7 @@ pub(super) const TOOLS: &[Tool] = &[
     },
     Tool {
         name: "get_day_plans",
-        description: "Per day between two dates (at most 92): working time available, meetings, blocks, estimates of tasks due and time logged, in minutes.",
+        description: "Per day between two dates (at most 62): working time available, meetings, blocks, estimates of tasks due and time logged, in minutes.",
         fields: &[("from", DAY, true), ("to", DAY, true)],
     },
     Tool {
@@ -327,7 +327,7 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
         "list_reminders" => list_reminders(db, args),
         "list_repeating" => list_repeating(db, args),
         "get_day_plans" => {
-            let (from, to) = date_range(args, 92)?;
+            let (from, to) = date_range(args, 62)?;
             let plans = db.day_plans(&from, &to).map_err(err)?;
             Ok(json!({ "days": plans.iter().map(|p| json!({
                 "date": p.date, "day_off": p.day_off, "note": p.note, "available_min": p.available_min,
@@ -751,11 +751,11 @@ fn date_range(args: &Args, max_days: i64) -> Result<(String, String), String> {
 }
 
 fn find_slots(db: &mut Db, args: &Args) -> ToolResult {
-    let (from, to) = date_range(args, 92)?;
+    let (from, to) = date_range(args, 31)?;
     let int = |k: &str| args.get(k).and_then(Value::as_i64);
     let duration = int("duration_min").ok_or("duration_min must be a whole number of minutes")?;
-    if !(5..=24 * 60).contains(&duration) {
-        return Err("duration_min must be between 5 and 1440".to_owned());
+    if !(5..=8 * 60).contains(&duration) {
+        return Err("duration_min must be between 5 and 480 (8 hours)".to_owned());
     }
     let q = FindSlots {
         from_date: from,

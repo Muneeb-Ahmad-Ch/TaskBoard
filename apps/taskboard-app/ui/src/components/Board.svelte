@@ -692,9 +692,17 @@
               e.currentTarget.value = ''
               void addInColumn(col, lane, v)
             }
-            if (e.key === 'Escape') adding = null
+            if (e.key === 'Escape') {
+              e.currentTarget.value = ''
+              adding = null
+            }
           }}
-          onblur={() => (adding = null)}
+          onblur={(e) => {
+            // Clicking away keeps what was typed.
+            const v = e.currentTarget.value
+            adding = null
+            if (v.trim()) void addInColumn(col, lane, v)
+          }}
         />
       {:else}
         <button class="add-btn" onclick={() => (adding = { col: col.key, lane })}><Plus size={14} /> Add task</button>

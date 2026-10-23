@@ -343,3 +343,28 @@ fn slot_finder_intersects_with_client_hours_in_their_zone() {
         .is_err()
     );
 }
+
+#[test]
+fn day_plan_estimates_skip_archived_work_and_count_subtasks_once() {
+    let mut db = Db::open_in_memory().unwrap();
+    let inbox = db.inbox_id().unwrap();
+    let day = "2031-03-04";
+    let mk = |db: &mut Db, title: &str, est: i64, parent: Option<Id>| {
+        db.create_task(NewTask {
+            title: title.into(),
+            project_id: Some(inbox),
+            parent_id: parent,
+            due_date: Some(day.into()),
+            estimate_minutes: Some(est),
+            ..Default::default()
+        })
+        .unwrap()
+    };
+    mk(&mut db, "Plain", 30, None);
+    let old = mk(&mut db, "Archived", 60, None);
+    db.set_task_archived(old.id, true).unwrap();
+    let parent = mk(&mut db, "Parent", 120, None);
+    mk(&mut db, "Child", 45, Some(parent.id));
+    let plans = db.day_plans(day, day).unwrap();
+    assert_eq!(plans[0].due_estimate_min, 30 + 45);
+}

@@ -718,9 +718,16 @@ impl Db {
         let mut due: HashMap<String, i64> = HashMap::new();
         {
             let mut stmt = self.conn().prepare(
-                "SELECT due_date, coalesce(sum(estimate_minutes), 0) FROM task
-                 WHERE deleted_at IS NULL AND completed_at IS NULL AND due_date BETWEEN ?1 AND ?2
-                 GROUP BY due_date",
+                // Live work only; a task whose subtasks carry estimates counts
+                // through them, not twice.
+                "SELECT t.due_date, coalesce(sum(t.estimate_minutes), 0) FROM task t
+                 WHERE t.deleted_at IS NULL AND t.completed_at IS NULL AND t.archived_at IS NULL
+                   AND t.due_date BETWEEN ?1 AND ?2
+                   AND t.project_id NOT IN (SELECT id FROM project WHERE archived_at IS NOT NULL)
+                   AND NOT EXISTS (SELECT 1 FROM task c WHERE c.parent_id = t.id
+                                   AND c.deleted_at IS NULL AND c.archived_at IS NULL
+                                   AND c.completed_at IS NULL AND c.estimate_minutes IS NOT NULL)
+                 GROUP BY t.due_date",
             )?;
             let rows = stmt.query_map(params![first.to_string(), last.to_string()], |r| {
                 Ok((r.get(0)?, r.get(1)?))

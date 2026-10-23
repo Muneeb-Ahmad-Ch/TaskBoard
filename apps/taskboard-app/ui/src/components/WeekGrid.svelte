@@ -218,7 +218,9 @@
             void act(async () => {
               const series = await ipc.getEvent(o.event_id)
               if (series.start_at === null) return
-              const delta = start - o.original_start
+              // By how far it was dragged (from where it was shown, which may differ
+              // from its slot in the series if it had been moved before).
+              const delta = start - o.start_at
               await ipc.updateEvent(o.event_id, { start_at: series.start_at + delta, end_at: series.start_at + delta + (end - start) })
             }),
         },

@@ -390,6 +390,121 @@ fn date_start_ms(d: Date, tz: &TimeZone) -> Option<i64> {
         .map(|z| z.timestamp().as_millisecond())
 }
 
+/// Whether a repeating series has an occurrence whose series start is `original`.
+fn is_occurrence(e: &Event, original: i64) -> bool {
+    let Some(rule) = e
+        .recurrence_rule
+        .as_deref()
+        .and_then(|r| Rule::parse(r).ok())
+    else {
+        return false;
+    };
+    match (e.start_at, e.end_at, &e.all_day_start) {
+        (Some(s), Some(en), _) => {
+            let tz = zone(&e.time_zone);
+            let Ok(t) = Timestamp::from_millisecond(s) else {
+                return false;
+            };
+            rule.occurrences(
+                t.to_zoned(tz.clone()).datetime(),
+                &tz,
+                (en - s).max(1),
+                original,
+                original + 1,
+            )
+            .contains(&original)
+        }
+        (None, None, Some(a)) => {
+            let (local, _) = local_zone();
+            let (Ok(a), Some(day)) = (a.parse::<Date>(), ms_to_date(original, &local)) else {
+                return false;
+            };
+            date_start_ms(day, &local) == Some(original)
+                && rule.dates(a, |d| d <= day).contains(&day)
+        }
+        _ => false,
+    }
+}
+
+/// One occurrence's edits: cancelled, start, end, title, notes.
+type ExceptionFields = (
+    bool,
+    Option<i64>,
+    Option<i64>,
+    Option<String>,
+    Option<String>,
+);
+
+/// Moves a series' per-occurrence edits (cancelled, moved, renamed) from
+/// `from_id` (those at or after `since`) to `to_id`, re-keyed to where those
+/// occurrences now fall: shifted by the same change of date and time of day
+/// as `old_start` → `new_start`, in local wall-clock time so daylight saving
+/// can't knock them off by an hour.
+fn rekey_exceptions(
+    tx: &mut Tx<'_>,
+    (from_id, to_id): (Id, Id),
+    since: i64,
+    (old_start, new_start): (i64, i64),
+    tz: &TimeZone,
+) -> Result<()> {
+    if from_id == to_id && old_start == new_start {
+        return Ok(());
+    }
+    let rows: Vec<(i64, ExceptionFields)> = {
+        let mut stmt = tx.conn().prepare(
+            "SELECT original_start, cancelled, start_at, end_at, title, notes_md
+               FROM event_exception WHERE event_id = ?1 AND original_start >= ?2",
+        )?;
+        stmt.query_map(params![from_id, since], |r| {
+            Ok((
+                r.get(0)?,
+                (r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?),
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?
+    };
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let local = |ms: i64| {
+        Timestamp::from_millisecond(ms)
+            .map(|t| t.to_zoned(tz.clone()))
+            .map_err(|_| invalid("bad time"))
+    };
+    let (old, new) = (local(old_start)?, local(new_start)?);
+    let days = new.date() - old.date();
+    // Delete first: a shift by whole weeks may land on another edit's key.
+    for (original, _) in &rows {
+        tx.delete(
+            Table::EventException,
+            &[from_id.into(), Value::Integer(*original)],
+        )?;
+    }
+    for (original, (cancelled, start, end, title, notes)) in rows {
+        let Some(moved) = local(original)?
+            .date()
+            .checked_add(days)
+            .ok()
+            .and_then(|d| tz.to_zoned(d.to_datetime(new.time())).ok())
+        else {
+            continue;
+        };
+        tx.insert(
+            Table::EventException,
+            &[
+                ("event_id", to_id.into()),
+                ("original_start", int(moved.timestamp().as_millisecond())),
+                ("cancelled", boolean(cancelled)),
+                ("start_at", opt_int(start)),
+                ("end_at", opt_int(end)),
+                ("title", opt_text(title)),
+                ("notes_md", opt_text(notes)),
+            ],
+        )?;
+    }
+    Ok(())
+}
+
 /// Creates a meeting or time block inside an existing transaction.
 pub(crate) fn insert_event(tx: &mut Tx<'_>, input: &NewEvent) -> Result<Id> {
     let title = clean_name(&input.title, "event title")?;
@@ -559,6 +674,18 @@ impl Db {
                 changes.push(("recurrence_rule", opt_text(clean_rule(rule.as_deref())?)));
             }
             tx.update(Table::Event, &[id.into()], &changes)?;
+            // A series moved in time takes its per-occurrence edits along.
+            if current.recurrence_rule.is_some()
+                && let (Some(old), Some(new)) = (current.start_at, start)
+            {
+                rekey_exceptions(
+                    tx,
+                    (id, id),
+                    i64::MIN,
+                    (old, new),
+                    &zone(&current.time_zone),
+                )?;
+            }
             Ok(())
         })?;
         self.event(id)
@@ -574,6 +701,19 @@ impl Db {
         })
     }
 
+    /// Notes written for one occurrence of a series (none: it uses the series' notes).
+    pub fn occurrence_notes(&self, id: Id, original_start: i64) -> Result<Option<String>> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT notes_md FROM event_exception WHERE event_id = ?1 AND original_start = ?2",
+                params![id, original_start],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten())
+    }
+
     /// Moves, retitles or cancels one occurrence of a recurring event.
     pub fn edit_occurrence(
         &mut self,
@@ -584,6 +724,11 @@ impl Db {
         let current = self.event(id)?;
         if current.recurrence_rule.is_none() {
             return Err(invalid("this event does not repeat; edit it directly"));
+        }
+        if !is_occurrence(&current, original_start) {
+            return Err(invalid(
+                "no occurrence of this series starts at that time (use its original start)",
+            ));
         }
         if let (Some(s), Some(e)) = (patch.start_at, patch.end_at) {
             check_times(Some(s), Some(e), None, None)?;
@@ -666,7 +811,11 @@ impl Db {
         let new_id = Id::new();
         let duration = end - start;
         self.transact(&format!("Edit following “{}”", current.title), |tx| {
-            tx.update(Table::Event, &[id.into()], &[("recurrence_rule", text(old_rule.to_string()))])?;
+            tx.update(
+                Table::Event,
+                &[id.into()],
+                &[("recurrence_rule", text(old_rule.to_string()))],
+            )?;
             let base = load(tx, id)?;
             let start_at = patch.start_at.unwrap_or(original_start);
             let end_at = patch.end_at.unwrap_or(start_at + duration);
@@ -682,38 +831,58 @@ impl Db {
                 &[
                     ("id", new_id.into()),
                     ("kind", text(patch.kind.unwrap_or(base.kind).as_str())),
-                    ("title", text(match &patch.title {
-                        Some(t) => clean_name(t, "event title")?,
-                        None => base.title.clone(),
-                    })),
+                    (
+                        "title",
+                        text(match &patch.title {
+                            Some(t) => clean_name(t, "event title")?,
+                            None => base.title.clone(),
+                        }),
+                    ),
                     ("client_id", opt_id(client)),
                     ("project_id", opt_id(project)),
                     ("task_id", opt_id(patch.task_id.unwrap_or(base.task_id))),
                     ("start_at", int(start_at)),
                     ("end_at", int(end_at)),
                     ("time_zone", text(base.time_zone.clone())),
-                    ("location", text(patch.location.clone().unwrap_or(base.location.clone()))),
-                    ("meeting_url", text(patch.meeting_url.clone().unwrap_or(base.meeting_url.clone()))),
-                    ("attendees", text(patch.attendees.clone().unwrap_or(base.attendees.clone()))),
-                    ("notes_md", text(patch.notes_md.clone().unwrap_or(base.notes_md.clone()))),
+                    (
+                        "location",
+                        text(patch.location.clone().unwrap_or(base.location.clone())),
+                    ),
+                    (
+                        "meeting_url",
+                        text(
+                            patch
+                                .meeting_url
+                                .clone()
+                                .unwrap_or(base.meeting_url.clone()),
+                        ),
+                    ),
+                    (
+                        "attendees",
+                        text(patch.attendees.clone().unwrap_or(base.attendees.clone())),
+                    ),
+                    (
+                        "notes_md",
+                        text(patch.notes_md.clone().unwrap_or(base.notes_md.clone())),
+                    ),
                     ("status", text(patch.status.unwrap_or(base.status).as_str())),
-                    ("counts_as_time", boolean(patch.counts_as_time.unwrap_or(base.counts_as_time))),
+                    (
+                        "counts_as_time",
+                        boolean(patch.counts_as_time.unwrap_or(base.counts_as_time)),
+                    ),
                     ("flexible", boolean(patch.flexible.unwrap_or(base.flexible))),
                     ("recurrence_rule", opt_text(rule)),
                     ("created_at", int(tx.now())),
                 ],
             )?;
-            // Exceptions at or after the split now belong to the new series.
-            let moved: Vec<i64> = {
-                let mut stmt = tx.conn().prepare(
-                    "SELECT original_start FROM event_exception WHERE event_id = ?1 AND original_start >= ?2",
-                )?;
-                stmt.query_map(params![id, original_start], |r| r.get(0))?
-                    .collect::<rusqlite::Result<_>>()?
-            };
-            for at in moved {
-                tx.delete(Table::EventException, &[id.into(), Value::Integer(at)])?;
-            }
+            // Edits at or after the split now belong to the new series.
+            rekey_exceptions(
+                tx,
+                (id, new_id),
+                original_start,
+                (original_start, start_at),
+                &tz,
+            )?;
             Ok(())
         })?;
         self.event(new_id)
@@ -770,6 +939,14 @@ impl Db {
             for item in found {
                 let (k, v) = item?;
                 exceptions.insert(k, v);
+            }
+        }
+        // Per series, the occurrences moved somewhere else (to find ones moved
+        // into this window from further away than the widened search below).
+        let mut moved: HashMap<Id, Vec<i64>> = HashMap::new();
+        for (&(id, original), (cancelled, start, ..)) in &exceptions {
+            if !cancelled && start.is_some() {
+                moved.entry(id).or_default().push(original);
             }
         }
 
@@ -831,14 +1008,33 @@ impl Db {
                         continue;
                     };
                     let duration = en - s;
-                    // Widen the window so moved occurrences are still found.
-                    let starts = rule.occurrences(
-                        dt.to_zoned(tz.clone()).datetime(),
+                    let series_start = dt.to_zoned(tz.clone()).datetime();
+                    // Widen the window so occurrences moved by up to a day are found.
+                    let mut starts = rule.occurrences(
+                        series_start,
                         &tz,
                         duration,
                         from - 86_400_000,
                         to + 86_400_000,
                     );
+                    // Ones moved here from further away (still real occurrences of the rule).
+                    for &original in moved.get(&e.id).map(Vec::as_slice).unwrap_or(&[]) {
+                        if starts.contains(&original) {
+                            continue;
+                        }
+                        let Some((_, Some(ns), ne, _)) = exceptions.get(&(e.id, original)) else {
+                            continue;
+                        };
+                        let ne = ne.unwrap_or(ns + duration);
+                        if *ns < to
+                            && ne > from
+                            && rule
+                                .occurrences(series_start, &tz, duration, original, original + 1)
+                                .contains(&original)
+                        {
+                            starts.push(original);
+                        }
+                    }
                     for start in starts {
                         let (start_at, end_at, title, modified) =
                             match exceptions.get(&(e.id, start)) {
@@ -878,11 +1074,22 @@ impl Db {
                         ) else {
                             continue;
                         };
-                        if matches!(exceptions.get(&(e.id, s)), Some((true, ..))) {
-                            continue;
-                        }
-                        if en > from && s < to {
-                            out.push(make(s, s, en, true, e.title.clone(), false));
+                        // Per-occurrence edits: cancelled, renamed or moved.
+                        let (start_at, end_at, title, modified) = match exceptions.get(&(e.id, s)) {
+                            Some((true, ..)) => continue,
+                            Some((false, ns, ne, nt)) => {
+                                let ns = ns.unwrap_or(s);
+                                (
+                                    ns,
+                                    ne.unwrap_or(ns + (en - s)),
+                                    nt.clone().unwrap_or_else(|| e.title.clone()),
+                                    true,
+                                )
+                            }
+                            None => (s, en, e.title.clone(), false),
+                        };
+                        if end_at > from && start_at < to {
+                            out.push(make(s, start_at, end_at, true, title, modified));
                         }
                     }
                 }

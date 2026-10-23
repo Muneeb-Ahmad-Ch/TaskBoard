@@ -72,19 +72,25 @@
   let saving = $state(false)
   const editing = !!initial.id
 
-  // Existing event: load its full details.
+  /** Title and notes as the dialog opened (the occurrence's own, if it has them),
+   *  so saving sends only what was changed. */
+  let shown = { title: initial.title ?? '', notes: '' }
+
+  // Existing event: load its full details (and one occurrence's own notes).
   $effect(() => {
     if (!initial.id) return
-    ipc
-      .getEvent(initial.id)
-      .then((e) => {
+    const id = initial.id
+    const original = initial.originalStart
+    Promise.all([ipc.getEvent(id), original === undefined ? null : ipc.occurrenceNotes(id, original).catch(() => null)])
+      .then(([e, ownNotes]) => {
         f.title = initial.title ?? e.title
         f.kind = e.kind
         f.owner = e.project_id ? `p:${e.project_id}` : e.client_id ? `c:${e.client_id}` : ''
         f.location = e.location
         f.url = e.meeting_url
         f.attendees = e.attendees
-        f.notes = e.notes_md
+        f.notes = ownNotes ?? e.notes_md
+        shown = { title: f.title, notes: f.notes }
         f.rule = e.recurrence_rule
         f.status = e.status
         f.counts = e.counts_as_time
@@ -162,24 +168,35 @@
       } else if (!recurring || initial.originalStart === undefined) {
         await ipc.updateEvent(initial.id, { ...fields, ...t, recurrence_rule: f.rule })
       } else if (scope === 'one') {
+        // Only what was changed here, so the occurrence keeps following the
+        // series for the rest (a time it was never moved to stays relative).
+        const moved = t.start_at !== initial.start || t.end_at !== initial.end
         await ipc.editOccurrence(initial.id, initial.originalStart, {
-          start_at: t.start_at,
-          end_at: t.end_at,
-          title: f.title,
-          notes_md: f.notes,
+          ...(moved ? { start_at: t.start_at, end_at: t.end_at } : {}),
+          ...(f.title !== shown.title ? { title: f.title } : {}),
+          ...(f.notes !== shown.notes ? { notes_md: f.notes } : {}),
         })
-      } else if (scope === 'following') {
-        await ipc.splitSeries(initial.id, initial.originalStart, { ...fields, ...t, recurrence_rule: f.rule })
       } else {
-        // Shift the whole series by however much this occurrence moved.
-        const series = await ipc.getEvent(initial.id)
-        const patch: EventPatch = { ...fields, recurrence_rule: f.rule }
-        if (t.start_at !== undefined && t.end_at !== undefined && series.start_at !== null) {
-          const delta = t.start_at - initial.originalStart
-          patch.start_at = series.start_at + delta
-          patch.end_at = patch.start_at + (t.end_at - t.start_at)
+        // This occurrence's own title and notes don't spread to the others
+        // unless they were changed here.
+        const { title: _t, notes_md: _n, ...rest } = fields
+        const shared: EventPatch = {
+          ...rest,
+          ...(f.title !== shown.title ? { title: f.title } : {}),
+          ...(f.notes !== shown.notes ? { notes_md: f.notes } : {}),
+          recurrence_rule: f.rule,
         }
-        await ipc.updateEvent(initial.id, patch)
+        if (scope === 'following') {
+          await ipc.splitSeries(initial.id, initial.originalStart, { ...shared, ...t })
+        } else {
+          // Shift the whole series by however much the time was changed here.
+          const series = await ipc.getEvent(initial.id)
+          if (t.start_at !== undefined && t.end_at !== undefined && series.start_at !== null) {
+            shared.start_at = series.start_at + (t.start_at - initial.start)
+            shared.end_at = shared.start_at + (t.end_at - t.start_at)
+          }
+          await ipc.updateEvent(initial.id, shared)
+        }
       }
       onclose()
     } catch (err) {

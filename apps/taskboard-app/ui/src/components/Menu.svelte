@@ -21,6 +21,14 @@
 
   let el: HTMLDivElement | undefined = $state()
   let active = $state(-1)
+
+  // Closing gives focus back to what opened the menu (keyboard users keep their
+  // place), unless the chosen action moved focus somewhere on purpose.
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  $effect(() => () => {
+    const now = document.activeElement
+    if (opener?.isConnected && (!now || now === document.body || el?.contains(now))) opener.focus({ preventScroll: true })
+  })
   let pos = $state({ left: 0, top: 0 })
 
   const actionable = $derived(

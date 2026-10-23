@@ -621,6 +621,16 @@
     ])
   }
 
+  /** Saves a typed estimate (Enter or clicking away); Esc leaves it as it was. */
+  function commitEstimate(row: TaskRow, value: string) {
+    if (estimating !== row.id) return
+    estimating = null
+    const m = parseMinutes(value)
+    if (m === row.estimate_minutes) return
+    if (Number.isNaN(m)) toast('Use a duration like 45m, 2h or 1h30m', { kind: 'error' })
+    else void patch(targets(row), { estimate_minutes: m })
+  }
+
   /** Manual progress for tasks without subtasks; 100% completes the task. */
   function progressMenu(e: MouseEvent, row: TaskRow) {
     if (row.subtasks_total) {
@@ -979,13 +989,9 @@
                       onclick={(e) => e.stopPropagation()}
                       onkeydown={(e) => {
                         if (e.key === 'Escape') estimating = null
-                        if (e.key !== 'Enter') return
-                        const m = parseMinutes(e.currentTarget.value)
-                        estimating = null
-                        if (Number.isNaN(m)) toast('Use a duration like 45m, 2h or 1h30m', { kind: 'error' })
-                        else void patch(targets(row), { estimate_minutes: m })
+                        if (e.key === 'Enter') commitEstimate(row, e.currentTarget.value)
                       }}
-                      onblur={() => (estimating = null)}
+                      onblur={(e) => commitEstimate(row, e.currentTarget.value)}
                     />
                   {:else}
                     <button class="cell-btn tabular text-muted" onclick={(e) => { e.stopPropagation(); estimating = row.id }}>

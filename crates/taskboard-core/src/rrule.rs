@@ -91,6 +91,15 @@ impl Rule {
                             .ok_or_else(|| invalid("COUNT must be 1-10000"))?,
                     )
                 }
+                // A UTC moment ends the series on the local day it falls on
+                // (its UTC date can be a day off).
+                "UNTIL" if value.ends_with('Z') && value.len() == 16 => {
+                    let moment = DateTime::strptime("%Y%m%dT%H%M%S", &value[..15])
+                        .ok()
+                        .and_then(|dt| TimeZone::UTC.to_zoned(dt).ok())
+                        .ok_or_else(|| invalid(format!("bad UNTIL {value}")))?;
+                    rule.until = Some(moment.with_time_zone(crate::events::local_zone().0).date());
+                }
                 "UNTIL" => {
                     let date = value.get(..8).unwrap_or("");
                     let parsed = format!(

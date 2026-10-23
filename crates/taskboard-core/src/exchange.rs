@@ -203,6 +203,24 @@ fn fold(line: &str, out: &mut String) {
     out.push_str("\r\n");
 }
 
+/// An edited occurrence to export: original start, new start, new end, new title.
+type EditedOccurrence = (i64, Option<i64>, Option<i64>, Option<String>);
+/// A stored occurrence edit: original start, cancelled, start, end, title.
+type StoredOccurrence = (i64, bool, Option<i64>, Option<i64>, Option<String>);
+
+/// `;TZID=<zone>:<local date-time>` for a moment, as a repeating series needs
+/// (UTC would drift by an hour across daylight-saving changes).
+fn ics_zoned(ms: i64, tz: &TimeZone, name: &str) -> String {
+    Timestamp::from_millisecond(ms)
+        .map(|t| {
+            format!(
+                ";TZID={name}:{}",
+                t.to_zoned(tz.clone()).strftime("%Y%m%dT%H%M%S")
+            )
+        })
+        .unwrap_or_default()
+}
+
 fn ics_utc(ms: i64) -> String {
     Timestamp::from_millisecond(ms)
         .map(|t| t.strftime("%Y%m%dT%H%M%SZ").to_string())
@@ -265,6 +283,9 @@ fn parse_duration(s: &str) -> Option<i64> {
     Some(minutes)
 }
 
+/// The task table's row number (search index key): never exported or imported.
+const LOCAL_ROW_ID: &str = "rid";
+
 impl Db {
     // ---------- JSON ----------
 
@@ -278,7 +299,10 @@ impl Db {
                 .query_map([], |r| {
                     let mut obj = Map::new();
                     for (i, (name, _)) in cols.iter().enumerate() {
-                        obj.insert(name.clone(), to_json(r.get::<_, Value>(i)?));
+                        // A row number is local to this file (see import).
+                        if name != LOCAL_ROW_ID {
+                            obj.insert(name.clone(), to_json(r.get::<_, Value>(i)?));
+                        }
                     }
                     Ok(Json::Object(obj))
                 })?
@@ -432,7 +456,11 @@ impl Db {
                     }
                     let values: Vec<(String, Value)> = obj
                         .iter()
-                        .filter(|(k, _)| decl.contains_key(k.as_str()))
+                        // Older exports carry the task row number; the
+                        // database here numbers rows itself (it may be taken).
+                        .filter(|(k, _)| {
+                            decl.contains_key(k.as_str()) && k.as_str() != LOCAL_ROW_ID
+                        })
                         .map(|(k, v)| {
                             Ok((
                                 k.clone(),
@@ -685,10 +713,24 @@ impl Db {
             fold(&format!("UID:{id}@taskboard"), &mut out);
             fold(&format!("DTSTAMP:{stamp}"), &mut out);
             fold(&format!("SUMMARY:{}", ics_escape(&e.title)), &mut out);
+            // A repeating series is written in its own zone.
+            let zone_name = if e.time_zone.is_empty() {
+                local_zone().1
+            } else {
+                e.time_zone.clone()
+            };
+            let zone = TimeZone::get(&zone_name).unwrap_or_else(|_| local_zone().0);
+            let when = |ms: i64| {
+                if e.recurrence_rule.is_some() {
+                    ics_zoned(ms, &zone, &zone_name)
+                } else {
+                    format!(":{}", ics_utc(ms))
+                }
+            };
             match (e.start_at, e.end_at, &e.all_day_start, &e.all_day_end) {
                 (Some(s), Some(en), _, _) => {
-                    fold(&format!("DTSTART:{}", ics_utc(s)), &mut out);
-                    fold(&format!("DTEND:{}", ics_utc(en)), &mut out);
+                    fold(&format!("DTSTART{}", when(s)), &mut out);
+                    fold(&format!("DTEND{}", when(en)), &mut out);
                 }
                 (_, _, Some(a), Some(b)) => {
                     let end = b.parse::<Date>().ok().and_then(|d| d.tomorrow().ok());
@@ -705,17 +747,26 @@ impl Db {
                 }
                 _ => {}
             }
+            // Edited occurrences, written after the series as RECURRENCE-ID events.
+            let mut edited: Vec<EditedOccurrence> = Vec::new();
             if let Some(rule) = &e.recurrence_rule {
                 fold(&format!("RRULE:{rule}"), &mut out);
-                let cancelled: Vec<i64> = {
-                    let mut stmt = self
-                        .conn()
-                        .prepare("SELECT original_start FROM event_exception WHERE event_id = ?1 AND cancelled = 1")?;
-                    stmt.query_map([id], |r| r.get(0))?
-                        .collect::<rusqlite::Result<_>>()?
+                let exceptions: Vec<StoredOccurrence> = {
+                    let mut stmt = self.conn().prepare(
+                        "SELECT original_start, cancelled, start_at, end_at, title
+                           FROM event_exception WHERE event_id = ?1 ORDER BY original_start",
+                    )?;
+                    stmt.query_map([id], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                    })?
+                    .collect::<rusqlite::Result<_>>()?
                 };
-                for c in cancelled {
-                    fold(&format!("EXDATE:{}", ics_utc(c)), &mut out);
+                for (original, cancelled, start, end, title) in exceptions {
+                    if cancelled {
+                        fold(&format!("EXDATE{}", when(original)), &mut out);
+                    } else if e.start_at.is_some() && (start.is_some() || title.is_some()) {
+                        edited.push((original, start, end, title));
+                    }
                 }
             }
             if !e.location.is_empty() {
@@ -740,6 +791,22 @@ impl Db {
                 fold("CATEGORIES:Time block", &mut out);
             }
             fold("END:VEVENT", &mut out);
+            let length = e.end_at.zip(e.start_at).map_or(0, |(b, a)| b - a);
+            for (original, start, end, title) in edited {
+                let start = start.unwrap_or(original);
+                fold("BEGIN:VEVENT", &mut out);
+                fold(&format!("UID:{id}@taskboard"), &mut out);
+                fold(&format!("DTSTAMP:{stamp}"), &mut out);
+                fold(&format!("RECURRENCE-ID{}", when(original)), &mut out);
+                fold(&format!("DTSTART{}", when(start)), &mut out);
+                fold(
+                    &format!("DTEND{}", when(end.unwrap_or(start + length))),
+                    &mut out,
+                );
+                let title = title.unwrap_or_else(|| e.title.clone());
+                fold(&format!("SUMMARY:{}", ics_escape(&title)), &mut out);
+                fold("END:VEVENT", &mut out);
+            }
         }
         let mut offset = 0;
         loop {
@@ -834,9 +901,28 @@ impl Db {
                 }
             }
         }
+        // An event with RECURRENCE-ID is one changed occurrence of the series
+        // with the same UID: applied to that series once it's imported.
+        let has = |props: &Props, n: &str| props.iter().any(|(k, ..)| k == n);
+        let uid_of = |props: &Props| {
+            props
+                .iter()
+                .find(|(k, ..)| k == "UID")
+                .map(|(_, _, v)| v.clone())
+        };
+        let series_uids: std::collections::HashSet<String> = events
+            .iter()
+            .filter(|p| !has(p, "RECURRENCE-ID") && has(p, "RRULE"))
+            .filter_map(uid_of)
+            .collect();
+        let is_instance = |props: &Props| {
+            has(props, "RECURRENCE-ID") && uid_of(props).is_some_and(|u| series_uids.contains(&u))
+        };
         let mut report = ImportReport::default();
         self.transact("Import calendar", |tx| {
-            for props in &events {
+            // UID → (series id, title) for series made by this import.
+            let mut made: HashMap<String, (Id, String)> = HashMap::new();
+            for props in events.iter().filter(|p| !is_instance(p)) {
                 let prop = |n: &str| props.iter().find(|(k, ..)| k == n);
                 let title = prop("SUMMARY")
                     .map(|(_, _, v)| ics_unescape(v))
@@ -895,7 +981,11 @@ impl Db {
                     end_at: None,
                     all_day_start: None,
                     all_day_end: None,
-                    time_zone: None,
+                    // The zone a series was written in, so it repeats in that zone.
+                    time_zone: prop("DTSTART")
+                        .and_then(|(_, p, _)| p.get("TZID"))
+                        .map(|z| z.trim_matches('"').to_owned())
+                        .filter(|z| TimeZone::get(z).is_ok()),
                     location: prop("LOCATION").map(|(_, _, v)| ics_unescape(v)),
                     meeting_url: prop("URL")
                         .map(|(_, _, v)| v.trim().to_owned())
@@ -936,6 +1026,11 @@ impl Db {
                                 &[("external_uid", text(uid.clone()))],
                             )?;
                         }
+                        if let Some(uid) = &uid
+                            && input.recurrence_rule.is_some()
+                        {
+                            made.insert(uid.clone(), (id, input.title.clone()));
+                        }
                         // Cancelled occurrences of a repeating series.
                         if input.recurrence_rule.is_some() {
                             for (_, p, v) in props.iter().filter(|(k, ..)| k == "EXDATE") {
@@ -959,6 +1054,55 @@ impl Db {
                         report.skipped += 1;
                         report.warnings.push(format!("“{title}”: {err}"));
                     }
+                }
+            }
+            // Changed occurrences onto the series they belong to.
+            for props in events.iter().filter(|p| is_instance(p)) {
+                let prop = |n: &str| props.iter().find(|(k, ..)| k == n);
+                let Some((series, series_title)) = uid_of(props).and_then(|u| made.get(&u).cloned())
+                else {
+                    // Its series was already here (skipped above).
+                    report.skipped += 1;
+                    continue;
+                };
+                let Some((original, None)) =
+                    prop("RECURRENCE-ID").and_then(|(_, p, v)| parse_ics_time(v, p))
+                else {
+                    report.skipped += 1;
+                    continue;
+                };
+                let cancelled =
+                    prop("STATUS").is_some_and(|(_, _, v)| v.eq_ignore_ascii_case("CANCELLED"));
+                let start = prop("DTSTART").and_then(|(_, p, v)| parse_ics_time(v, p));
+                let end = prop("DTEND").and_then(|(_, p, v)| parse_ics_time(v, p));
+                let title = prop("SUMMARY")
+                    .map(|(_, _, v)| ics_unescape(v))
+                    .filter(|t| *t != series_title);
+                let mut cols: Vec<(&str, Value)> = vec![
+                    ("event_id", series.into()),
+                    ("original_start", Value::Integer(original)),
+                    ("cancelled", Value::Integer(i64::from(cancelled))),
+                ];
+                if let Some((s, None)) = start
+                    && s != original
+                {
+                    cols.push(("start_at", Value::Integer(s)));
+                    if let Some((e, None)) = end {
+                        cols.push(("end_at", Value::Integer(e.max(s + 60_000))));
+                    }
+                }
+                if let Some(t) = title {
+                    cols.push(("title", text(t.chars().take(300).collect::<String>())));
+                }
+                let exists: bool = tx.conn().query_row(
+                    "SELECT EXISTS(SELECT 1 FROM event_exception WHERE event_id = ?1 AND original_start = ?2)",
+                    rusqlite::params![series, original],
+                    |r| r.get(0),
+                )?;
+                if exists {
+                    tx.update(Table::EventException, &[series.into(), Value::Integer(original)], &cols[2..])?;
+                } else {
+                    tx.insert(Table::EventException, &cols)?;
                 }
             }
             Ok(())

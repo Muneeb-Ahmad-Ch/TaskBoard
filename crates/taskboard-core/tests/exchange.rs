@@ -241,7 +241,7 @@ fn ics_round_trip() {
     assert!(
         ics.contains("BEGIN:VEVENT")
             && ics.contains("RRULE:FREQ=WEEKLY;BYDAY=MO")
-            && ics.contains("EXDATE:")
+            && ics.contains("EXDATE;TZID=")
     );
     assert!(ics.contains("BEGIN:VTODO") && ics.contains("SUMMARY:Launch"));
     assert!(ics.contains("LOCATION:Office\\, room 2"));
@@ -465,4 +465,103 @@ fn reimporting_old_export_reuses_sections() {
         .map(|s| s.name)
         .collect();
     assert_eq!(names, ["Clients", "Personal"]);
+}
+
+#[test]
+fn json_import_into_a_database_that_already_has_tasks() {
+    let src = workspace();
+    let json = src.export_json().unwrap();
+    let mut dst = Db::open_in_memory().unwrap();
+    let inbox = dst.inbox_id().unwrap();
+    for title in ["Mine 1", "Mine 2", "Mine 3"] {
+        dst.create_task(NewTask {
+            title: title.into(),
+            project_id: Some(inbox),
+            ..Default::default()
+        })
+        .unwrap();
+    }
+    let report = dst.import_json(&json).unwrap();
+    assert!(report.created > 10, "{report:?}");
+    let all = titles(&dst);
+    assert!(all.iter().any(|t| t.starts_with("Mine 1 |")));
+    for t in titles(&src) {
+        assert!(all.contains(&t), "missing {t}");
+    }
+    // Search still finds imported and existing tasks (the index follows rows).
+    let found = dst
+        .list_tasks(&TaskQuery {
+            search: Some("Mine".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(found.total, 3);
+}
+
+const MOVED_ICS: &str = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+BEGIN:VEVENT\r\nUID:standup-1\r\nRECURRENCE-ID;TZID=Europe/London:20300114T100000\r\n\
+DTSTART;TZID=Europe/London:20300117T150000\r\nDTEND;TZID=Europe/London:20300117T153000\r\n\
+SUMMARY:Standup (moved)\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:standup-1\r\nDTSTART;TZID=Europe/London:20300107T100000\r\n\
+DTEND;TZID=Europe/London:20300107T103000\r\nRRULE:FREQ=WEEKLY\r\nSUMMARY:Standup\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:standup-1\r\nRECURRENCE-ID;TZID=Europe/London:20300121T100000\r\n\
+DTSTART;TZID=Europe/London:20300121T100000\r\nDTEND;TZID=Europe/London:20300121T103000\r\n\
+STATUS:CANCELLED\r\nSUMMARY:Standup\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+
+fn london(y: i16, m: i8, d: i8, h: i8) -> i64 {
+    jiff::tz::TimeZone::get("Europe/London")
+        .unwrap()
+        .to_zoned(jiff::civil::date(y, m, d).at(h, 0, 0, 0))
+        .unwrap()
+        .timestamp()
+        .as_millisecond()
+}
+
+#[test]
+fn ics_import_keeps_a_series_with_its_moved_and_cancelled_instances() {
+    let mut db = Db::open_in_memory().unwrap();
+    let report = db.import_ics(MOVED_ICS).unwrap();
+    assert_eq!(report.created, 1, "{report:?}");
+    let list = db
+        .occurrences(london(2030, 1, 6, 0), london(2030, 1, 29, 0))
+        .unwrap();
+    let got: Vec<(&str, i64)> = list
+        .iter()
+        .map(|o| (o.title.as_str(), o.start_at))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("Standup", london(2030, 1, 7, 10)),
+            ("Standup (moved)", london(2030, 1, 17, 15)),
+            ("Standup", london(2030, 1, 28, 10)),
+        ]
+    );
+    // The series keeps the zone it was written in.
+    let series = db.event(list[0].event_id).unwrap();
+    assert_eq!(series.time_zone, "Europe/London");
+}
+
+#[test]
+fn ics_export_writes_repeating_events_in_their_time_zone() {
+    let mut db = Db::open_in_memory().unwrap();
+    db.import_ics(MOVED_ICS).unwrap();
+    let out = db.export_ics().unwrap();
+    assert!(
+        out.contains("DTSTART;TZID=Europe/London:20300107T100000"),
+        "{out}"
+    );
+    assert!(
+        out.contains("EXDATE;TZID=Europe/London:20300121T100000"),
+        "{out}"
+    );
+    // And it comes back the same.
+    let mut again = Db::open_in_memory().unwrap();
+    again.import_ics(&out).unwrap();
+    let n = again
+        .occurrences(london(2030, 1, 6, 0), london(2030, 1, 29, 0))
+        .unwrap()
+        .len();
+    assert_eq!(n, 3);
 }

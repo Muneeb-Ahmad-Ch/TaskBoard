@@ -18,9 +18,9 @@ use taskboard_core::{
     Direction, ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask,
     NewClient, NewEvent, NewProject, NewSection, NewStatus, NewTask, NewTimeEntry, NotifySettings,
     Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectPlace, ProjectSummary,
-    QuickAddPreview, ReminderQuery, RepeatingItem, SavedView, SavedViewPatch, Section, SectionDelete, SectionPatch, Setup,
-    SidebarCounts, SlotResult, Status, StatusPatch, Task, TaskPage, TaskPatch, TaskQuery,
-    TaskSummary, TimeEntryPatch, UpcomingReminders, WorkingDay,
+    QuickAddPreview, ReminderQuery, RepeatingItem, SavedView, SavedViewPatch, Section,
+    SectionDelete, SectionPatch, Setup, SidebarCounts, SlotResult, Status, StatusPatch, Task,
+    TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch, UpcomingReminders, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -574,6 +574,15 @@ async fn delete_project(app: AppHandle, state: State<'_, AppState>, id: Id) -> C
 
 // ---------- board columns ----------
 
+#[tauri::command]
+async fn occurrence_notes(
+    state: State<'_, AppState>,
+    id: Id,
+    original_start: i64,
+) -> CmdResult<Option<String>> {
+    read(state, move |db| db.occurrence_notes(id, original_start)).await
+}
+
 // ---------- reminders page ----------
 
 #[tauri::command]
@@ -581,7 +590,10 @@ async fn upcoming_reminders(
     state: State<'_, AppState>,
     query: ReminderQuery,
 ) -> CmdResult<UpcomingReminders> {
-    read(state, move |db| db.upcoming_reminders(&query, taskboard_core::clock::now_ms())).await
+    read(state, move |db| {
+        db.upcoming_reminders(&query, taskboard_core::clock::now_ms())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1172,6 +1184,7 @@ pub fn run() {
             all_statuses,
             list_tags,
             upcoming_reminders,
+            occurrence_notes,
             repeating,
             create_status,
             add_status_everywhere,
