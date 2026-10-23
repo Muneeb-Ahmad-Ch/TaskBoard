@@ -71,6 +71,10 @@ needs permission (see [License](#license)).
   of every list and come back from Settings → Data with their subtasks.
 - **Quick add** from anywhere (Ctrl+Shift+Space):
   `Send invoice fri 3pm #admin !high @website ~30m every month`.
+- **Reminders**: one page for everything that will remind you (tasks with
+  a time, meetings) and every repeating task or series, with the coming
+  dates of "every month" tasks shown ahead of time. New reminder makes one
+  in a few clicks: what, when, and how it repeats.
 - **Meetings** with links, attendees, notes, reminders with a Join button,
   repeating series (edit one, this-and-following, or all), and optional
   "counts as work time". A Meetings page lists what's coming up (or past),

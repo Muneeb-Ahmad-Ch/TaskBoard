@@ -9,7 +9,42 @@ Download any version from the
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Reminders** in the sidebar: everything that will remind you, day by day
+  (tasks with a time, meetings, and time blocks if you want them), with when
+  each notification fires, and the coming dates of repeating tasks before
+  they exist ("Pay rent" shows every month ahead, not just the next one).
+  Overdue ones come first. A **Repeating** tab lists every repeating task,
+  meeting and time block with its rule in words and next date; Stop
+  repeating keeps the task and ends the series (undoable).
+- **New reminder** (on the page, the sidebar's +, or Ctrl+K): what, when,
+  at what time, and how it repeats (every day, weekday, week, other week,
+  month, last day of the month, year), in plain words for the chosen day.
+- The sidebar counts reminders still to come today.
+- **Assistants:** `list_reminders` (what will remind you in a window, with
+  the coming repeats) and `list_repeating` (every repeating series).
+
+### Fixed
+- Importing a Taskboard backup (JSON) into a database that already had
+  tasks failed. It now merges.
+- A meeting moved to another day (more than a day away) didn't show on its
+  new day, and its reminder never fired.
+- Moving a whole repeating series to a new time brought back occurrences
+  you had cancelled and undid renamed or moved ones; "this and following"
+  did the same for later occurrences.
+- Renaming one day of a repeating all-day event didn't show.
+- Editing "all events" from an occurrence that had been moved shifted the
+  whole series; its own title and notes were copied to every occurrence.
+  An occurrence's own notes now show in the dialog and stay its own.
+- Calendar files: a moved or cancelled instance of a repeating event could
+  replace the whole series on import; repeating events now keep their time
+  zone in and out (no hour shift after a daylight-saving change).
+- A repeat "until" given as a UTC time could add a day.
+- Day plans counted archived tasks, and a task together with its subtasks.
+- A typed estimate in the table, or a card typed on the board, was lost when
+  you clicked away. Menus now give focus back to where you were.
+- Assistant tools stated limits the app didn't accept (find slots: 31 days,
+  meetings up to 8 hours; day plans: 62 days).
 
 ## [0.5.2] - 2026-10-22
 
