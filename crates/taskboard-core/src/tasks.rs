@@ -452,6 +452,14 @@ fn local_today() -> jiff::civil::Date {
 
 /// If `before` was an open repeating task that this transaction completed,
 /// creates its next instance (same action, so one undo reverts both).
+/// "Title (copy)", shortened so it stays within the 300-character limit.
+fn copy_title(title: &str) -> String {
+    const SUFFIX: &str = " (copy)";
+    let room = 300 - SUFFIX.chars().count();
+    let base: String = title.chars().take(room).collect();
+    format!("{}{SUFFIX}", base.trim_end())
+}
+
 fn after_completion(tx: &mut Tx<'_>, before: &Task) -> Result<()> {
     if before.completed_at.is_some() {
         return Ok(());
@@ -497,14 +505,15 @@ fn after_completion(tx: &mut Tx<'_>, before: &Task) -> Result<()> {
             .map(|s| s.to_string()),
         _ => None,
     };
-    let status = default_status(tx, before.project_id)?;
+    // Where the task is now (the same change may have moved it).
+    let status = default_status(tx, now.project_id)?;
     let id = Id::new();
     tx.insert(
         Table::Task,
         &[
             ("id", id.into()),
-            ("project_id", before.project_id.into()),
-            ("parent_id", opt_id(before.parent_id)),
+            ("project_id", now.project_id.into()),
+            ("parent_id", opt_id(now.parent_id)),
             ("status_id", status.into()),
             ("title", text(before.title.clone())),
             ("description_md", text(before.description_md.clone())),
@@ -768,6 +777,22 @@ impl Db {
         self.transact(
             &format!("{verb} “{}”", label_title(&current.title)),
             |tx| {
+                // Restored into an archived project it would still be hidden.
+                if !archived {
+                    let project: Option<String> = tx
+                        .conn()
+                        .query_row(
+                            "SELECT name FROM project WHERE id = ?1 AND archived_at IS NOT NULL",
+                            [current.project_id],
+                            |r| r.get(0),
+                        )
+                        .optional()?;
+                    if let Some(name) = project {
+                        return Err(invalid(format!(
+                            "its project “{name}” is archived; restore the project first"
+                        )));
+                    }
+                }
                 if archived {
                     archive_rows(tx, id)
                 } else {
@@ -862,10 +887,7 @@ impl Db {
                         ("status_id", original.status_id.into()),
                         (
                             "title",
-                            text(clean_name(
-                                &format!("{} (copy)", original.title),
-                                "task title",
-                            )?),
+                            text(clean_name(&copy_title(&original.title), "task title")?),
                         ),
                         ("description_md", text(original.description_md.clone())),
                         ("priority", int(original.priority.as_i64())),

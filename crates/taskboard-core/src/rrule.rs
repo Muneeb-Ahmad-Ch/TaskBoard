@@ -52,6 +52,10 @@ const MAX_PERIODS: usize = 20_000;
 impl Rule {
     pub fn parse(s: &str) -> Result<Self> {
         let body = s.trim().trim_start_matches("RRULE:");
+        // Rules are plain ASCII; anything else is rejected before byte-offset parsing.
+        if !body.is_ascii() {
+            return Err(invalid(format!("bad repeat rule {s:?}")));
+        }
         let mut freq = None;
         let mut rule = Rule {
             freq: Freq::Daily,

@@ -95,9 +95,11 @@ pub struct UpcomingReminders {
     pub reminders_on: bool,
     pub meeting_lead_min: i64,
     pub task_lead_min: i64,
-    /// First and last day covered.
+    /// First and last day covered (`to` is earlier than asked when `truncated`).
     pub from: String,
     pub to: String,
+    /// The window held more than the page can show; it ends at `to`.
+    pub truncated: bool,
     pub items: Vec<ReminderItem>,
 }
 
@@ -239,14 +241,11 @@ impl Db {
             for t in self.timed_or_repeating_tasks(Some(last))? {
                 let Some(due) = t.due else { continue };
                 let overdue = due < today;
-                // Overdue ones only when the window starts today (or earlier).
-                if due < from && !(overdue && from <= today) {
-                    continue;
-                }
                 let repeat = t.rule.as_deref().map(describe_task_rule);
                 let mut push = |date: Date, projected: bool| {
                     let at = local_ms(date, t.time.unwrap_or(Time::midnight())).unwrap_or(now);
-                    let remind_at = (s.enabled && !overdue && t.time.is_some())
+                    // An overdue one has passed; its repeats will still remind.
+                    let remind_at = (s.enabled && !(overdue && !projected) && t.time.is_some())
                         .then(|| at - s.task_lead_min * MINUTE);
                     items.push(ReminderItem {
                         kind: ReminderKind::Task,
@@ -270,9 +269,15 @@ impl Db {
                         meeting_url: None,
                     });
                 };
-                push(due, false);
+                // The current one: in the window, or overdue when the window
+                // starts today (or earlier).
+                if due >= from || (overdue && from <= today) {
+                    push(due, false);
+                }
                 // Future repeats of a fixed schedule; "after completion" ones
-                // can't be known in advance.
+                // can't be known in advance. Like completing it would: the
+                // next one comes after its due date and after today, and COUNT
+                // counts the ones that happen.
                 if let Some(TaskRule::Fixed(rule)) =
                     t.rule.as_deref().and_then(|r| TaskRule::parse(r).ok())
                 {
@@ -280,20 +285,19 @@ impl Db {
                         count: None,
                         ..rule.clone()
                     };
+                    let floor = due.max(today);
                     let mut left = rule.count.map(|c| c.saturating_sub(1));
                     for d in walker.dates(due, |d| d <= last) {
-                        if d <= due || d < from {
+                        if d <= floor {
                             continue;
                         }
                         if left == Some(0) || rule.until.is_some_and(|u| d > u) {
                             break;
                         }
                         left = left.map(|c| c - 1);
-                        // Overdue: its next repeat comes after it's done, from today on.
-                        if d < today {
-                            continue;
+                        if d >= from {
+                            push(d, true);
                         }
-                        push(d, true);
                     }
                 }
             }
@@ -324,7 +328,8 @@ impl Db {
                     kind,
                     key: format!("ev:{}:{}", o.event_id, o.original_start),
                     title: o.title,
-                    date: starts.date().to_string(),
+                    // Still running when the window starts: shown on its first day.
+                    date: starts.date().max(from).to_string(),
                     time: (!o.all_day).then(|| hm(starts.time())),
                     at: o.start_at,
                     remind_at,
@@ -353,13 +358,25 @@ impl Db {
                 .then(a.at.cmp(&b.at))
                 .then(a.title.cmp(&b.title))
         });
-        items.truncate(MAX_ITEMS);
+        // Too many: keep whole days up to the cap and say where it ends.
+        let mut to = last.to_string();
+        let truncated = items.len() > MAX_ITEMS;
+        if truncated {
+            let cut = items[MAX_ITEMS].date.clone();
+            items.retain(|i| i.overdue || i.date < cut);
+            to = cut
+                .parse::<Date>()
+                .ok()
+                .and_then(|d| d.yesterday().ok())
+                .map_or(cut, |d| d.to_string());
+        }
         Ok(UpcomingReminders {
             reminders_on: s.enabled,
             meeting_lead_min: s.meeting_lead_min,
             task_lead_min: s.task_lead_min,
             from: from.to_string(),
-            to: last.to_string(),
+            to,
+            truncated,
             items,
         })
     }

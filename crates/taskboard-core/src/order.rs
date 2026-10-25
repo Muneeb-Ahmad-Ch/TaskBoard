@@ -36,6 +36,10 @@ fn integer_length(head: u8) -> Result<usize> {
 }
 
 fn split(key: &str) -> Result<(&str, &str)> {
+    // Keys are ASCII; a byte split inside a multi-byte char would panic.
+    if !key.is_ascii() {
+        return Err(invalid(format!("bad key {key:?}")));
+    }
     let head = *key
         .as_bytes()
         .first()

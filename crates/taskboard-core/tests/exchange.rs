@@ -565,3 +565,82 @@ fn ics_export_writes_repeating_events_in_their_time_zone() {
         .len();
     assert_eq!(n, 3);
 }
+
+#[test]
+fn json_import_keeps_events_and_time_logged_on_the_inbox() {
+    let mut src = Db::open_in_memory().unwrap();
+    let inbox = src.inbox_id().unwrap();
+    let mut m = meeting("Inbox call", at(2030, 3, 4, 9), at(2030, 3, 4, 10));
+    m.project_id = Some(inbox);
+    src.create_event(m).unwrap();
+    let json = src.export_json().unwrap();
+    let mut dst = Db::open_in_memory().unwrap();
+    let report = dst.import_json(&json).unwrap();
+    assert!(report.created >= 1, "{report:?}");
+    let occ = dst
+        .occurrences(at(2030, 3, 4, 0), at(2030, 3, 5, 0))
+        .unwrap();
+    assert_eq!(occ.len(), 1);
+    assert_eq!(occ[0].project_id, Some(dst.inbox_id().unwrap()));
+}
+
+#[test]
+fn json_import_merges_a_tag_that_exists_here_under_another_id() {
+    let mut src = Db::open_in_memory().unwrap();
+    let inbox = src.inbox_id().unwrap();
+    src.create_task(NewTask {
+        title: "Theirs".into(),
+        project_id: Some(inbox),
+        tags: vec!["design".into()],
+        ..Default::default()
+    })
+    .unwrap();
+    let json = src.export_json().unwrap();
+    let mut dst = Db::open_in_memory().unwrap();
+    let here = dst.inbox_id().unwrap();
+    dst.create_task(NewTask {
+        title: "Mine".into(),
+        project_id: Some(here),
+        tags: vec!["Design".into()],
+        ..Default::default()
+    })
+    .unwrap();
+    dst.import_json(&json).unwrap();
+    let tagged = dst
+        .list_tasks(&TaskQuery {
+            tag: Some("design".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(tagged.total, 2, "both tasks carry the one tag");
+}
+
+#[test]
+fn ics_import_understands_outlook_zone_names_and_warns_about_unknown_ones() {
+    let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n\
+BEGIN:VEVENT\r\nUID:ny-1\r\nDTSTART;TZID=\"Eastern Standard Time\":20300107T100000\r\n\
+DTEND;TZID=\"Eastern Standard Time\":20300107T110000\r\nSUMMARY:Client call\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:odd-1\r\nDTSTART;TZID=Mars/Olympus:20300108T100000\r\n\
+DTEND;TZID=Mars/Olympus:20300108T110000\r\nSUMMARY:Odd zone\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+    let mut db = Db::open_in_memory().unwrap();
+    let report = db.import_ics(ics).unwrap();
+    assert_eq!(report.created, 2, "{report:?}");
+    let ny = jiff::tz::TimeZone::get("America/New_York")
+        .unwrap()
+        .to_zoned(jiff::civil::date(2030, 1, 7).at(10, 0, 0, 0))
+        .unwrap()
+        .timestamp()
+        .as_millisecond();
+    let occ = db.occurrences(ny - 3_600_000, ny + 3_600_000).unwrap();
+    assert!(
+        occ.iter()
+            .any(|o| o.title == "Client call" && o.start_at == ny),
+        "{occ:?}"
+    );
+    assert!(
+        report.warnings.iter().any(|w| w.contains("Mars/Olympus")),
+        "{:?}",
+        report.warnings
+    );
+}

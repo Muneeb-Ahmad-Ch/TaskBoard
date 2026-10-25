@@ -314,8 +314,9 @@ fn parse_estimate(s: &str) -> Option<i64> {
         _ if rest.is_empty() => 0,
         _ => return None,
     };
-    let total = hours * 60 + minutes;
-    (total > 0).then_some(total)
+    // Bounded like the decimal form, so huge numbers can't overflow.
+    let total = hours.checked_mul(60)?.checked_add(minutes)?;
+    (total > 0 && total < 100_000).then_some(total)
 }
 
 fn priority(s: &str) -> Option<Priority> {
@@ -450,8 +451,12 @@ pub fn parse(input: &str, today: Date) -> ParsedQuickAdd {
         }
         let text = word.text;
 
+        // "#design," and "#billing." are tags; the punctuation belongs to the sentence.
         if let Some(tag) = text
             .strip_prefix('#')
+            .map(|t| {
+                t.trim_end_matches(|c: char| matches!(c, ',' | '.' | ';' | ':' | '!' | '?' | ')'))
+            })
             .filter(|t| !t.is_empty() && !t.starts_with('#'))
         {
             out.tags.push(tag.to_owned());

@@ -230,3 +230,49 @@ fn dashboard_counts_streaks_and_burndown() {
     assert_eq!((p.done, p.total, p.open), (2, 5, 3));
     assert_eq!(*p.burndown.last().unwrap(), 3);
 }
+
+fn local(date: jiff::civil::Date, h: i8, m: i8) -> i64 {
+    jiff::tz::TimeZone::system()
+        .to_zoned(date.at(h, m, 0, 0))
+        .unwrap()
+        .timestamp()
+        .as_millisecond()
+}
+
+#[test]
+fn task_reminders_reach_across_midnight() {
+    let mut db = db();
+    db.set_notify_settings(NotifySettings {
+        digest: false,
+        task_lead_min: 120,
+        ..Default::default()
+    })
+    .unwrap();
+    let inbox = db.inbox_id().unwrap();
+    let day = jiff::civil::date(2031, 5, 6);
+    let next = day.tomorrow().unwrap();
+    let mk = |db: &mut Db, title: &str, d: jiff::civil::Date, t: &str| {
+        db.create_task(NewTask {
+            title: title.into(),
+            project_id: Some(inbox),
+            due_date: Some(d.to_string()),
+            due_time: Some(t.into()),
+            ..Default::default()
+        })
+        .unwrap()
+    };
+    mk(&mut db, "Early tomorrow", next, "00:30");
+    // Two hours ahead of 00:30 is 22:30 the day before.
+    let fired = db.pending_notifications(local(day, 23, 0)).unwrap();
+    assert!(
+        fired.iter().any(|n| n.title.ends_with("Early tomorrow")),
+        "{fired:?}"
+    );
+    // Due just before midnight, still shown shortly after it.
+    mk(&mut db, "Late tonight", day, "23:50");
+    let later = db.pending_notifications(local(next, 0, 10)).unwrap();
+    assert!(
+        later.iter().any(|n| n.title.ends_with("Late tonight")),
+        "{later:?}"
+    );
+}

@@ -102,7 +102,9 @@ impl Db {
         let mut by_day: BTreeMap<Date, i64> = BTreeMap::new();
         {
             let mut stmt = self.conn().prepare(
-                "SELECT completed_at FROM task WHERE completed_at >= ?1 AND deleted_at IS NULL",
+                // Finished work: cancelled tasks are closed but not done.
+                "SELECT t.completed_at FROM task t JOIN status st ON st.id = t.status_id
+                 WHERE t.completed_at >= ?1 AND t.deleted_at IS NULL AND st.category = 'done'",
             )?;
             for ms in stmt.query_map([since], |r| r.get::<_, i64>(0))? {
                 if let Some(d) = date_of(ms?) {
@@ -184,8 +186,9 @@ impl Db {
                         coalesce(c.name, s.name, 'Other'), coalesce(c.color, s.color, 'gray'),
                         count(CASE WHEN t.completed_at IS NULL THEN 1 END),
                         count(CASE WHEN t.completed_at IS NULL AND t.due_date < ?1 THEN 1 END),
-                        count(CASE WHEN t.completed_at >= ?2 THEN 1 END)
+                        count(CASE WHEN t.completed_at >= ?2 AND st.category = 'done' THEN 1 END)
                  FROM task t JOIN project p ON p.id = t.project_id
+                 JOIN status st ON st.id = t.status_id
                  LEFT JOIN client c ON c.id = p.client_id
                  LEFT JOIN section s ON s.id = p.section_id
                  WHERE t.deleted_at IS NULL AND t.archived_at IS NULL AND t.parent_id IS NULL

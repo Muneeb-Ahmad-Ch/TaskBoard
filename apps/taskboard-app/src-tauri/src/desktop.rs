@@ -121,10 +121,18 @@ pub fn spawn_reminders(app: AppHandle, db: Arc<Mutex<Db>>) {
                 // Automatic daily backup (checked hourly; cheap when already done).
                 if now - last_backup_check > 3_600_000 {
                     last_backup_check = now;
-                    if let Ok(db) = db.lock()
-                        && let Err(err) = db.ensure_daily_backup()
-                    {
-                        tracing::warn!(%err, "daily backup failed");
+                    if let Ok(mut db) = db.lock() {
+                        match db.ensure_daily_backup() {
+                            // Today's backup holds the full history; older
+                            // steps can go from the live file.
+                            Ok(Some(_)) => {
+                                if let Err(err) = db.compact_old_history(now) {
+                                    tracing::warn!(%err, "history compaction failed");
+                                }
+                            }
+                            Ok(None) => {}
+                            Err(err) => tracing::warn!(%err, "daily backup failed"),
+                        }
                     }
                 }
                 let due = match db.lock() {

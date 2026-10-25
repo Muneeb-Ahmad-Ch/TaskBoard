@@ -269,11 +269,17 @@ impl Db {
             });
         }
 
-        // Timed tasks due today: from `lead` before until an hour after.
+        // Timed tasks: from `lead` before until an hour after, which can reach
+        // into tomorrow (a lead) or back into yesterday (the hour after).
+        let day_of = |ms: i64| {
+            jiff::Timestamp::from_millisecond(ms)
+                .map(|t| t.to_zoned(tz.clone()).date())
+                .map_err(|e| invalid(e.to_string()))
+        };
         let page = self.list_tasks(&TaskQuery {
             categories: vec![Category::Todo, Category::Active],
-            due_from: Some(today.to_string()),
-            due_to: Some(today.to_string()),
+            due_from: Some(day_of(now - 60 * MINUTE)?.to_string()),
+            due_to: Some(day_of(now + s.task_lead_min * MINUTE)?.to_string()),
             limit: 500,
             ..Default::default()
         })?;
@@ -281,7 +287,10 @@ impl Db {
             let Some(time) = t.due_time.as_deref().and_then(|s| s.parse::<Time>().ok()) else {
                 continue;
             };
-            let Some(due) = local_ms(today, time) else {
+            let Some(date) = t.due_date.as_deref().and_then(|d| d.parse::<Date>().ok()) else {
+                continue;
+            };
+            let Some(due) = local_ms(date, time) else {
                 continue;
             };
             if now < due - s.task_lead_min * MINUTE || now > due + 60 * MINUTE {
@@ -290,7 +299,7 @@ impl Db {
             let key = format!(
                 "task:{}:{}T{}",
                 t.id,
-                today,
+                date,
                 t.due_time.as_deref().unwrap_or("")
             );
             if self.already_fired(&key)? {

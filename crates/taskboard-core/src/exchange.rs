@@ -227,6 +227,164 @@ fn ics_utc(ms: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Windows time zone ids (Outlook and Exchange write these as TZID) → IANA,
+/// from the CLDR windowsZones table.
+const WINDOWS_ZONES: &[(&str, &str)] = &[
+    ("Dateline Standard Time", "Etc/GMT+12"),
+    ("UTC-11", "Etc/GMT+11"),
+    ("Aleutian Standard Time", "America/Adak"),
+    ("Hawaiian Standard Time", "Pacific/Honolulu"),
+    ("Marquesas Standard Time", "Pacific/Marquesas"),
+    ("Alaskan Standard Time", "America/Anchorage"),
+    ("UTC-09", "Etc/GMT+9"),
+    ("Pacific Standard Time (Mexico)", "America/Tijuana"),
+    ("UTC-08", "Etc/GMT+8"),
+    ("Pacific Standard Time", "America/Los_Angeles"),
+    ("US Mountain Standard Time", "America/Phoenix"),
+    ("Mountain Standard Time (Mexico)", "America/Mazatlan"),
+    ("Mountain Standard Time", "America/Denver"),
+    ("Yukon Standard Time", "America/Whitehorse"),
+    ("Central America Standard Time", "America/Guatemala"),
+    ("Central Standard Time", "America/Chicago"),
+    ("Easter Island Standard Time", "Pacific/Easter"),
+    ("Central Standard Time (Mexico)", "America/Mexico_City"),
+    ("Canada Central Standard Time", "America/Regina"),
+    ("SA Pacific Standard Time", "America/Bogota"),
+    ("Eastern Standard Time (Mexico)", "America/Cancun"),
+    ("Eastern Standard Time", "America/New_York"),
+    ("Haiti Standard Time", "America/Port-au-Prince"),
+    ("Cuba Standard Time", "America/Havana"),
+    ("US Eastern Standard Time", "America/Indianapolis"),
+    ("Turks And Caicos Standard Time", "America/Grand_Turk"),
+    ("Paraguay Standard Time", "America/Asuncion"),
+    ("Atlantic Standard Time", "America/Halifax"),
+    ("Venezuela Standard Time", "America/Caracas"),
+    ("Central Brazilian Standard Time", "America/Cuiaba"),
+    ("SA Western Standard Time", "America/La_Paz"),
+    ("Pacific SA Standard Time", "America/Santiago"),
+    ("Newfoundland Standard Time", "America/St_Johns"),
+    ("Tocantins Standard Time", "America/Araguaina"),
+    ("E. South America Standard Time", "America/Sao_Paulo"),
+    ("SA Eastern Standard Time", "America/Cayenne"),
+    ("Argentina Standard Time", "America/Buenos_Aires"),
+    ("Greenland Standard Time", "America/Godthab"),
+    ("Montevideo Standard Time", "America/Montevideo"),
+    ("Magallanes Standard Time", "America/Punta_Arenas"),
+    ("Saint Pierre Standard Time", "America/Miquelon"),
+    ("Bahia Standard Time", "America/Bahia"),
+    ("UTC-02", "Etc/GMT+2"),
+    ("Azores Standard Time", "Atlantic/Azores"),
+    ("Cape Verde Standard Time", "Atlantic/Cape_Verde"),
+    ("UTC", "Etc/UTC"),
+    ("GMT Standard Time", "Europe/London"),
+    ("Greenwich Standard Time", "Atlantic/Reykjavik"),
+    ("Sao Tome Standard Time", "Africa/Sao_Tome"),
+    ("Morocco Standard Time", "Africa/Casablanca"),
+    ("W. Europe Standard Time", "Europe/Berlin"),
+    ("Central Europe Standard Time", "Europe/Budapest"),
+    ("Romance Standard Time", "Europe/Paris"),
+    ("Central European Standard Time", "Europe/Warsaw"),
+    ("W. Central Africa Standard Time", "Africa/Lagos"),
+    ("Jordan Standard Time", "Asia/Amman"),
+    ("GTB Standard Time", "Europe/Bucharest"),
+    ("Middle East Standard Time", "Asia/Beirut"),
+    ("Egypt Standard Time", "Africa/Cairo"),
+    ("E. Europe Standard Time", "Europe/Chisinau"),
+    ("Syria Standard Time", "Asia/Damascus"),
+    ("West Bank Standard Time", "Asia/Hebron"),
+    ("South Africa Standard Time", "Africa/Johannesburg"),
+    ("FLE Standard Time", "Europe/Kiev"),
+    ("Israel Standard Time", "Asia/Jerusalem"),
+    ("South Sudan Standard Time", "Africa/Juba"),
+    ("Kaliningrad Standard Time", "Europe/Kaliningrad"),
+    ("Sudan Standard Time", "Africa/Khartoum"),
+    ("Libya Standard Time", "Africa/Tripoli"),
+    ("Namibia Standard Time", "Africa/Windhoek"),
+    ("Arabic Standard Time", "Asia/Baghdad"),
+    ("Turkey Standard Time", "Europe/Istanbul"),
+    ("Arab Standard Time", "Asia/Riyadh"),
+    ("Belarus Standard Time", "Europe/Minsk"),
+    ("Russian Standard Time", "Europe/Moscow"),
+    ("E. Africa Standard Time", "Africa/Nairobi"),
+    ("Volgograd Standard Time", "Europe/Volgograd"),
+    ("Iran Standard Time", "Asia/Tehran"),
+    ("Arabian Standard Time", "Asia/Dubai"),
+    ("Astrakhan Standard Time", "Europe/Astrakhan"),
+    ("Azerbaijan Standard Time", "Asia/Baku"),
+    ("Russia Time Zone 3", "Europe/Samara"),
+    ("Mauritius Standard Time", "Indian/Mauritius"),
+    ("Saratov Standard Time", "Europe/Saratov"),
+    ("Georgian Standard Time", "Asia/Tbilisi"),
+    ("Caucasus Standard Time", "Asia/Yerevan"),
+    ("Afghanistan Standard Time", "Asia/Kabul"),
+    ("West Asia Standard Time", "Asia/Tashkent"),
+    ("Ekaterinburg Standard Time", "Asia/Yekaterinburg"),
+    ("Pakistan Standard Time", "Asia/Karachi"),
+    ("Qyzylorda Standard Time", "Asia/Qyzylorda"),
+    ("India Standard Time", "Asia/Calcutta"),
+    ("Sri Lanka Standard Time", "Asia/Colombo"),
+    ("Nepal Standard Time", "Asia/Katmandu"),
+    ("Central Asia Standard Time", "Asia/Almaty"),
+    ("Bangladesh Standard Time", "Asia/Dhaka"),
+    ("Omsk Standard Time", "Asia/Omsk"),
+    ("Myanmar Standard Time", "Asia/Rangoon"),
+    ("SE Asia Standard Time", "Asia/Bangkok"),
+    ("Altai Standard Time", "Asia/Barnaul"),
+    ("W. Mongolia Standard Time", "Asia/Hovd"),
+    ("North Asia Standard Time", "Asia/Krasnoyarsk"),
+    ("N. Central Asia Standard Time", "Asia/Novosibirsk"),
+    ("Tomsk Standard Time", "Asia/Tomsk"),
+    ("China Standard Time", "Asia/Shanghai"),
+    ("North Asia East Standard Time", "Asia/Irkutsk"),
+    ("Singapore Standard Time", "Asia/Singapore"),
+    ("W. Australia Standard Time", "Australia/Perth"),
+    ("Taipei Standard Time", "Asia/Taipei"),
+    ("Ulaanbaatar Standard Time", "Asia/Ulaanbaatar"),
+    ("Aus Central W. Standard Time", "Australia/Eucla"),
+    ("Transbaikal Standard Time", "Asia/Chita"),
+    ("Tokyo Standard Time", "Asia/Tokyo"),
+    ("North Korea Standard Time", "Asia/Pyongyang"),
+    ("Korea Standard Time", "Asia/Seoul"),
+    ("Yakutsk Standard Time", "Asia/Yakutsk"),
+    ("Cen. Australia Standard Time", "Australia/Adelaide"),
+    ("AUS Central Standard Time", "Australia/Darwin"),
+    ("E. Australia Standard Time", "Australia/Brisbane"),
+    ("AUS Eastern Standard Time", "Australia/Sydney"),
+    ("West Pacific Standard Time", "Pacific/Port_Moresby"),
+    ("Tasmania Standard Time", "Australia/Hobart"),
+    ("Vladivostok Standard Time", "Asia/Vladivostok"),
+    ("Lord Howe Standard Time", "Australia/Lord_Howe"),
+    ("Bougainville Standard Time", "Pacific/Bougainville"),
+    ("Russia Time Zone 10", "Asia/Srednekolymsk"),
+    ("Magadan Standard Time", "Asia/Magadan"),
+    ("Norfolk Standard Time", "Pacific/Norfolk"),
+    ("Sakhalin Standard Time", "Asia/Sakhalin"),
+    ("Central Pacific Standard Time", "Pacific/Guadalcanal"),
+    ("Russia Time Zone 11", "Asia/Kamchatka"),
+    ("New Zealand Standard Time", "Pacific/Auckland"),
+    ("UTC+12", "Etc/GMT-12"),
+    ("Fiji Standard Time", "Pacific/Fiji"),
+    ("Chatham Islands Standard Time", "Pacific/Chatham"),
+    ("UTC+13", "Etc/GMT-13"),
+    ("Tonga Standard Time", "Pacific/Tongatapu"),
+    ("Samoa Standard Time", "Pacific/Apia"),
+    ("Line Islands Standard Time", "Pacific/Kiritimati"),
+];
+
+/// The zone a TZID names: an IANA name, or a Windows one (Outlook). Returns the
+/// zone and its IANA name.
+fn ics_zone(tzid: &str) -> Option<(TimeZone, String)> {
+    let name = tzid.trim().trim_matches('"');
+    if let Ok(tz) = TimeZone::get(name) {
+        return Some((tz, name.to_owned()));
+    }
+    let iana = WINDOWS_ZONES
+        .iter()
+        .find(|(w, _)| w.eq_ignore_ascii_case(name))
+        .map(|(_, i)| *i)?;
+    TimeZone::get(iana).ok().map(|tz| (tz, iana.to_owned()))
+}
+
 /// Parses `DTSTART`-style values. Returns (UTC ms, None) for timed values or
 /// (_, Some(date)) for all-day dates.
 fn parse_ics_time(value: &str, params: &HashMap<String, String>) -> Option<(i64, Option<Date>)> {
@@ -249,8 +407,8 @@ fn parse_ics_time(value: &str, params: &HashMap<String, String>) -> Option<(i64,
     } else {
         params
             .get("TZID")
-            .and_then(|z| TimeZone::get(z.trim_matches('"')).ok())
-            .unwrap_or_else(|| local_zone().0)
+            .and_then(|z| ics_zone(z))
+            .map_or_else(|| local_zone().0, |(tz, _)| tz)
     };
     Some((tz.to_zoned(dt).ok()?.timestamp().as_millisecond(), None))
 }
@@ -291,6 +449,9 @@ impl Db {
 
     /// Everything, as pretty JSON. Ids are UUID strings.
     pub fn export_json(&self) -> Result<String> {
+        // One snapshot: an assistant writing meanwhile can't leave rows that
+        // point at parents missing from the file.
+        let snapshot = self.conn().unchecked_transaction()?;
         let mut tables = Map::new();
         for table in TABLES {
             let cols = columns(self.conn(), table)?;
@@ -309,6 +470,8 @@ impl Db {
                 .collect::<rusqlite::Result<_>>()?;
             tables.insert(table.into(), Json::Array(rows));
         }
+        // Read-only: ending it changes nothing.
+        snapshot.rollback()?;
         let doc = json!({
             "app": "taskboard",
             "format": 1,
@@ -378,6 +541,8 @@ impl Db {
                     }
                 }
             }
+            // Their tag id → ours, for tags that already exist here by name.
+            let mut tag_map: HashMap<String, String> = HashMap::new();
             let running_timer: bool = tx.conn().query_row(
                 "SELECT EXISTS(SELECT 1 FROM time_entry WHERE ended_at IS NULL)",
                 [],
@@ -406,9 +571,9 @@ impl Db {
                         {
                             continue;
                         }
-                        if table_name == "task"
-                            && obj.get("project_id").and_then(Json::as_str) == Some(inbox)
-                        {
+                        // Anything else on their Inbox (tasks, meetings, logged
+                        // time) moves to ours.
+                        if obj.get("project_id").and_then(Json::as_str) == Some(inbox) {
                             obj.insert("project_id".into(), Json::String(local_inbox.to_string()));
                             if let Some(s) = obj
                                 .get("status_id")
@@ -418,6 +583,38 @@ impl Db {
                                 obj.insert("status_id".into(), Json::String(s.to_string()));
                             }
                         }
+                    }
+                    // Tag names are unique: a tag that exists here under
+                    // another id is the same tag.
+                    if table_name == "tag"
+                        && let (Some(id), Some(name)) = (
+                            obj.get("id").and_then(Json::as_str),
+                            obj.get("name").and_then(Json::as_str),
+                        )
+                    {
+                        let ours: Option<Id> = tx
+                            .conn()
+                            .query_row(
+                                "SELECT id FROM tag WHERE name = ?1 COLLATE NOCASE",
+                                [name.trim()],
+                                |r| r.get(0),
+                            )
+                            .optional()?;
+                        if let Some(ours) = ours
+                            && ours.to_string() != id
+                        {
+                            tag_map.insert(id.to_owned(), ours.to_string());
+                            report.skipped += 1;
+                            continue;
+                        }
+                    }
+                    if table_name == "task_tag"
+                        && let Some(ours) = obj
+                            .get("tag_id")
+                            .and_then(Json::as_str)
+                            .and_then(|t| tag_map.get(t))
+                    {
+                        obj.insert("tag_id".into(), Json::String(ours.clone()));
                     }
                     if table_name == "time_entry"
                         && running_timer
@@ -956,6 +1153,14 @@ impl Db {
                     report.skipped += 1;
                     continue;
                 }
+                if let Some(zone) = prop("DTSTART").and_then(|(_, p, _)| p.get("TZID"))
+                    && ics_zone(zone).is_none()
+                {
+                    report.warnings.push(format!(
+                        "“{title}”: unknown time zone “{}”, read as your local time",
+                        zone.trim_matches('"')
+                    ));
+                }
                 let end = prop("DTEND").and_then(|(_, p, v)| parse_ics_time(v, p));
                 let duration = prop("DURATION").and_then(|(_, _, v)| parse_duration(v));
                 let rule = prop("RRULE").map(|(_, _, v)| v.clone());
@@ -984,8 +1189,8 @@ impl Db {
                     // The zone a series was written in, so it repeats in that zone.
                     time_zone: prop("DTSTART")
                         .and_then(|(_, p, _)| p.get("TZID"))
-                        .map(|z| z.trim_matches('"').to_owned())
-                        .filter(|z| TimeZone::get(z).is_ok()),
+                        .and_then(|z| ics_zone(z))
+                        .map(|(_, name)| name),
                     location: prop("LOCATION").map(|(_, _, v)| ics_unescape(v)),
                     meeting_url: prop("URL")
                         .map(|(_, _, v)| v.trim().to_owned())

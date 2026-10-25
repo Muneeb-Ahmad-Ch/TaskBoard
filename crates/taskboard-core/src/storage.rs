@@ -39,6 +39,9 @@ fn migrations() -> Vec<M<'static>> {
 /// number of migrations (checked by a test).
 pub const SCHEMA_VERSION: usize = 7;
 
+/// How long undo steps and the change log are kept (SPEC §4.2).
+pub const HISTORY_DAYS: i64 = 90;
+
 /// Applied to every connection. `synchronous=FULL` keeps committed edits safe
 /// across power loss (SPEC §7); writes are rare, so the cost is negligible.
 const CONNECTION_PRAGMAS: &str = "
@@ -342,6 +345,25 @@ impl Db {
             .execute("UPDATE history SET undone = 0 WHERE group_id = ?1", [group])?;
         tx.commit()?;
         Ok(label)
+    }
+
+    /// Drops undo steps and change-log entries from before `before` (Unix ms)
+    /// (SPEC §4.2: kept 90 days). The newest log entry always stays, so the
+    /// clock keeps counting up from it. Returns how many rows went.
+    pub fn compact_history(&mut self, before: i64) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        let steps = tx.execute("DELETE FROM history WHERE at < ?1", [before])?;
+        let ops = tx.execute(
+            "DELETE FROM op_log WHERE at < ?1 AND seq < (SELECT max(seq) FROM op_log)",
+            [before],
+        )?;
+        tx.commit()?;
+        Ok(steps + ops)
+    }
+
+    /// Daily maintenance: history older than [`HISTORY_DAYS`] goes.
+    pub fn compact_old_history(&mut self, now: i64) -> Result<usize> {
+        self.compact_history(now - HISTORY_DAYS * 86_400_000)
     }
 
     pub fn history_state(&self) -> Result<HistoryState> {

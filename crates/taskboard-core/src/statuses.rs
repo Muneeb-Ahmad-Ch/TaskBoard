@@ -280,6 +280,17 @@ impl Db {
                         return Err(invalid("a project needs at least one Done column"));
                     }
                 }
+                // New tasks start in the first open column: keep one.
+                if !current.category.is_closed() && category.is_closed() {
+                    let other_open = siblings(tx, current.project_id)?
+                        .iter()
+                        .any(|s| s.id != id && !s.category.is_closed());
+                    if !other_open {
+                        return Err(invalid(
+                            "a project needs at least one column for work that isn't finished",
+                        ));
+                    }
+                }
                 changes.push(("category", text(category.as_str())));
                 if category.is_closed() != current.category.is_closed() {
                     sync_completion(tx, id, category.is_closed())?;

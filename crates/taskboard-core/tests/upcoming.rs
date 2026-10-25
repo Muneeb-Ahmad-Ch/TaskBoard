@@ -281,3 +281,117 @@ fn a_finished_series_is_not_listed() {
     .unwrap();
     assert!(db.repeating(clock::now_ms()).unwrap().is_empty());
 }
+
+fn upcoming_from(db: &Db, from: Date, days: i64) -> UpcomingReminders {
+    db.upcoming_reminders(
+        &ReminderQuery {
+            from: Some(from.to_string()),
+            days: Some(days),
+            kinds: vec![],
+        },
+        clock::now_ms(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_later_window_still_shows_the_repeats_that_fall_in_it() {
+    let mut db = Db::open_in_memory().unwrap();
+    task(
+        &mut db,
+        "Team sync",
+        Some(day(2)),
+        Some("10:00"),
+        Some("FREQ=WEEKLY"),
+    );
+    let u = upcoming_from(&db, day(10), 30);
+    let syncs: Vec<_> = u.items.iter().filter(|i| i.title == "Team sync").collect();
+    assert!(syncs.len() >= 4, "{syncs:?}");
+    assert!(
+        syncs
+            .iter()
+            .all(|i| i.projected && i.date >= day(10).to_string())
+    );
+}
+
+#[test]
+fn a_counted_series_projects_only_the_repeats_it_has_left() {
+    let mut db = Db::open_in_memory().unwrap();
+    // Three in all: this one and two more.
+    task(
+        &mut db,
+        "Course",
+        Some(day(1)),
+        None,
+        Some("FREQ=DAILY;COUNT=3"),
+    );
+    let u = upcoming(&db, 30, vec![]);
+    assert_eq!(u.items.iter().filter(|i| i.title == "Course").count(), 3);
+    // Seen from later on, the same three, not more.
+    let later = upcoming_from(&db, day(2), 30);
+    assert_eq!(
+        later.items.iter().filter(|i| i.title == "Course").count(),
+        2
+    );
+}
+
+#[test]
+fn an_overdue_repeating_task_shows_when_its_next_ones_will_remind() {
+    let mut db = Db::open_in_memory().unwrap();
+    task(
+        &mut db,
+        "Standup notes",
+        Some(day(-2)),
+        Some("09:00"),
+        Some("FREQ=DAILY;COUNT=4"),
+    );
+    let u = upcoming(&db, 7, vec![]);
+    let mine: Vec<_> = u
+        .items
+        .iter()
+        .filter(|i| i.title == "Standup notes")
+        .collect();
+    assert!(mine[0].overdue && mine[0].remind_at.is_none());
+    // Done today, the next is tomorrow (after today), then two more: COUNT is
+    // used by instances that happen, not by the days it was overdue.
+    let next: Vec<&str> = mine[1..].iter().map(|i| i.date.as_str()).collect();
+    assert_eq!(
+        next,
+        [day(1).to_string(), day(2).to_string(), day(3).to_string()]
+    );
+    assert!(mine[1..].iter().all(|i| i.remind_at.is_some()));
+}
+
+#[test]
+fn an_event_that_started_before_the_window_is_dated_inside_it() {
+    let mut db = Db::open_in_memory().unwrap();
+    let mut e = event(EventKind::Meeting, "Conference", at(day(0), 9, 0), None);
+    e.start_at = None;
+    e.end_at = None;
+    e.all_day_start = Some(day(-1).to_string());
+    e.all_day_end = Some(day(1).to_string());
+    db.create_event(e).unwrap();
+    let u = upcoming(&db, 7, vec![]);
+    let conf = u.items.iter().find(|i| i.title == "Conference").unwrap();
+    assert_eq!(conf.date, day(0).to_string());
+}
+
+#[test]
+fn a_long_window_that_hits_the_cap_says_how_far_it_got() {
+    let mut db = Db::open_in_memory().unwrap();
+    for n in 0..12 {
+        task(
+            &mut db,
+            &format!("Daily {n}"),
+            Some(day(1)),
+            Some("08:00"),
+            Some("FREQ=DAILY"),
+        );
+    }
+    let u = upcoming(&db, 366, vec![]);
+    assert!(u.truncated);
+    assert!(u.to < day(365).to_string());
+    // Whole days only: the last day shown has all twelve.
+    let last: Vec<_> = u.items.iter().filter(|i| i.date == u.to).collect();
+    assert_eq!(last.len(), 12);
+}

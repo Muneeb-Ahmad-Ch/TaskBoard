@@ -203,7 +203,7 @@ impl Db {
             "WITH per_status AS (
                 SELECT t.project_id AS project_id, t.status_id AS status_id, count(*) AS n
                 FROM task t
-                WHERE t.deleted_at IS NULL AND t.parent_id IS NULL
+                WHERE t.deleted_at IS NULL AND t.parent_id IS NULL AND t.archived_at IS NULL
                 GROUP BY t.project_id, t.status_id
              ), counts AS (
                 SELECT ps.project_id AS project_id,
