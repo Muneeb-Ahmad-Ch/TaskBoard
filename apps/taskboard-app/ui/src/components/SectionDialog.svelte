@@ -7,6 +7,7 @@
   import { ipc } from '../lib/ipc'
   import { act, app, sectionById, setScope } from '../lib/store.svelte'
   import Modal from './Modal.svelte'
+  import { segmented } from '../lib/segmented'
 
   let { id, onclose }: { id: Id | null; onclose: () => void } = $props()
 
@@ -50,13 +51,14 @@
     </label>
     <div>
       <span class="field-label">Color</span>
-      <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Section color">
+      <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Section color" use:segmented>
         {#each PALETTE as c (c)}
           <button type="button" role="radio" aria-checked={color === c} aria-label="Color {c}" class="swatch" style="--s: {swatch(c)}" onclick={() => (color = c)}></button>
         {/each}
       </div>
     </div>
-    <button type="submit" class="sr-only">Save</button>
+    <!-- Makes Enter submit; not a Tab stop (it has no visible focus). -->
+    <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true">Save</button>
   </form>
   {#snippet footer()}
     <span class="flex-1"></span>

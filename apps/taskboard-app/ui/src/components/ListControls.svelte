@@ -213,18 +213,18 @@
 
     <section aria-labelledby="f-due">
       <h3 id="f-due">Due</h3>
-      <div class="chips" role="radiogroup" aria-labelledby="f-due">
+      <div class="chips" role="group" aria-labelledby="f-due">
         {#each DUES as d (d)}
-          <button class="chip" role="radio" aria-checked={app.filter.due === d} onclick={() => (app.filter.due = app.filter.due === d ? null : d)}>{DUE_LABEL[d]}</button>
+          <button class="chip" aria-pressed={app.filter.due === d} onclick={() => (app.filter.due = app.filter.due === d ? null : d)}>{DUE_LABEL[d]}</button>
         {/each}
       </div>
     </section>
 
     <section aria-labelledby="f-added">
       <h3 id="f-added">Added</h3>
-      <div class="chips" role="radiogroup" aria-labelledby="f-added">
+      <div class="chips" role="group" aria-labelledby="f-added">
         {#each ADDEDS as a (a)}
-          <button class="chip" role="radio" aria-checked={app.filter.added === a} onclick={() => (app.filter.added = app.filter.added === a ? null : a)}>{ADDED_LABEL[a]}</button>
+          <button class="chip" aria-pressed={app.filter.added === a} onclick={() => (app.filter.added = app.filter.added === a ? null : a)}>{ADDED_LABEL[a]}</button>
         {/each}
       </div>
     </section>
@@ -345,8 +345,7 @@
     color: var(--text);
     background: var(--hover);
   }
-  .chip[aria-pressed='true'],
-  .chip[aria-checked='true'] {
+  .chip[aria-pressed='true'] {
     color: var(--text);
     border-color: var(--accent);
     background: var(--accent-soft);

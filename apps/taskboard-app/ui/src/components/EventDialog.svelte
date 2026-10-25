@@ -24,12 +24,14 @@
   import type { EventPatch } from '../lib/bindings/EventPatch'
   import type { EventStatus } from '../lib/bindings/EventStatus'
   import { fromIso, HOUR, MINUTE, repeatOptions } from '../lib/cal.svelte'
+  import { describeRule } from '../lib/repeat'
   import { isoDate } from '../lib/format'
   import { errorMessage, ipc, openLink } from '../lib/ipc'
   import { app, groupsIn, looseProjectsIn, projectsOf } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
   import Notes from './Notes.svelte'
+  import { segmented } from '../lib/segmented'
 
   let { draft, onclose }: { draft: EventDraft; onclose: () => void } = $props()
   // The calendar remounts this dialog per draft, so read it once.
@@ -71,6 +73,15 @@
   let scope = $state<'one' | 'following' | 'all'>('one')
   let saving = $state(false)
   const editing = !!initial.id
+  /** An existing event can't be saved before its details arrive (else empty
+   *  fields would overwrite its link, notes and repeat). */
+  let loaded = $state(!initial.id)
+
+  /** The series-wide fields as loaded: an occurrence can't have its own. */
+  const seriesKey = () => JSON.stringify([f.kind, f.owner, f.location, f.url, f.attendees, f.rule, f.status, f.counts, f.flexible, f.allDay])
+  let seriesAsLoaded = $state('')
+  /** Changes that can only apply to every event in the series. */
+  const seriesChanged = $derived(loaded && editing && seriesKey() !== seriesAsLoaded)
 
   /** Title and notes as the dialog opened (the occurrence's own, if it has them),
    *  so saving sends only what was changed. */
@@ -97,8 +108,10 @@
         f.flexible = e.flexible
         recurring = !!e.recurrence_rule
         recurrenceText = e.recurrence_text
+        seriesAsLoaded = seriesKey()
+        loaded = true
       })
-      .catch((err) => toast(errorMessage(err), { kind: 'error' }))
+      .catch((err) => toast(`Couldn't load this event, so it can't be saved: ${errorMessage(err)}`, { kind: 'error' }))
   })
 
   const repeats = $derived(repeatOptions(fromIso(f.date)))
@@ -125,7 +138,18 @@
     return { client_id: null, project_id: null }
   }
 
+  /** Local midnight of a YYYY-MM-DD date. */
+  const dayStart = (iso: string) => fromIso(iso).getTime()
+  /** YYYY-MM-DD shifted by whole days. */
+  function shiftDay(iso: string, days: number): string {
+    const d = fromIso(iso)
+    d.setDate(d.getDate() + days)
+    return isoDate(d)
+  }
+  const daysBetween = (a: string, b: string) => Math.round((dayStart(b) - dayStart(a)) / (24 * HOUR))
+
   async function save() {
+    if (!loaded || saving) return
     if (!f.title.trim()) {
       toast('Give it a title', { kind: 'error' })
       return
@@ -170,12 +194,31 @@
       } else if (scope === 'one') {
         // Only what was changed here, so the occurrence keeps following the
         // series for the rest (a time it was never moved to stays relative).
-        const moved = t.start_at !== initial.start || t.end_at !== initial.end
+        // All-day occurrences move by whole days (start of each day).
+        const start = f.allDay ? dayStart(f.date) : t.start_at
+        const end = f.allDay ? dayStart(shiftDay(t.all_day_end ?? f.date, 1)) : t.end_at
+        const moved = start !== initial.start || end !== initial.end
         await ipc.editOccurrence(initial.id, initial.originalStart, {
-          ...(moved ? { start_at: t.start_at, end_at: t.end_at } : {}),
+          ...(moved ? { start_at: start, end_at: end } : {}),
           ...(f.title !== shown.title ? { title: f.title } : {}),
           ...(f.notes !== shown.notes ? { notes_md: f.notes } : {}),
         })
+        // Link, place, people, group, type and options belong to the series.
+        if (seriesChanged) {
+          const o = owner()
+          await ipc.updateEvent(initial.id, {
+            kind: f.kind,
+            client_id: o.client_id,
+            project_id: o.project_id,
+            location: f.location,
+            meeting_url: f.url,
+            attendees: f.attendees,
+            status: f.status,
+            flexible: f.flexible,
+            ...(f.counts === null ? {} : { counts_as_time: f.counts }),
+            recurrence_rule: f.rule,
+          })
+        }
       } else {
         // This occurrence's own title and notes don't spread to the others
         // unless they were changed here.
@@ -190,10 +233,17 @@
           await ipc.splitSeries(initial.id, initial.originalStart, { ...shared, ...t })
         } else {
           // Shift the whole series by however much the time was changed here.
-          const series = await ipc.getEvent(initial.id)
-          if (t.start_at !== undefined && t.end_at !== undefined && series.start_at !== null) {
-            shared.start_at = series.start_at + (t.start_at - initial.start)
+          const current = await ipc.getEvent(initial.id)
+          if (t.start_at !== undefined && t.end_at !== undefined && current.start_at !== null) {
+            shared.start_at = current.start_at + (t.start_at - initial.start)
             shared.end_at = shared.start_at + (t.end_at - t.start_at)
+          } else if (f.allDay && current.all_day_start && current.all_day_end) {
+            // All-day: by whole days, keeping how many days each one spans.
+            const shown = isoDate(new Date(initial.start))
+            const by = daysBetween(shown, f.date)
+            const span = daysBetween(f.date, t.all_day_end ?? f.date)
+            shared.all_day_start = shiftDay(current.all_day_start, by)
+            shared.all_day_end = shiftDay(shared.all_day_start, span)
           }
           await ipc.updateEvent(initial.id, shared)
         }
@@ -209,13 +259,25 @@
   async function remove() {
     if (!initial.id) return
     try {
+      // "This and following" is two steps (split, then delete the new part);
+      // Undo takes back both.
+      let steps = 1
       if (!recurring || initial.originalStart === undefined || scope === 'all') await ipc.deleteEvent(initial.id)
       else if (scope === 'one') await ipc.editOccurrence(initial.id, initial.originalStart, { cancelled: true })
       else {
         const later = await ipc.splitSeries(initial.id, initial.originalStart, {})
         await ipc.deleteEvent(later.id)
+        steps = 2
       }
-      toast('Deleted', { action: { label: 'Undo', run: () => void ipc.undo() } })
+      toast('Deleted', {
+        action: {
+          label: 'Undo',
+          run: () =>
+            void (async () => {
+              for (let i = 0; i < steps; i++) await ipc.undo()
+            })(),
+        },
+      })
       onclose()
     } catch (err) {
       toast(errorMessage(err), { kind: 'error' })
@@ -240,7 +302,7 @@
 <Modal title={editing ? (f.kind === 'meeting' ? 'Edit meeting' : 'Edit time block') : f.kind === 'meeting' ? 'New meeting' : 'New time block'} {onclose} width={560}>
   <div class="flex flex-col gap-3">
     <div class="flex gap-2">
-      <div class="flex rounded-md border border-border bg-surface-1 p-0.5" role="radiogroup" aria-label="Type">
+      <div class="flex rounded-md border border-border bg-surface-1 p-0.5" role="radiogroup" aria-label="Type" use:segmented>
         {#each [{ v: 'meeting', l: 'Meeting' }, { v: 'block', l: 'Time block' }] as k (k.v)}
           <button role="radio" aria-checked={f.kind === k.v} class="seg" onclick={() => {
             f.kind = k.v as EventKind
@@ -250,7 +312,7 @@
       </div>
     </div>
 
-    <input class="field !h-10 text-[15px] font-medium" placeholder={f.kind === 'meeting' ? 'Meeting title' : 'What is this time for?'} bind:value={f.title} onkeydown={(e) => e.key === 'Enter' && void save()} />
+    <input class="field !h-10 text-[15px] font-medium" aria-label="Title" placeholder={f.kind === 'meeting' ? 'Meeting title' : 'What is this time for?'} bind:value={f.title} onkeydown={(e) => e.key === 'Enter' && void save()} />
 
     <div class="grid grid-cols-[1fr_auto_auto_auto] items-end gap-2">
       <label>
@@ -282,7 +344,7 @@
         <span class="field-label">Repeat</span>
         <select class="field" value={f.rule ?? ''} onchange={(e) => (f.rule = e.currentTarget.value || null)}>
           {#each repeats as r (r.label)}<option value={r.rule ?? ''}>{r.label}</option>{/each}
-          {#if isCustomRule}<option value={f.rule}>{recurrenceText ?? f.rule}</option>{/if}
+          {#if isCustomRule}<option value={f.rule}>{recurrenceText ?? describeRule(f.rule ?? '')}</option>{/if}
         </select>
       </label>
       <label>
@@ -365,6 +427,9 @@
             <label class="flex items-center gap-1.5"><input type="radio" name="scope" class="accent-[var(--accent)]" value={s.v} bind:group={scope} /> {s.l}</label>
           {/each}
         </div>
+        {#if scope === 'one' && seriesChanged}
+          <p class="mt-2 text-xs text-muted" role="status">The link, place, attendees, group, type and options can't differ for one event; they'll be saved for every event in the series.</p>
+        {/if}
       </fieldset>
     {/if}
   </div>
@@ -375,7 +440,7 @@
     {/if}
     <span class="flex-1"></span>
     <button class="btn" onclick={onclose}>Cancel</button>
-    <button class="btn btn-primary" disabled={saving} onclick={() => void save()}>{editing ? 'Save' : 'Add'}</button>
+    <button class="btn btn-primary" disabled={saving || !loaded} onclick={() => void save()}>{editing ? 'Save' : 'Add'}</button>
   {/snippet}
 </Modal>
 

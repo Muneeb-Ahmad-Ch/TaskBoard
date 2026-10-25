@@ -8,6 +8,7 @@
   import { swatch } from '../lib/format'
   import { errorMessage, ipc, openLink } from '../lib/ipc'
   import { app } from '../lib/store.svelte'
+  import { segmented } from '../lib/segmented'
 
   const DAYS = 30
   let range = $state<'upcoming' | 'past'>('upcoming')
@@ -54,7 +55,7 @@
   const nextJoinable = $derived(
     range === 'upcoming'
       ? meetings
-          .filter((m) => m.meeting_url && m.status !== 'cancelled' && m.end_at > Date.now())
+          .filter((m) => m.meeting_url && m.status !== 'cancelled' && m.end_at > now)
           .reduce<(typeof meetings)[number] | null>((a, b) => (a && a.start_at <= b.start_at ? a : b), null)
       : null,
   )
@@ -97,7 +98,7 @@
 <!-- A readable column on very wide windows: Join stays next to its meeting. -->
 <div class="mx-auto flex min-h-0 w-full max-w-[1180px] flex-1 flex-col gap-3">
   <div class="flex min-h-8 shrink-0 flex-wrap items-center gap-2">
-    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="Which meetings">
+    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="Which meetings" use:segmented>
       <button role="radio" aria-checked={range === 'upcoming'} class="seg" onclick={() => (range = 'upcoming')}>Upcoming</button>
       <button role="radio" aria-checked={range === 'past'} class="seg" onclick={() => (range = 'past')}>Past</button>
     </div>
@@ -149,7 +150,7 @@
                     {#if m.location}<span class="flex min-w-0 items-center gap-1 truncate"><MapPin size={11} class="shrink-0" />{m.location}</span>{/if}
                   </span>
                 </button>
-                {#if m.meeting_url && !cancelled && range === 'upcoming'}
+                {#if m.meeting_url && !cancelled && range === 'upcoming' && m.end_at > now}
                   <button class="join" class:next={m === nextJoinable} onclick={() => void openLink(m.meeting_url!)} title={m.meeting_url}><ExternalLink size={12} /> Join</button>
                 {/if}
               </li>

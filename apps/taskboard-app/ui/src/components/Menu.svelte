@@ -21,6 +21,11 @@
 
   let el: HTMLDivElement | undefined = $state()
   let active = $state(-1)
+  const buttons: (HTMLButtonElement | undefined)[] = $state([])
+  // The highlighted item has keyboard focus, so screen readers follow it.
+  $effect(() => {
+    if (active >= 0) buttons[active]?.focus({ preventScroll: false })
+  })
 
   // Closing gives focus back to what opened the menu (keyboard users keep their
   // place), unless the chosen action moved focus somewhere on purpose.
@@ -56,7 +61,15 @@
     const n = actionable.length
     if (e.key === 'Escape') {
       e.preventDefault()
+      // Only the menu closes, not a dialog behind it.
+      e.stopPropagation()
       onclose()
+    } else if (e.key === 'Tab') {
+      e.preventDefault()
+      onclose()
+    } else if ((e.key === 'Home' || e.key === 'End') && n) {
+      e.preventDefault()
+      active = actionable[e.key === 'Home' ? 0 : n - 1].i
     } else if (e.key === 'ArrowDown' && n) {
       e.preventDefault()
       const at = actionable.findIndex((a) => a.i === active)
@@ -87,7 +100,10 @@
       <div class="my-1 h-px bg-border" role="separator"></div>
     {:else}
       <button
-        role="menuitem"
+        bind:this={buttons[i]}
+        role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+        aria-checked={item.checked === undefined ? undefined : item.checked}
+        tabindex="-1"
         class="item"
         class:danger={item.danger}
         class:active={active === i}
@@ -120,8 +136,16 @@
     padding-inline: 0.5rem;
     border-radius: 5px;
   }
+  .item {
+    outline: none;
+  }
+  /* Clearly visible for keyboard users (the plain hover tint is too faint). */
   .item.active {
-    background: var(--hover);
+    background: var(--accent-soft);
+    color: var(--accent-soft-text);
+  }
+  .item.danger.active {
+    color: var(--danger);
   }
   .item.danger {
     color: var(--danger);

@@ -18,6 +18,7 @@
   import TaskBlocks from './TaskBlocks.svelte'
   import { layout, PANEL, setPanelWidth } from '../lib/layout.svelte'
   import { fromIso, repeatOptions } from '../lib/cal.svelte'
+  import { describeRule } from '../lib/repeat'
 
   let task = $state<Task | null>(null)
   let statuses = $state<Status[]>([])
@@ -234,7 +235,7 @@
               <button class="ml-auto shrink-0 text-xs text-muted underline-offset-2 hover:text-text hover:underline" onclick={detach}>Make separate task</button>
             </span>
           {:else}
-          <button class="prop-btn" onclick={(e) => openMenu(e, app.projects.map((p) => ({
+          <button class="prop-btn" aria-label="Project: {project?.name ?? 'none'}" onclick={(e) => openMenu(e, app.projects.map((p) => ({
             label: p.client_name ? `${p.client_name} / ${p.name}` : p.name,
             color: p.color,
             checked: p.id === task?.project_id,
@@ -250,7 +251,7 @@
 
         <dt>Status</dt>
         <dd>
-          <button class="prop-btn" onclick={(e) => openMenu(e, statuses.map((s) => ({
+          <button class="prop-btn" aria-label="Status: {status?.name ?? 'none'}" onclick={(e) => openMenu(e, statuses.map((s) => ({
             label: s.name,
             color: s.color,
             checked: s.id === task?.status_id,
@@ -262,7 +263,7 @@
 
         <dt>Priority</dt>
         <dd>
-          <button class="prop-btn" onclick={(e) => openMenu(e, PRIORITIES.map((p) => ({
+          <button class="prop-btn" aria-label="Priority: {task.priority === 'none' ? 'none' : task.priority === 'med' ? 'medium' : task.priority}" onclick={(e) => openMenu(e, PRIORITIES.map((p) => ({
             label: p.label,
             checked: p.value === task?.priority,
             run: () => void save({ priority: p.value }),
@@ -298,7 +299,7 @@
           >
             {#each repeatChoices as o (o.label)}<option value={o.rule ?? ''}>{o.label}</option>{/each}
             {#if task.recurrence_rule && !repeatChoices.some((o) => o.rule === task?.recurrence_rule)}
-              <option value={task.recurrence_rule}>Custom: {task.recurrence_rule}</option>
+              <option value={task.recurrence_rule}>{describeRule(task.recurrence_rule)}</option>
             {/if}
           </select>
         </dd>
@@ -307,7 +308,7 @@
         <dt>Estimate</dt>
         <dd>
           {#key task.estimate_minutes}
-            <input class="prop-input" placeholder="e.g. 1h30m" value={task.estimate_minutes ? minutes(task.estimate_minutes) : ''} onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} onblur={(e) => commitEstimate(e.currentTarget.value)} />
+            <input class="prop-input" aria-label="Estimate" placeholder="e.g. 1h30m" value={task.estimate_minutes ? minutes(task.estimate_minutes) : ''} onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} onblur={(e) => commitEstimate(e.currentTarget.value)} />
           {/key}
         </dd>
 
@@ -338,7 +339,7 @@
         <dt>Tags</dt>
         <dd>
           {#key task.tags.join(',')}
-            <input class="prop-input" placeholder="Add tags, comma separated" value={task.tags.join(', ')} onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} onblur={(e) => commitTags(e.currentTarget.value)} />
+            <input class="prop-input" aria-label="Tags" placeholder="Add tags, comma separated" value={task.tags.join(', ')} onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} onblur={(e) => commitTags(e.currentTarget.value)} />
           {/key}
         </dd>
       </dl>

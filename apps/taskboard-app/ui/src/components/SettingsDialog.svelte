@@ -47,6 +47,10 @@
 
   // "Customize sidebar…", "About Taskboard" and the like open a specific page.
   const OPEN_AT: Record<string, PageId> = {
+    general: 'general',
+    appearance: 'appearance',
+    calendar: 'calendar',
+    reminders: 'reminders',
     layout: 'sidebar',
     sidebar: 'sidebar',
     sections: 'sections',

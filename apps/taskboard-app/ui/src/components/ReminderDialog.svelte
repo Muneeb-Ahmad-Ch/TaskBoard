@@ -1,32 +1,38 @@
 <script lang="ts">
   // A reminder is a task with a date and a time (it notifies at that time),
   // optionally repeating. This is the plain way to make one.
-  import { todayIso } from '../lib/format'
+  import { isoDate, todayIso } from '../lib/format'
   import { ipc } from '../lib/ipc'
-  import { repeatOptions, repeatRule, type RepeatChoice } from '../lib/repeat'
+  import { fromIso, repeatOptions } from '../lib/cal.svelte'
   import { act, app, inboxId, scopeProjectId } from '../lib/store.svelte'
   import DateField from './DateField.svelte'
   import Modal from './Modal.svelte'
 
   let { onclose }: { onclose: () => void } = $props()
 
-  /** The next whole hour, as a sensible default time. */
-  function nextHour(): string {
-    const h = (new Date().getHours() + 1) % 24
-    return `${String(h).padStart(2, '0')}:00`
-  }
+  /** The next whole hour (tomorrow's first hour late at night), as a
+   *  sensible default date and time. */
+  const next = new Date()
+  next.setMinutes(0, 0, 0)
+  next.setHours(next.getHours() + 1)
 
   let title = $state('')
-  let date = $state<string | null>(todayIso())
-  let time = $state<string | null>(nextHour())
-  let repeat = $state<RepeatChoice>('none')
+  let date = $state<string | null>(isoDate(next))
+  let time = $state<string | null>(`${String(next.getHours()).padStart(2, '0')}:00`)
+  /** The rule to store ('' = does not repeat); the same choices as the task panel. */
+  let repeat = $state('')
   let projectId = $state(scopeProjectId() ?? inboxId() ?? '')
   let saving = $state(false)
 
-  const options = $derived(repeatOptions(date ?? todayIso()))
-  // A choice that doesn't exist for the new date (last day of month) falls back.
+  const options = $derived([
+    ...repeatOptions(fromIso(date ?? todayIso())),
+    { label: '1 week after it’s done', rule: 'AFTER:1W' },
+    { label: '1 month after it’s done', rule: 'AFTER:1M' },
+  ])
+  // A choice that doesn't exist for the new date (like "last Friday") falls back
+  // to the same kind of repeat for that date.
   $effect(() => {
-    if (!options.some((o) => o.value === repeat)) repeat = 'monthly'
+    if (repeat && !options.some((o) => o.rule === repeat)) repeat = repeat.startsWith('FREQ=MONTHLY') ? 'FREQ=MONTHLY' : ''
   })
   const projects = $derived(app.projects.filter((p) => !p.archived_at))
 
@@ -34,7 +40,7 @@
     const name = title.trim()
     if (!name || !date || saving) return
     saving = true
-    const rule = repeatRule(repeat, date)
+    const rule = repeat || undefined
     const done = await act(
       () =>
         ipc.createTask({
@@ -71,7 +77,7 @@
     <label>
       <span class="field-label">Repeat</span>
       <select class="field" bind:value={repeat}>
-        {#each options as o (o.value)}<option value={o.value}>{o.label}</option>{/each}
+        {#each options as o (o.label)}<option value={o.rule ?? ''}>{o.label}</option>{/each}
       </select>
     </label>
     <label>
@@ -83,7 +89,8 @@
     {#if !time}
       <p class="text-xs text-muted">Without a time it shows on its day but sends no notification.</p>
     {/if}
-    <button type="submit" class="sr-only">Add</button>
+    <!-- Makes Enter submit; not a Tab stop (it has no visible focus). -->
+    <button type="submit" class="sr-only" tabindex="-1" aria-hidden="true">Add</button>
   </form>
   {#snippet footer()}
     <span class="flex-1"></span>

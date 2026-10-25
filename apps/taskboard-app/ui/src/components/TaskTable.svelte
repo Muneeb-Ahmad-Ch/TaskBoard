@@ -319,6 +319,8 @@
     const key = queryKey
     void app.dataVersion
     if (!inTauri) return
+    // A slow answer for a list no longer on screen is dropped.
+    let stale = false
     const t = setTimeout(async () => {
       const q: TaskQuery = JSON.parse(key)
       const showsDone = !q.categories?.length || q.categories.includes('done')
@@ -327,16 +329,22 @@
           ipc.summarizeTasks(q),
           showsDone ? ipc.summarizeTasks({ ...q, categories: ['done', 'cancelled'], top_level: true }) : null,
         ])
+        const hidden = !s.total && !showsDone ? (await ipc.summarizeTasks(hiddenDoneQuery(q))).total : 0
+        if (stale) return
         summary = s
         completedHere = c?.total ?? 0
-        hiddenDone = !s.total && !showsDone ? (await ipc.summarizeTasks(hiddenDoneQuery(q))).total : 0
+        hiddenDone = hidden
       } catch {
+        if (stale) return
         summary = null
         completedHere = 0
         hiddenDone = 0
       }
     }, 120)
-    return () => clearTimeout(t)
+    return () => {
+      stale = true
+      clearTimeout(t)
+    }
   })
 
   /** Today: what was finished today. Other lists: their completed tasks. */
@@ -406,7 +414,9 @@
       const i = Math.max(0, Math.min(count - 1, (cursor < 0 ? -1 : cursor) + d))
       select(i, e.shiftKey ? e : undefined)
       scrollIntoView(i)
-      if (app.openTaskId) app.openTaskId = rowAt(i)?.id ?? null
+      // The panel follows the cursor; a group header leaves it on the last task.
+      const r = rowAt(i)
+      if (app.openTaskId && r) app.openTaskId = r.id
     }
     const current = rowAt(cursor)
     const head = groupAt(cursor)
@@ -522,6 +532,8 @@
   }
 
   async function rename(row: TaskRow, value: string) {
+    // Escape (or Enter, then the blur that follows) already finished it.
+    if (renaming !== row.id) return
     renaming = null
     const title = value.trim()
     if (title && title !== row.title) {
@@ -808,8 +820,10 @@
     bind:this={viewport}
     class="relative min-h-0 flex-1 overflow-auto outline-none"
     role="grid"
+    aria-label="Tasks"
     aria-rowcount={count}
     aria-multiselectable="true"
+    aria-activedescendant={cursor >= 0 && cursor >= first && cursor < last ? `task-row-${cursor}` : undefined}
     tabindex="0"
     onscroll={(e) => (scrollTop = e.currentTarget.scrollTop)}
     {onkeydown}
@@ -871,6 +885,7 @@
             style="top: {i * ROW}px; height: {ROW}px"
             role="row"
             tabindex="-1"
+            id="task-row-{i}"
             aria-rowindex={i + 1}
             aria-expanded={!head.collapsed}
             onclick={() => {
@@ -896,6 +911,7 @@
           style="top: {i * ROW}px; height: {ROW}px; grid-template-columns: {gridTemplate}"
           role="row"
           tabindex="-1"
+          id="task-row-{i}"
           aria-rowindex={i + 1}
           aria-selected={row ? selected.has(row.id) : false}
           onclick={(e) => {
@@ -1021,7 +1037,7 @@
   <div class="flex h-9 shrink-0 items-center gap-3 border-t border-border px-3 text-xs text-muted">
     {#if selected.size > 1 && bulkRow}
       <span class="font-medium text-text">{selected.size} selected</span>
-      <button class="bulk" onclick={() => void act(() => ipc.bulkSetDone(selectedIds(), true), `Completed ${plural(selected.size, 'task')}`)}>Complete</button>
+      <button class="bulk" onclick={() => void act(() => ipc.bulkSetDone(selectedIds(), true), `Marked ${plural(selected.size, 'task')} done`)}>Mark done</button>
       <button class="bulk" onclick={(e) => dueMenu(e, bulkRow)}>Due date</button>
       <button class="bulk" onclick={(e) => priorityMenu(e, bulkRow)}>Priority</button>
       <button class="bulk" onclick={(e) => projectMenu(e, bulkRow)}>Move to</button>

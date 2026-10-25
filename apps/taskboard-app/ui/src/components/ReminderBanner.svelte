@@ -2,7 +2,7 @@
   import { Bell, CalendarClock, ExternalLink, Sun, X } from '@lucide/svelte'
   import type { Notification } from '../lib/bindings/Notification'
   import { onReminders, openLink } from '../lib/ipc'
-  import { app } from '../lib/store.svelte'
+  import { app, setScope } from '../lib/store.svelte'
 
   // In-app copies of reminders (the Windows toast can't carry a Join button).
   let items = $state<Notification[]>([])
@@ -40,7 +40,7 @@
               <button class="act" onclick={() => { app.view = 'table'; app.openTaskId = n.task_id; dismiss(n.key) }}>Open task</button>
             {/if}
             {#if n.kind === 'digest'}
-              <button class="act" onclick={() => { app.scope = { kind: 'today' }; app.view = 'table'; dismiss(n.key) }}>Show today</button>
+              <button class="act" onclick={() => { setScope({ kind: 'today' }); app.view = 'table'; dismiss(n.key) }}>Show today</button>
             {/if}
           </div>
         </div>

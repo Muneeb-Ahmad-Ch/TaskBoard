@@ -1,64 +1,69 @@
-// "Repeat" choices for a reminder, worded for the chosen day, and the rule
-// (RRULE) each one stores on the task. Pure functions; no I/O.
+// A stored repeat rule (RRULE, or AFTER:<n><D|W|M>) in plain words, for any
+// rule the Repeat menus don't list ("Every month on the 15th", not
+// "FREQ=MONTHLY;BYMONTHDAY=15"). Pure functions; no I/O.
 
-export type RepeatChoice = 'none' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'monthly-last' | 'yearly'
-
-const CODES = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
-const weekdayName = new Intl.DateTimeFormat('en', { weekday: 'long' })
-const monthDay = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' })
-
-function parse(iso: string): Date {
-  const [y, m, d] = iso.split('-').map(Number)
-  return new Date(y, (m ?? 1) - 1, d ?? 1)
-}
+const DAY_NAMES: Record<string, string> = { MO: 'Mon', TU: 'Tue', WE: 'Wed', TH: 'Thu', FR: 'Fri', SA: 'Sat', SU: 'Sun' }
+const UNITS: Record<string, string> = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' }
+const untilFmt = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' })
 
 function ordinal(n: number): string {
   const tail = n % 100 >= 11 && n % 100 <= 13 ? 'th' : (['th', 'st', 'nd', 'rd'][n % 10] ?? 'th')
   return `${n}${tail}`
 }
 
-function isLastDay(d: Date): boolean {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getDate() === 1
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
-/** The stored rule for a choice, anchored on `date` (YYYY-MM-DD). */
-export function repeatRule(choice: RepeatChoice, date: string): string | undefined {
-  const d = parse(date)
-  const day = CODES[d.getDay()]
-  switch (choice) {
-    case 'none':
-      return undefined
-    case 'daily':
-      return 'FREQ=DAILY'
-    case 'weekdays':
-      return 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'
-    case 'weekly':
-      return `FREQ=WEEKLY;BYDAY=${day}`
-    case 'biweekly':
-      return `FREQ=WEEKLY;INTERVAL=2;BYDAY=${day}`
-    case 'monthly':
-      return `FREQ=MONTHLY;BYMONTHDAY=${d.getDate()}`
-    case 'monthly-last':
-      return 'FREQ=MONTHLY;BYMONTHDAY=-1'
-    case 'yearly':
-      return 'FREQ=YEARLY'
+/** One BYDAY item ("MO", "2TU", "-1FR") in words, or null if it isn't one. */
+function dayItem(item: string): string | null {
+  const m = item.match(/^(-?\d)?([A-Z]{2})$/)
+  const name = m && DAY_NAMES[m[2]]
+  if (!m || !name) return null
+  if (!m[1]) return name
+  const n = Number(m[1])
+  return n === -1 ? `last ${name}` : `${ordinal(n)} ${name}`
+}
+
+export function describeRule(rule: string): string {
+  const after = rule.match(/^AFTER:(\d+)([DWM])$/i)
+  if (after) {
+    const unit = { D: 'day', W: 'week', M: 'month' }[after[2].toUpperCase() as 'D' | 'W' | 'M']
+    return `${plural(Number(after[1]), unit)} after done`
   }
+  const parts = new Map(
+    rule
+      .replace(/^RRULE:/, '')
+      .split(';')
+      .map((p) => p.split('=') as [string, string]),
+  )
+  const unit = UNITS[parts.get('FREQ') ?? '']
+  if (!unit) return rule
+  const interval = Number(parts.get('INTERVAL') ?? 1)
+  const byday = parts.get('BYDAY')?.split(',') ?? []
+  if (unit === 'week' && interval === 1 && byday.join(',') === 'MO,TU,WE,TH,FR') return withEnd('Every weekday (Mon–Fri)', parts)
+  let text = interval > 1 ? `Every ${interval} ${unit}s` : `Every ${unit}`
+  if (byday.length) {
+    const days = byday.map(dayItem)
+    if (days.some((d) => d === null)) return rule
+    text += unit === 'month' ? ` on the ${days.join(', ')}` : ` on ${days.join(', ')}`
+  }
+  const bymonthday = parts.get('BYMONTHDAY')
+  if (bymonthday) {
+    const days = bymonthday.split(',').map(Number)
+    if (days.some((d) => !Number.isInteger(d) || d === 0)) return rule
+    text += ` on the ${days.map((d) => (d === -1 ? 'last day' : ordinal(d))).join(', ')}`
+  }
+  return withEnd(text, parts)
 }
 
-/** The choices for `date`, each worded for that day. */
-export function repeatOptions(date: string): { value: RepeatChoice; label: string }[] {
-  const d = parse(date)
-  const n = d.getDate()
-  const day = weekdayName.format(d)
-  const opts: { value: RepeatChoice; label: string }[] = [
-    { value: 'none', label: 'Does not repeat' },
-    { value: 'daily', label: 'Every day' },
-    { value: 'weekdays', label: 'Every weekday (Mon–Fri)' },
-    { value: 'weekly', label: `Every ${day}` },
-    { value: 'biweekly', label: `Every other ${day}` },
-    { value: 'monthly', label: `Every month on the ${ordinal(n)}${n > 28 ? ' (skips shorter months)' : ''}` },
-  ]
-  if (isLastDay(d)) opts.push({ value: 'monthly-last', label: 'Every month on the last day' })
-  opts.push({ value: 'yearly', label: `Every year on ${monthDay.format(d)}` })
-  return opts
+function withEnd(text: string, parts: Map<string, string>): string {
+  const count = parts.get('COUNT')
+  if (count) return `${text}, ${plural(Number(count), 'time')}`
+  const until = parts.get('UNTIL')?.slice(0, 8)
+  if (until && /^\d{8}$/.test(until)) {
+    const d = new Date(Number(until.slice(0, 4)), Number(until.slice(4, 6)) - 1, Number(until.slice(6, 8)))
+    return `${text}, until ${untilFmt.format(d)}`
+  }
+  return text
 }

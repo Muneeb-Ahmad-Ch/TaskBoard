@@ -1,32 +1,39 @@
 import { describe, expect, it } from 'vitest'
-import { repeatOptions, repeatRule } from './repeat'
+import { repeatOptions } from './cal.svelte'
+import { describeRule } from './repeat'
 
-describe('repeatRule', () => {
-  // Wednesday 2026-10-21
-  const wed = '2026-10-21'
-  it('builds a rule anchored on the chosen day', () => {
-    expect(repeatRule('none', wed)).toBeUndefined()
-    expect(repeatRule('daily', wed)).toBe('FREQ=DAILY')
-    expect(repeatRule('weekdays', wed)).toBe('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR')
-    expect(repeatRule('weekly', wed)).toBe('FREQ=WEEKLY;BYDAY=WE')
-    expect(repeatRule('biweekly', wed)).toBe('FREQ=WEEKLY;INTERVAL=2;BYDAY=WE')
-    expect(repeatRule('monthly', wed)).toBe('FREQ=MONTHLY;BYMONTHDAY=21')
-    expect(repeatRule('monthly-last', '2026-10-31')).toBe('FREQ=MONTHLY;BYMONTHDAY=-1')
-    expect(repeatRule('yearly', wed)).toBe('FREQ=YEARLY')
+describe('describeRule', () => {
+  it('says common rules in plain words', () => {
+    expect(describeRule('FREQ=DAILY')).toBe('Every day')
+    expect(describeRule('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR')).toBe('Every weekday (Mon–Fri)')
+    expect(describeRule('FREQ=WEEKLY;INTERVAL=2;BYDAY=WE')).toBe('Every 2 weeks on Wed')
+    expect(describeRule('FREQ=MONTHLY;BYMONTHDAY=15')).toBe('Every month on the 15th')
+    expect(describeRule('FREQ=MONTHLY;BYMONTHDAY=-1')).toBe('Every month on the last day')
+    expect(describeRule('FREQ=MONTHLY;BYDAY=-1FR')).toBe('Every month on the last Fri')
+    expect(describeRule('FREQ=MONTHLY;BYDAY=2TU')).toBe('Every month on the 2nd Tue')
+    expect(describeRule('FREQ=YEARLY')).toBe('Every year')
+    expect(describeRule('FREQ=DAILY;COUNT=5')).toBe('Every day, 5 times')
+    expect(describeRule('FREQ=WEEKLY;UNTIL=20261231')).toBe('Every week, until Dec 31, 2026')
+  })
+  it('says repeats after completion', () => {
+    expect(describeRule('AFTER:1D')).toBe('1 day after done')
+    expect(describeRule('AFTER:3W')).toBe('3 weeks after done')
+    expect(describeRule('AFTER:2M')).toBe('2 months after done')
+  })
+  it('falls back to the rule itself when it is unusual', () => {
+    expect(describeRule('FREQ=HOURLY')).toBe('FREQ=HOURLY')
   })
 })
 
 describe('repeatOptions', () => {
-  it('names the day in each choice', () => {
-    const labels = repeatOptions('2026-10-21').map((o) => o.label)
-    expect(labels).toContain('Every Wednesday')
-    expect(labels).toContain('Every month on the 21st')
-    expect(labels).toContain('Every year on Oct 21')
-    expect(labels).not.toContain('Every month on the last day')
-  })
   it('offers the last day of the month on a month end', () => {
-    const opts = repeatOptions('2026-10-31')
-    expect(opts.map((o) => o.value)).toContain('monthly-last')
-    expect(opts.find((o) => o.value === 'monthly')?.label).toBe('Every month on the 31st (skips shorter months)')
+    const opts = repeatOptions(new Date(2026, 9, 31))
+    expect(opts.map((o) => o.rule)).toContain('FREQ=MONTHLY;BYMONTHDAY=-1')
+    expect(opts.find((o) => o.rule === 'FREQ=MONTHLY')?.label).toBe('Monthly on day 31 (skips shorter months)')
+  })
+  it('keeps a plain day of the month on other days', () => {
+    const opts = repeatOptions(new Date(2026, 9, 21))
+    expect(opts.map((o) => o.rule)).not.toContain('FREQ=MONTHLY;BYMONTHDAY=-1')
+    expect(opts.find((o) => o.rule === 'FREQ=MONTHLY')?.label).toBe('Monthly on day 21')
   })
 })

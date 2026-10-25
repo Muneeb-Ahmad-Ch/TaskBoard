@@ -8,12 +8,13 @@
   import type { Priority } from '../lib/bindings/Priority'
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { buildColumns, buildLanes, laneKey, type Column, type SectionOf } from '../lib/board'
-  import { dueLabel, isOverdue, minutes, PALETTE, swatch } from '../lib/format'
+  import { dueLabel, isOverdue, minutes, PALETTE, swatch, todayIso } from '../lib/format'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
   import { act, app, archiveCompleted, inboxId, listQuery, scopeProjectId, scopeProjectIds, sectionById, type Lanes } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
   import Progress from './Progress.svelte'
+  import { segmented } from '../lib/segmented'
 
   const CARD_LIMIT = 100
   const COLLAPSE_KEY = 'taskboard.board.collapsed'
@@ -32,7 +33,8 @@
   const baseKey = $derived(
     JSON.stringify({
       ...listQuery(),
-      categories: [],
+      // Every column (done ones too), unless Overdue limits it to open work.
+      categories: app.filter.due === 'overdue' ? ['todo', 'active'] : [],
       sort: app.boardSort,
       descending: app.boardDescending,
       top_level: !app.boardSubtasks,
@@ -292,8 +294,14 @@
     data.set(target.col, { rows, total: to.total + 1 })
 
     try {
-      await ipc.moveTask(row.id, sorted ? { status_id: statusId } : { status_id: statusId, above: above?.id, below: below?.id })
-      if (priorityChange) await ipc.updateTask(row.id, { priority: priorityChange })
+      if (sorted && statusId === row.status_id) {
+        // Sorted, same column: only the lane (priority) changed; the hand-made
+        // order stays as it was, and it's one undo step.
+        await ipc.updateTask(row.id, { priority: priorityChange ?? row.priority })
+      } else {
+        await ipc.moveTask(row.id, sorted ? { status_id: statusId } : { status_id: statusId, above: above?.id, below: below?.id })
+        if (priorityChange) await ipc.updateTask(row.id, { priority: priorityChange })
+      }
     } catch (err) {
       toast(errorMessage(err), { kind: 'error' })
       pendingReload = true
@@ -442,10 +450,12 @@
         project_id: project,
         status_id: statusId,
         priority: (app.lanes === 'priority' && lane !== 'all' ? (lane as Priority) : p.parsed.priority) ?? undefined,
-        due_date: p.parsed.due_date ?? undefined,
+        // Like Quick Add: no date in Today means today.
+        due_date: p.parsed.due_date ?? (app.scope.kind === 'today' ? todayIso() : undefined),
         due_time: p.parsed.due_time ?? undefined,
         estimate_minutes: p.parsed.estimate_minutes ?? undefined,
         tags: p.parsed.tags,
+        recurrence_rule: p.parsed.recurrence_rule ?? undefined,
       })
     } catch (err) {
       toast(errorMessage(err), { kind: 'error' })
@@ -583,6 +593,8 @@
   }
 
   async function addColumn(name: string) {
+    // Escape (or Enter, then the blur that follows) already finished it.
+    if (!addingColumn) return
     addingColumn = false
     const project = scopeProjectId()
     if (!name.trim() || !project) return
@@ -718,7 +730,7 @@
 <div class="flex min-h-0 flex-1 flex-col gap-2">
   <div class="flex h-8 shrink-0 items-center gap-3 text-xs text-muted">
     <span>Swimlanes</span>
-    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="Swimlanes">
+    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="Swimlanes" use:segmented>
       {#each LANE_OPTIONS as opt (opt.value)}
         <button role="radio" aria-checked={app.lanes === opt.value} class="seg" onclick={() => (app.lanes = opt.value)}>{opt.label}</button>
       {/each}
@@ -786,7 +798,10 @@
                 use:autofocus
                 onkeydown={(e) => {
                   if (e.key === 'Enter') void addColumn(e.currentTarget.value)
-                  if (e.key === 'Escape') addingColumn = false
+                  if (e.key === 'Escape') {
+                    e.currentTarget.value = ''
+                    addingColumn = false
+                  }
                 }}
                 onblur={(e) => void addColumn(e.currentTarget.value)}
               />

@@ -7,6 +7,10 @@ export type UpcomingReminders = {
  */
 reminders_on: boolean, meeting_lead_min: number, task_lead_min: number, 
 /**
- * First and last day covered.
+ * First and last day covered (`to` is earlier than asked when `truncated`).
  */
-from: string, to: string, items: Array<ReminderItem>, };
+from: string, to: string, 
+/**
+ * The window held more than the page can show; it ends at `to`.
+ */
+truncated: boolean, items: Array<ReminderItem>, };

@@ -2,7 +2,7 @@
   import type { Id } from '../lib/bindings/Id'
   import { Copy, Globe } from '@lucide/svelte'
   import type { SlotResult } from '../lib/bindings/SlotResult'
-  import { availabilityText, cal, fmtRange, localZone, timeIn, zoneLabel } from '../lib/cal.svelte'
+  import { availabilityText, cal, fmtRange, fromIso, localZone, timeIn, zoneLabel } from '../lib/cal.svelte'
   import { isoDate } from '../lib/format'
   import { errorMessage, ipc } from '../lib/ipc'
   import { app, sectionById } from '../lib/store.svelte'
@@ -48,7 +48,21 @@
   const clientZone = $derived(result?.client_time_zone ?? null)
   const myZone = localZone()
 
+  /** What's wrong with the options, in words (the same limits as the app's core). */
+  const problem = $derived.by(() => {
+    if (!q.from || !q.to) return 'Pick both dates.'
+    if (q.to < q.from) return 'The end date is before the start date.'
+    const days = Math.round((fromIso(q.to).getTime() - fromIso(q.from).getTime()) / 86_400_000) + 1
+    if (days > 31) return 'Search at most 31 days at a time.'
+    if (!Number.isFinite(q.duration) || q.duration < 5 || q.duration > 480) return 'A meeting can be 5 minutes to 8 hours.'
+    return ''
+  })
+
   async function search() {
+    if (problem) {
+      result = null
+      return
+    }
     loading = true
     try {
       result = await ipc.findSlots({
@@ -147,7 +161,7 @@
       <span>You: {zoneLabel(myZone)}</span>
       {#if clientZone}<span>· {client?.name}: {zoneLabel(clientZone)}</span>{/if}
       <span class="flex-1"></span>
-      {#if loading}<span>Searching…</span>{:else}<span>{found.length ? `${found.reduce((n, d) => n + d.windows.length, 0)} free windows` : 'No free time with these settings'}</span>{/if}
+      {#if problem}<span class="text-danger" role="status">{problem}</span>{:else if loading}<span>Searching…</span>{:else}<span>{found.length ? `${found.reduce((n, d) => n + d.windows.length, 0)} free windows` : 'No free time with these settings'}</span>{/if}
     </div>
     <div class="flex max-h-[38vh] flex-col gap-3 overflow-y-auto pr-1">
       {#each found as day (day.date)}

@@ -7,6 +7,7 @@
   import { toast } from '../lib/toast.svelte'
   import { app, setDisplay } from '../lib/store.svelte'
   import Switch from './Switch.svelte'
+  import { segmented } from '../lib/segmented'
 
   let { onchange = () => {} }: { onchange?: () => void } = $props()
 
@@ -43,7 +44,7 @@
       <span class="text-[13px]">Add-a-task box</span>
       <span class="text-xs text-muted">In the Table view; press N to jump to it from anywhere</span>
     </span>
-    <div class="seg-group" role="radiogroup" aria-label="Add-a-task box position">
+    <div class="seg-group" role="radiogroup" aria-label="Add-a-task box position" use:segmented>
       {#each [['top', 'Top'], ['bottom', 'Bottom']] as [value, label] (value)}
         <button role="radio" aria-checked={layout.quickAdd === value} class="seg" onclick={() => { setQuickAddPlacement(value as 'top' | 'bottom'); onchange() }}>{label}</button>
       {/each}

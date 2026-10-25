@@ -8,6 +8,7 @@
   import { toast } from '../lib/toast.svelte'
   import Modal from './Modal.svelte'
   import Progress from './Progress.svelte'
+  import { segmented } from '../lib/segmented'
 
   let { id, onclose }: { id: Id; onclose: () => void } = $props()
 
@@ -64,7 +65,7 @@
       </div>
       <div>
         <span class="field-label">Color</span>
-        <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Color">
+        <div class="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Color" use:segmented>
           {#each PALETTE as c (c)}
             <button role="radio" aria-checked={f.color === c} aria-label={c === 'gray' ? 'Gray' : `Hue ${c}`} class="swatch" style="--s: {swatch(c, 0.6)}" onclick={() => (f.color = c)}></button>
           {/each}

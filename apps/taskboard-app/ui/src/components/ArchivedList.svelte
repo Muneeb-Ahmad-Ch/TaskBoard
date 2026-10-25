@@ -101,7 +101,7 @@
       {#each groups as c (c.id)}
         {@const sec = sectionById(c.section_id)}
         <li>
-          <span class="grid size-[16px] shrink-0 place-items-center rounded text-[9.5px] font-bold text-white" style="background: {swatch(c.color, 0.6)}">{c.name.charAt(0).toUpperCase()}</span>
+          <span class="grid size-[16px] shrink-0 place-items-center rounded text-[9.5px] font-bold text-white" style="background: {swatch(c.color, 0.48)}">{c.name.charAt(0).toUpperCase()}</span>
           <span class="flex min-w-0 flex-1 flex-col">
             <span class="truncate text-[13px]">{c.name}</span>
             <span class="truncate text-xs text-muted">{itemName(sec)}{sec ? ` in ${sec.name}` : ''} · its projects come back with it</span>

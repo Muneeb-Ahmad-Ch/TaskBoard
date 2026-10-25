@@ -161,7 +161,8 @@ export function repeatOptions(d: Date): { label: string; rule: string | null }[]
     { label: 'Every weekday (Mon–Fri)', rule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' },
     { label: `Weekly on ${name}`, rule: `FREQ=WEEKLY;BYDAY=${code}` },
     { label: `Every 2 weeks on ${name}`, rule: `FREQ=WEEKLY;INTERVAL=2;BYDAY=${code}` },
-    { label: `Monthly on day ${d.getDate()}`, rule: 'FREQ=MONTHLY' },
+    { label: `Monthly on day ${d.getDate()}${d.getDate() > 28 ? ' (skips shorter months)' : ''}`, rule: 'FREQ=MONTHLY' },
+    ...(addDays(d, 1).getMonth() !== d.getMonth() ? [{ label: 'Monthly on the last day', rule: 'FREQ=MONTHLY;BYMONTHDAY=-1' }] : []),
     isLast
       ? { label: `Monthly on the last ${name}`, rule: `FREQ=MONTHLY;BYDAY=-1${code}` }
       : { label: `Monthly on the ${ordinal} ${name}`, rule: `FREQ=MONTHLY;BYDAY=${nth}${code}` },

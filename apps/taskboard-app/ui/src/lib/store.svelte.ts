@@ -171,8 +171,18 @@ export function applySavedView(v: SavedView) {
   const spec = fullSpec(parseSpec(v.spec_json))
   // Views saved before sections existed may point at the old "personal" list.
   const known = ['inbox', 'today', 'upcoming', 'all', 'section', 'client', 'project']
-  setScope(spec.scope && known.includes(spec.scope.kind) ? spec.scope : { kind: 'all' })
-  app.view = spec.view ?? 'table'
+  // Its project, group or section may be gone since it was saved.
+  const target = spec.scope && known.includes(spec.scope.kind) ? spec.scope : { kind: 'all' as const }
+  const exists =
+    !('id' in target) ||
+    (target.kind === 'project' && app.projects.some((p) => p.id === target.id)) ||
+    (target.kind === 'client' && app.clients.some((c) => c.id === target.id)) ||
+    (target.kind === 'section' && app.sections.some((s) => s.id === target.id))
+  if (!exists) toast(`The list “${v.name}” showed is gone; showing All work.`)
+  setScope(exists ? target : { kind: 'all' })
+  // A view saved on a tab that's now hidden opens on the first visible one.
+  const tabs = visibleTabs()
+  app.view = tabs.includes(spec.view ?? 'table') ? (spec.view ?? 'table') : (tabs[0] ?? 'table')
   app.search = spec.search ?? ''
   app.showDone = spec.showDone ?? false
   app.sort = spec.sort ?? 'due'
@@ -197,7 +207,12 @@ function canonical(value: unknown): string {
 /** True when the open saved view's filters were changed since it was opened. */
 export function activeViewChanged(): boolean {
   const v = app.views.find((x) => x.id === app.activeViewId)
-  return !!v && canonical(fullSpec(parseSpec(v.spec_json))) !== canonical(currentSpec())
+  if (!v) return false
+  const saved = fullSpec(parseSpec(v.spec_json))
+  // Opened on another tab because its own is hidden: not an edit.
+  const tabs = visibleTabs()
+  if (saved.view && !tabs.includes(saved.view)) saved.view = tabs[0] ?? 'table'
+  return canonical(saved) !== canonical(currentSpec())
 }
 
 export async function saveCurrentView(name: string) {
@@ -409,10 +424,26 @@ export async function refreshMeta() {
 }
 
 /** Runs a mutation, reporting failures as a toast. Returns undefined on error. */
+/** A toast whose Undo takes back the step it's about, not a later one. */
+export async function toastWithUndo(message: string) {
+  const step = (await ipc.historyState().catch(() => null))?.undo ?? null
+  toast(message, {
+    action: {
+      label: 'Undo',
+      run: () =>
+        void (async () => {
+          const now = await ipc.historyState().catch(() => null)
+          if (step && now?.undo === step) await undo()
+          else toast('Other changes came after this one. Press Ctrl+Z to undo step by step.')
+        })(),
+    },
+  })
+}
+
 export async function act<T>(run: () => Promise<T>, done?: string): Promise<T | undefined> {
   try {
     const result = await run()
-    if (done) toast(done, { action: { label: 'Undo', run: () => void undo() } })
+    if (done) void toastWithUndo(done)
     return result
   } catch (err) {
     toast(errorMessage(err), { kind: 'error' })
@@ -424,7 +455,7 @@ export async function act<T>(run: () => Promise<T>, done?: string): Promise<T | 
 export async function addMissingColumns() {
   const n = await act(() => ipc.addMissingColumns())
   if (n === undefined) return
-  if (n) toast(`Added the missing columns to ${plural(n, 'project')}`, { action: { label: 'Undo', run: () => void undo() } })
+  if (n) void toastWithUndo(`Added the missing columns to ${plural(n, 'project')}`)
   else toast('Every project already has the default columns')
 }
 
@@ -445,7 +476,7 @@ export async function setDisplay(patch: Partial<DisplaySettings>) {
 export async function archiveCompleted(query: TaskQuery = scopeQuery()) {
   const n = await act(() => ipc.archiveCompleted(query))
   if (n === undefined) return
-  if (n) toast(`Archived ${plural(n, 'completed task')}`, { action: { label: 'Undo', run: () => void undo() } })
+  if (n) void toastWithUndo(`Archived ${plural(n, 'completed task')}`)
   else toast('No completed tasks to archive here')
 }
 

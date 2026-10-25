@@ -72,6 +72,7 @@
     app.projectDialog = null
     app.sectionDialog = null
     app.deleteSection = null
+    app.reminderDialog = false
     cal.draft = null
     cal.workingHoursOpen = false
     cal.findSlotOpen = false
@@ -196,6 +197,8 @@
       void redo()
       return
     }
+    // Inside a dialog, keys belong to the dialog (Settings has its own Ctrl+F).
+    if (anyDialogOpen()) return
     if (ctrl && e.key.toLowerCase() === 'f') {
       e.preventDefault()
       searchInput?.focus()
@@ -236,7 +239,7 @@
     {#if app.integrityError}
       <div class="flex items-center gap-3 border-b border-danger bg-[color-mix(in_oklch,var(--danger)_12%,transparent)] px-6 py-2 text-[13px]" role="alert">
         <span class="flex-1"><strong>Taskboard found a problem in its database file.</strong> Your latest backups are safe; restoring one is recommended.</span>
-        <button class="btn !h-7 text-xs" onclick={() => (app.settingsOpen = true)}>Open backups</button>
+        <button class="btn !h-7 text-xs" onclick={() => { app.settingsSection = 'data'; app.settingsOpen = true }}>Open backups</button>
         <button class="btn !h-7 text-xs" onclick={() => (app.integrityError = null)}>Dismiss</button>
       </div>
     {/if}
@@ -293,7 +296,7 @@
     </header>
 
     <div class="relative flex min-h-0 flex-1">
-      <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5 max-[1000px]:px-4" role="tabpanel" aria-label={current.label}>
+      <div class="flex min-w-0 flex-1 flex-col gap-3 px-6 pb-5 max-[1000px]:px-4" role="tabpanel" aria-label={pageTitle ?? current.label}>
         {#key app.view}
         <svelte:boundary onerror={(e, reset) => { logFailure('view', e); viewReset = reset }} failed={viewFailed}>
         {#if app.view === 'table'}
@@ -357,7 +360,6 @@
     {dnd.item.label}{#if !dnd.target}<span class="text-subtle"> · drop on a highlighted spot</span>{/if}
   </div>
 {/if}
-<ReminderBanner />
 {#if app.clientDialog}
   {#key app.clientDialog}<ClientDialog id={app.clientDialog} onclose={() => (app.clientDialog = null)} />{/key}
 {/if}
@@ -370,6 +372,11 @@
 {#if app.deleteSection}
   {#key app.deleteSection}<DeleteSectionDialog id={app.deleteSection} onclose={() => (app.deleteSection = null)} />{/key}
 {/if}
+</svelte:boundary>
+<!-- Its own boundary: if it fails it disappears instead of retrying in a loop. -->
+<svelte:boundary onerror={(e) => logFailure('reminder banner', e)}>
+  <ReminderBanner />
+  {#snippet failed()}{/snippet}
 </svelte:boundary>
 <Toasts />
 

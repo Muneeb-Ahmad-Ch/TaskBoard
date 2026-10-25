@@ -583,7 +583,7 @@
                 onkeydown={(e) => reorderKeys(e, (dir) => ipc.moveClient(client.id, dir))}
                 ondblclick={() => (editing = { kind: 'rename-client', id: client.id, value: client.name })}
               >
-                <span class="grid size-[16px] shrink-0 place-items-center rounded text-[9.5px] font-bold text-white" style="background: {swatch(client.color, 0.6)}">
+                <span class="grid size-[16px] shrink-0 place-items-center rounded text-[9.5px] font-bold text-white" style="background: {swatch(client.color, 0.48)}">
                   {client.name.charAt(0).toUpperCase()}
                 </span>
                 <span class="flex-1 truncate text-left font-medium">{client.name}</span>

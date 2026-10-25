@@ -11,6 +11,7 @@
   import { swatch } from '../lib/format'
   import { errorMessage, inTauri, ipc, openLink } from '../lib/ipc'
   import { act, app } from '../lib/store.svelte'
+  import { segmented } from '../lib/segmented'
 
   const TAB_KEY = 'taskboard.reminders.tab'
   const RANGES = [
@@ -159,13 +160,21 @@
   }
 
   const iconFor = { task: CheckSquare, meeting: Video, block: Timer }
+
+  /** Said by screen readers after each load or filter change. */
+  const status = $derived.by(() => {
+    if (!loaded || !upcoming) return ''
+    if (tab === 'repeating') return `${repeating.length} repeating`
+    const n = upcoming.items.length
+    return `${n} ${n === 1 ? 'reminder' : 'reminders'} in the ${RANGES.find((r) => r.days === days)?.label.toLowerCase() ?? ''}`
+  })
 </script>
 
 <div class="mx-auto flex min-h-0 w-full max-w-[1180px] flex-1 flex-col gap-3">
   <div class="flex min-h-8 shrink-0 flex-wrap items-center gap-2">
-    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="tablist" aria-label="Reminders">
-      <button role="tab" aria-selected={tab === 'upcoming'} class="seg" onclick={() => (tab = 'upcoming')}>Coming up</button>
-      <button role="tab" aria-selected={tab === 'repeating'} class="seg" onclick={() => (tab = 'repeating')}>
+    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="tablist" aria-label="Reminders" use:segmented>
+      <button role="tab" id="rem-tab-upcoming" aria-controls="rem-panel" aria-selected={tab === 'upcoming'} class="seg" onclick={() => (tab = 'upcoming')}>Coming up</button>
+      <button role="tab" id="rem-tab-repeating" aria-controls="rem-panel" aria-selected={tab === 'repeating'} class="seg" onclick={() => (tab = 'repeating')}>
         Repeating{#if repeating.length}<span class="tabular ml-1 text-subtle">{repeating.length}</span>{/if}
       </button>
     </div>
@@ -194,15 +203,18 @@
     <button class="tb primary" title="New reminder" onclick={() => (app.reminderDialog = true)}><Plus size={14} /> <span class="max-[820px]:sr-only">Reminder</span></button>
   </div>
 
-  <div class="min-h-0 flex-1 overflow-y-auto rounded-[var(--radius)] border border-border bg-surface-2" role="tabpanel" aria-label={tab === 'upcoming' ? 'Coming up' : 'Repeating'}>
+  <p class="sr-only" role="status">{status}</p>
+  <div class="min-h-0 flex-1 overflow-y-auto rounded-[var(--radius)] border border-border bg-surface-2" role="tabpanel" id="rem-panel" aria-labelledby="rem-tab-{tab}">
     {#if error}
       <p class="p-6 text-danger">{error}</p>
+    {:else if !loaded}
+      <p class="p-6 text-muted">Loading…</p>
     {:else if tab === 'upcoming'}
-      {#if loaded && !groups.length}
+      {#if !groups.length}
         <div class="grid h-full place-items-center p-8 text-center">
           <div class="max-w-[380px]">
             <CalendarClock size={28} class="mx-auto mb-2 text-subtle" />
-            <p class="font-medium">Nothing to remind you of {RANGES.find((r) => r.days === days)?.label.toLowerCase()}</p>
+            <p class="font-medium">No reminders in the {RANGES.find((r) => r.days === days)?.label.toLowerCase()}</p>
             <p class="text-muted">A task with a due time reminds you at that time; a repeating one shows its next dates here. Add one with “Reminder”, or type “Pay rent every month 9am” in quick add.</p>
           </div>
         </div>
@@ -236,8 +248,11 @@
             </ul>
           </section>
         {/each}
+        {#if upcoming?.truncated}
+          <p class="px-4 py-3 text-xs text-muted">Too many to show them all: this list stops at {dayTitle(upcoming.to)}. Choose a shorter range, or hide Meetings or Time blocks, to see the rest.</p>
+        {/if}
       {/if}
-    {:else if loaded && !repeating.length}
+    {:else if !repeating.length}
       <div class="grid h-full place-items-center p-8 text-center">
         <div class="max-w-[380px]">
           <Repeat size={28} class="mx-auto mb-2 text-subtle" />

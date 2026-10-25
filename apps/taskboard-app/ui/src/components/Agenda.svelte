@@ -11,7 +11,13 @@
 
   type Entry = { key: string; sort: number; o?: Occurrence; t?: TaskRow }
   const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
-  const today = new Date()
+  // Follows the clock, so "today" moves on at midnight while the view is open.
+  let now = $state(Date.now())
+  $effect(() => {
+    const t = setInterval(() => (now = Date.now()), 60_000)
+    return () => clearInterval(t)
+  })
+  const today = $derived(new Date(now))
 
   function entries(day: Date): Entry[] {
     const s = day.getTime()

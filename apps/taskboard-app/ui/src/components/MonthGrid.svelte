@@ -19,7 +19,13 @@
     return list.length > maxItems ? list.slice(0, Math.max(0, maxItems - 1)) : list
   }
   const weeks = $derived(Array.from({ length: Math.ceil(days.length / 7) }, (_, i) => days.slice(i * 7, i * 7 + 7)))
-  const today = new Date()
+  // Follows the clock, so "today" moves on at midnight while the view is open.
+  let now = $state(Date.now())
+  $effect(() => {
+    const t = setInterval(() => (now = Date.now()), 60_000)
+    return () => clearInterval(t)
+  })
+  const today = $derived(new Date(now))
   const month = $derived(cal.anchor.getMonth())
   const weekdays = $derived(days.slice(0, 7).map((d) => new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(d)))
 

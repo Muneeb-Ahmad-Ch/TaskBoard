@@ -183,6 +183,13 @@
     input?.focus()
   })
 
+  // Closing gives focus back to where it was (Quick Add, a table row…).
+  const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  $effect(() => () => {
+    const now = document.activeElement
+    if (opener?.isConnected && (!now || now === document.body || now === input)) opener.focus({ preventScroll: true })
+  })
+
   function run(cmd: Command | undefined) {
     if (!cmd) return
     app.paletteOpen = false
@@ -202,6 +209,9 @@
     } else if (e.key === 'Escape') {
       e.preventDefault()
       app.paletteOpen = false
+    } else if (e.key === 'Tab') {
+      // The search box is the palette's only stop: Tab stays in it.
+      e.preventDefault()
     }
   }
 

@@ -5,9 +5,11 @@
   import type { DayPlan } from '../lib/bindings/DayPlan'
   import type { LoggedTime } from '../lib/bindings/LoggedTime'
   import type { Occurrence } from '../lib/bindings/Occurrence'
+  import type { TaskQuery } from '../lib/bindings/TaskQuery'
   import type { TaskRow } from '../lib/bindings/TaskRow'
   import { addDays, cal, periodTitle, saveLayers, shiftAnchor, startOfDay, startOfWeek, visibleDays, type CalMode } from '../lib/cal.svelte'
   import { isTyping, isoDate, minutes, swatch } from '../lib/format'
+  import { anyDialogOpen } from './Modal.svelte'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
   import { act, app, scopeQuery } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
@@ -15,6 +17,7 @@
   import Menu, { type MenuEntry } from './Menu.svelte'
   import MonthGrid from './MonthGrid.svelte'
   import WeekGrid from './WeekGrid.svelte'
+  import { segmented } from '../lib/segmented'
 
   const days = $derived(visibleDays(cal.mode, cal.anchor))
   const range = $derived({
@@ -46,6 +49,18 @@
     return true
   }
 
+  /** Every task due in the range, a page at a time (one page holds at most
+   *  1000), up to a cap that a calendar can still draw. */
+  async function tasksIn(q: TaskQuery): Promise<TaskRow[]> {
+    const rows: TaskRow[] = []
+    for (let offset = 0; offset < 10_000; offset += 1000) {
+      const page = await ipc.listTasks({ ...q, offset, limit: 1000 })
+      rows.push(...page.rows)
+      if (rows.length >= page.total || !page.rows.length) break
+    }
+    return rows
+  }
+
   async function load() {
     if (!inTauri) return
     const gen = ++generation
@@ -57,7 +72,7 @@
     try {
       const [o, t, p, l, u, h, tm] = await Promise.all([
         ipc.occurrences(r.from, r.to),
-        ipc.listTasks({ ...base, categories: [], due_from: r.fromIso, due_to: r.toIso, sort: 'due', limit: 1000 }),
+        tasksIn({ ...base, categories: [], due_from: r.fromIso, due_to: r.toIso, sort: 'due' }),
         cal.mode === 'agenda' ? Promise.resolve([]) : ipc.dayPlans(r.fromIso, r.toIso),
         ipc.loggedTime(r.from, r.to),
         ipc.listTasks({ ...base, due_from: undefined, due_to: undefined, undated: true, top_level: true, categories: ['todo', 'active'], sort: 'priority', limit: 60 }),
@@ -66,7 +81,7 @@
       ])
       if (gen !== generation) return
       occ = o.filter(inScope)
-      tasks = t.rows
+      tasks = t
       plans = new Map(p.map((x) => [x.date, x]))
       logged = l
       unscheduled = u.rows
@@ -136,7 +151,8 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || app.paletteOpen || cal.draft) return
+    // Any open dialog (Find slot, Working hours, Settings, Reminder…) keeps its keys.
+    if (isTyping(e) || e.ctrlKey || e.metaKey || e.altKey || app.paletteOpen || cal.draft || anyDialogOpen()) return
     if (e.key === 'ArrowLeft') shiftAnchor(-1)
     else if (e.key === 'ArrowRight') shiftAnchor(1)
     else if (e.key === 't') cal.anchor = startOfDay(new Date())
@@ -174,7 +190,7 @@
     </div>
     <h2 class="font-display min-w-0 truncate text-[15px] font-semibold">{periodTitle()}</h2>
     <span class="flex-1"></span>
-    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="Calendar view">
+    <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="radiogroup" aria-label="Calendar view" use:segmented>
       {#each MODES as m (m.id)}
         <button role="radio" aria-checked={cal.mode === m.id} class="seg" title="{m.label} ({m.key.toUpperCase()})" onclick={() => (cal.mode = m.id)}>{m.label}</button>
       {/each}

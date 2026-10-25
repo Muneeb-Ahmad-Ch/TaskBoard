@@ -7,6 +7,7 @@
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
   import { app, scopeProjectId, scopeTitle } from '../lib/store.svelte'
   import { toast } from '../lib/toast.svelte'
+  import { cal, fromIso } from '../lib/cal.svelte'
 
   /** Where the box sits; the suggestions and preview open toward the list. */
   let { placement = 'bottom' }: { placement?: 'top' | 'bottom' } = $props()
@@ -139,6 +140,22 @@
       }
       const parsed = p.parsed
       const due = parsed.due_date ?? (app.scope.kind === 'today' ? todayIso() : null)
+      // "3-4pm": a time range is a meeting (SPEC §5): open it to confirm.
+      if (parsed.due_time && parsed.end_time) {
+        const day = due ?? todayIso()
+        const start = fromIso(day)
+        const [sh, sm] = parsed.due_time.split(':').map(Number)
+        start.setHours(sh, sm, 0, 0)
+        const end = fromIso(day)
+        const [eh, em] = parsed.end_time.split(':').map(Number)
+        end.setHours(eh, em, 0, 0)
+        if (end <= start) end.setDate(end.getDate() + 1)
+        const project = p.project?.id ?? scopeProjectId()
+        cal.draft = { kind: 'meeting', title: parsed.title, start: start.getTime(), end: end.getTime(), projectId: project ?? null }
+        line = ''
+        preview = null
+        return
+      }
       await ipc.createTask({
         title: parsed.title,
         project_id: p.project?.id ?? scopeProjectId() ?? undefined,
@@ -205,7 +222,7 @@
         </span>
       {/if}
       {#if dueText}<span class="chip date"><CalendarDays size={12} /> {dueText}</span>{/if}
-      {#if preview.parsed.end_time}<span class="chip text-muted"><Clock size={12} /> Time range — becomes a meeting in M4</span>{/if}
+      {#if preview.parsed.end_time}<span class="chip text-muted"><Clock size={12} /> Time range — opens as a meeting</span>{/if}
       {#if preview.parsed.priority && preview.parsed.priority !== 'none'}
         <span class="chip"><Flag size={12} style="color: var(--priority-{preview.parsed.priority})" /> {priorityNames[preview.parsed.priority]}</span>
       {/if}

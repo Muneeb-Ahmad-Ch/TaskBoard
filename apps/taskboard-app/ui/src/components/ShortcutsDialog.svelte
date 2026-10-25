@@ -11,7 +11,9 @@
       rows: [
         ['Ctrl+K', 'Search and commands (works while typing)'],
         ['N', 'Add a task'],
-        ['/ or Ctrl+F', 'Search tasks (Filter, Sort and Group are next to it)'],
+        ['/ or Ctrl+F', 'Search tasks (Filter, Sort and Group are next to it); Ctrl+F works while typing'],
+        ['Ctrl+= / Ctrl+−, Ctrl+0', 'Zoom in / out, reset zoom'],
+        ['Ctrl+F in Settings', 'Search the settings'],
         ['1 / 2 / 3', 'Switch view tab'],
         ['Ctrl+Z', 'Undo'],
         ['Ctrl+Shift+Z or Ctrl+Y', 'Redo'],
@@ -27,6 +29,7 @@
         ['Enter', 'Open the task'],
         ['F2 or E', 'Rename'],
         ['Space', 'Mark done / not done'],
+        ['A', 'Archive selected tasks (restore from Settings → Data)'],
         ['Delete', 'Delete (undoable)'],
         ['Ctrl+A', 'Select all loaded rows'],
         ['Esc', 'Clear selection'],
@@ -94,7 +97,7 @@
     {/each}
   </div>
   {#snippet footer()}
-    <span class="flex-1 text-xs text-subtle">Shortcuts don't fire while you're typing in a field, except Ctrl+K.</span>
+    <span class="flex-1 text-xs text-subtle">Shortcuts don't fire while you're typing in a field, except Ctrl+K and Ctrl+F.</span>
     <button class="btn" onclick={onclose}>Close</button>
   {/snippet}
 </Modal>

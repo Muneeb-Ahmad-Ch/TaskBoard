@@ -183,8 +183,11 @@
     }
     const o = item.o
     if (!o) return
-    const start = d.mode === 'move' ? atMin(day, d.startMin) : o.start_at
-    const end = d.mode === 'move' ? start + (o.end_at - o.start_at) : atMin(days[d.day], d.curMin)
+    // Moved by how far it was dragged from where it was drawn (a meeting from
+    // the evening before is drawn from midnight, so not from its real start).
+    const delta = atMin(day, d.startMin) - item.start
+    const start = d.mode === 'move' ? o.start_at + delta : o.start_at
+    const end = d.mode === 'move' ? o.end_at + delta : atMin(days[d.day], d.curMin)
     commitEvent(o, start, end, e.clientX, e.clientY)
   }
 
@@ -281,7 +284,8 @@
 
   const weekdayFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short' })
   const hourFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric' })
-  const today = new Date()
+  // Follows the clock, so the highlight and the now-line move on at midnight.
+  const today = $derived(new Date(now))
 </script>
 
 <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-surface-2">
@@ -304,6 +308,8 @@
         {:else if c && c.p.available_min}
           <span
             class="cap {c.level}"
+            role="img"
+            aria-label="{c.level === 'over' ? 'Over capacity' : c.level === 'tight' ? 'Nearly full' : 'Capacity'}: {minutes(c.used)} planned of {minutes(c.p.available_min)} working"
             title="{minutes(c.used)} planned of {minutes(c.p.available_min)} working · meetings {minutes(c.p.meetings_min)}, blocks {minutes(c.p.blocks_min)}, due tasks {minutes(c.p.due_estimate_min)}{c.p.logged_min ? ` · logged ${minutes(c.p.logged_min)}` : ''}"
           >
             <span style="width: {Math.min(100, c.ratio * 100)}%"></span>
