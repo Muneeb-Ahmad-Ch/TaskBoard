@@ -9,6 +9,7 @@ mod desktop;
 mod mcp;
 mod updates;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use desktop::focus_main;
@@ -37,6 +38,14 @@ pub(crate) struct AppState {
     mica: bool,
     /// The previous version, on the first launch after an update.
     updated_from: Option<String>,
+    /// "Keep running in the tray", as last read (closing the window must not
+    /// wait for the database).
+    close_to_tray: AtomicBool,
+}
+
+/// What the window-state plugin saves and restores: everything but visibility.
+pub(crate) fn window_state_flags() -> tauri_plugin_window_state::StateFlags {
+    tauri_plugin_window_state::StateFlags::all() - tauri_plugin_window_state::StateFlags::VISIBLE
 }
 
 pub(crate) type CmdResult<T> = Result<T, ErrorInfo>;
@@ -1046,7 +1055,13 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             focus_main(app);
         }))
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // Size and place only: showing the window stays with show_main_window
+        // (first paint) and the tray start (--minimized).
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(window_state_flags())
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1059,11 +1074,18 @@ pub fn run() {
         .on_window_event(|window, event| {
             // Closing hides to the tray (so reminders keep firing) unless turned off.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let to_tray = window
-                    .app_handle()
-                    .try_state::<AppState>()
-                    .and_then(|s| s.db.lock().ok().and_then(|db| db.app_settings().ok()))
-                    .is_none_or(|s| s.close_to_tray);
+                // Never wait for the database here (this is the UI thread): if
+                // it's busy, use the setting as last read.
+                let to_tray = window.app_handle().try_state::<AppState>().is_none_or(|s| {
+                    match s.db.try_lock().ok().and_then(|db| db.app_settings().ok()) {
+                        Some(settings) => {
+                            s.close_to_tray
+                                .store(settings.close_to_tray, Ordering::Relaxed);
+                            settings.close_to_tray
+                        }
+                        None => s.close_to_tray.load(Ordering::Relaxed),
+                    }
+                });
                 if to_tray {
                     api.prevent_close();
                     let _ = window.hide();
@@ -1109,6 +1131,7 @@ pub fn run() {
                 started,
                 mica,
                 updated_from,
+                close_to_tray: AtomicBool::new(settings.close_to_tray),
             });
             if let Err(err) = desktop::build_tray(app.handle()) {
                 tracing::warn!(%err, "tray icon unavailable");

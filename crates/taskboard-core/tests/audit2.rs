@@ -265,3 +265,59 @@ fn old_history_is_compacted_and_recent_undo_still_works() {
     // Nothing older than the cutoff: nothing to do.
     assert_eq!(db.compact_history(0).unwrap(), 0);
 }
+
+#[test]
+fn restore_works_while_another_connection_is_open_and_keeps_the_app_on_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("taskboard.db");
+    let mut db = Db::open(&path).unwrap();
+    let inbox = db.inbox_id().unwrap();
+    task(&mut db, "Before", inbox);
+    let saved = db.backup_now("manual").unwrap();
+    task(&mut db, "After", inbox);
+    // An assistant's server has the database open too.
+    let other = Db::open(&path).unwrap();
+    db.restore_from(std::path::Path::new(&saved.path)).unwrap();
+    let titles = |d: &Db| -> Vec<String> {
+        d.list_tasks(&TaskQuery::default())
+            .unwrap()
+            .rows
+            .into_iter()
+            .map(|r| r.title)
+            .collect()
+    };
+    assert_eq!(titles(&db), ["Before"]);
+    assert_eq!(
+        titles(&other),
+        ["Before"],
+        "the other connection sees the restore"
+    );
+    assert_eq!(db.path(), Some(path.as_path()), "still the file on disk");
+    // Still writable afterwards.
+    task(&mut db, "Later", inbox);
+    assert_eq!(titles(&other).len(), 2);
+}
+
+#[test]
+fn a_backup_from_a_newer_version_is_refused_before_anything_changes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("taskboard.db");
+    let mut db = Db::open(&path).unwrap();
+    let inbox = db.inbox_id().unwrap();
+    task(&mut db, "Mine", inbox);
+    let newer = dir.path().join("newer.db");
+    {
+        let mut n = Db::open(&newer).unwrap();
+        let i = n.inbox_id().unwrap();
+        task(&mut n, "From the future", i);
+    }
+    rusqlite::Connection::open(&newer)
+        .unwrap()
+        .pragma_update(None, "user_version", storage::SCHEMA_VERSION as i64 + 1)
+        .unwrap();
+    let r = db.restore_from(&newer);
+    assert!(r.is_err());
+    let rows = db.list_tasks(&TaskQuery::default()).unwrap().rows;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].title, "Mine");
+}

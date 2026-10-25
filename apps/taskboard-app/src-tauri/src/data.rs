@@ -30,13 +30,9 @@ pub async fn backup_now(state: State<'_, AppState>) -> CmdResult<BackupInfo> {
 }
 
 #[tauri::command]
-pub fn open_backups_folder(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
-    let dir = state
-        .db
-        .lock()
-        .map_err(internal)?
-        .backup_dir()
-        .map_err(err)?;
+pub async fn open_backups_folder(app: AppHandle, state: State<'_, AppState>) -> CmdResult<()> {
+    // On a worker like every other command, so a running backup can't freeze the window.
+    let dir = read(state, |db| db.backup_dir()).await?;
     std::fs::create_dir_all(&dir).map_err(internal)?;
     app.opener()
         .open_path(dir.to_string_lossy(), None::<&str>)
@@ -54,18 +50,12 @@ pub async fn restore_backup(
     let db = std::sync::Arc::clone(&state.db);
     tauri::async_runtime::spawn_blocking(move || -> CmdResult<()> {
         let mut guard = db.lock().map_err(|_| internal("database lock poisoned"))?;
-        let target: PathBuf = guard
-            .path()
-            .map(Path::to_path_buf)
-            .ok_or_else(|| internal("no database file to restore into"))?;
         let backup = PathBuf::from(&path);
         taskboard_core::backup::verify(&backup).map_err(err)?;
         guard.backup_now("pre-restore").map_err(err)?;
-        // Close the live connection (swap in a throwaway one), replace the file, reopen.
-        *guard = Db::open_in_memory().map_err(err)?;
-        let restored = taskboard_core::backup::restore_file(&backup, &target);
-        *guard = Db::open(&target).map_err(err)?;
-        restored.map_err(err)
+        // Through the open connection: works while an assistant's server has
+        // the file open, and the app stays on its file even if it fails.
+        guard.restore_from(&backup).map_err(err)
     })
     .await
     .map_err(internal)??;

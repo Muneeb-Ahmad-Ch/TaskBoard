@@ -166,6 +166,31 @@ impl Db {
         Ok(db)
     }
 
+    /// Replaces this database's contents with a backup, through the open
+    /// connection (SQLite's online backup), so it works while another process
+    /// (an AI assistant's server) has the file open and never leaves the app
+    /// without its file. A backup from a newer version is refused before
+    /// anything changes. Take a `pre-restore` backup first to be able to undo it.
+    pub fn restore_from(&mut self, backup: &Path) -> Result<()> {
+        let path = self
+            .path
+            .clone()
+            .ok_or_else(|| crate::error::invalid("in-memory databases can't be restored"))?;
+        let source =
+            Connection::open_with_flags(backup, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        check_not_newer(&source)?;
+        quick_check(&source)?;
+        {
+            let copy = rusqlite::backup::Backup::new(&source, &mut self.conn)?;
+            copy.run_to_completion(1024, Duration::ZERO, None)?;
+        }
+        drop(source);
+        // Reopen so an older backup is migrated and the clock, device and
+        // Inbox are read from the restored data.
+        *self = Db::open(&path)?;
+        Ok(())
+    }
+
     /// The database file, if this isn't an in-memory database.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()

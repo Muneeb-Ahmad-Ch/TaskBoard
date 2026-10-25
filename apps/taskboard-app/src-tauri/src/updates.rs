@@ -165,6 +165,14 @@ pub(crate) async fn install_update(
     .map_err(internal)??;
 
     tracing::info!(version = %update.version, "installing update");
+    // The installer ends the process without the usual exit, so save the
+    // window's size and place now.
+    {
+        use tauri_plugin_window_state::AppHandleExt;
+        if let Err(err) = app.save_window_state(crate::window_state_flags()) {
+            tracing::warn!(%err, "couldn't save the window state before updating");
+        }
+    }
     // Windows: runs the installer and exits; the installer reopens Taskboard.
     update.install(bytes).map_err(update_error)?;
     app.restart()
