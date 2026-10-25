@@ -9,6 +9,10 @@ Download any version from the
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.6.0] - 2026-10-25
+
 ### Added
 - **Reminders** in the sidebar: everything that will remind you, day by day
   (tasks with a time, meetings, and time blocks if you want them), with when
@@ -441,7 +445,8 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.4.1...v0.5.0
