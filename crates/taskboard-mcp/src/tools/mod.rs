@@ -99,7 +99,7 @@ pub fn call(db: &mut Db, name: &str, args: Value) -> ToolResult {
     let tool = all_tools().find(|t| t.name == name).ok_or_else(|| {
         format!("unknown tool \"{name}\"; call tools/list for the available ones")
     })?;
-    let args = check_args(tool, args)?;
+    let args = check_args(tool, group_alias(tool, args))?;
     let in_area = |area: &[Tool]| area.iter().any(|t| t.name == name);
     if in_area(structure::TOOLS) {
         structure::call(db, name, &args)
@@ -154,7 +154,86 @@ fn check_args(tool: &Tool, args: Value) -> Result<Args, String> {
     if !missing.is_empty() {
         return Err(format!("missing required field(s): {}", missing.join(", ")));
     }
+    for (name, schema, _) in tool.fields {
+        if let Some(value) = map.get(*name) {
+            check_type(name, schema, value)?;
+        }
+    }
     Ok(map)
+}
+
+/// A value must have the type its schema declares (null only where allowed)
+/// and be one of its enum values: no silent fallback to a default.
+fn check_type(name: &str, schema: &str, value: &Value) -> Result<(), String> {
+    let Ok(schema) = serde_json::from_str::<Value>(schema) else {
+        return Ok(());
+    };
+    let types: Vec<&str> = match &schema["type"] {
+        Value::String(t) => vec![t.as_str()],
+        Value::Array(list) => list.iter().filter_map(Value::as_str).collect(),
+        _ => return Ok(()),
+    };
+    let fits = match value {
+        Value::Null => types.contains(&"null"),
+        Value::Bool(_) => types.contains(&"boolean"),
+        Value::Number(n) => {
+            types.contains(&"number") || (types.contains(&"integer") && (n.is_i64() || n.is_u64()))
+        }
+        Value::String(_) => types.contains(&"string"),
+        Value::Array(_) => types.contains(&"array"),
+        Value::Object(_) => types.contains(&"object"),
+    };
+    if !fits {
+        if value.is_null() {
+            return Err(format!(
+                "{name} can't be null; leave it out to keep it as it is"
+            ));
+        }
+        let wanted: Vec<&str> = types
+            .iter()
+            .filter(|t| **t != "null")
+            .map(|t| match *t {
+                "integer" => "a whole number",
+                "boolean" => "true or false",
+                "string" => "a string",
+                "array" => "a list",
+                "object" => "an object",
+                other => other,
+            })
+            .collect();
+        return Err(format!("{name} must be {}", wanted.join(" or ")));
+    }
+    if let Some(Value::Array(allowed)) = schema.get("enum")
+        && !value.is_null()
+        && !allowed.contains(value)
+    {
+        let names: Vec<String> = allowed
+            .iter()
+            .filter(|v| !v.is_null())
+            .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_owned))
+            .collect();
+        return Err(format!("{name} must be one of: {}", names.join(", ")));
+    }
+    Ok(())
+}
+
+/// A group is "group_id" in some tools and "client_id" in others: either
+/// name works everywhere.
+fn group_alias(tool: &Tool, mut args: Value) -> Value {
+    let has = |f: &str| tool.fields.iter().any(|x| x.0 == f);
+    if let Value::Object(m) = &mut args {
+        let (from, to) = if has("client_id") && !has("group_id") {
+            ("group_id", "client_id")
+        } else if has("group_id") && !has("client_id") {
+            ("client_id", "group_id")
+        } else {
+            return args;
+        };
+        if let Some(v) = m.remove(from) {
+            m.entry(to.to_owned()).or_insert(v);
+        }
+    }
+    args
 }
 
 pub(crate) fn from_args<T: DeserializeOwned>(args: Args) -> Result<T, String> {
@@ -294,12 +373,10 @@ pub(crate) fn window(args: &Args, max_days: i64) -> Result<(i64, i64), String> {
         Some(s) => parse_point("from", s, false)?,
         None => day_start("from", today())?,
     };
+    // Without a `to`: a week from `from` (from today when neither is given).
     let to = match str_arg(args, "to") {
         Some(s) => parse_point("to", s, true)?,
-        None => day_start(
-            "to",
-            today().checked_add(8.days()).map_err(|e| e.to_string())?,
-        )?,
+        None => from + 8 * 86_400_000,
     };
     if to <= from {
         return Err("to must be after from".to_owned());

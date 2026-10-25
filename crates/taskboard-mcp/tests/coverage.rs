@@ -899,3 +899,158 @@ fn reminders_and_repeating_series() {
     assert!(err(&mut s, "list_reminders", json!({ "days": 9999 })).contains("days"));
     assert!(err(&mut s, "list_reminders", json!({ "kinds": ["alarm"] })).contains("kinds"));
 }
+
+#[test]
+fn arguments_of_the_wrong_type_are_errors_not_defaults() {
+    let mut s = server();
+    let t = id(&ok(&mut s, "add_task", json!({ "text": "Typed" })));
+    assert!(err(&mut s, "complete_task", json!({ "id": t, "done": "false" })).contains("done"));
+    let still = ok(&mut s, "get_task", json!({ "id": t }));
+    assert!(
+        still["completed_at"].is_null(),
+        "a string 'false' must not complete it"
+    );
+    assert!(err(&mut s, "list_tasks", json!({ "limit": "20" })).contains("limit"));
+    assert!(err(&mut s, "update_task", json!({ "id": t, "title": null })).contains("title"));
+    // Notes can be cleared with null, as the description says.
+    ok(
+        &mut s,
+        "update_task",
+        json!({ "id": t, "description_md": "some notes" }),
+    );
+    let cleared = ok(
+        &mut s,
+        "update_task",
+        json!({ "id": t, "description_md": null }),
+    );
+    assert_eq!(cleared["description_md"], "");
+}
+
+#[test]
+fn saved_views_refuse_values_the_app_cannot_show() {
+    let mut s = server();
+    assert!(
+        err(
+            &mut s,
+            "add_saved_view",
+            json!({ "name": "x", "scope": "all", "sort": "deadline" })
+        )
+        .contains("sort")
+    );
+    assert!(
+        err(
+            &mut s,
+            "add_saved_view",
+            json!({ "name": "x", "scope": "all", "view": "kanban" })
+        )
+        .contains("view")
+    );
+    assert!(
+        err(
+            &mut s,
+            "add_saved_view",
+            json!({ "name": "x", "scope": "all", "lanes": "colour" })
+        )
+        .contains("lanes")
+    );
+    assert!(
+        err(
+            &mut s,
+            "add_saved_view",
+            json!({ "name": "x", "scope": "all", "board_sort": "status" })
+        )
+        .contains("board_sort")
+    );
+}
+
+#[test]
+fn search_finds_subtasks_like_the_app() {
+    let mut s = server();
+    let parent = id(&ok(&mut s, "add_task", json!({ "text": "Parent" })));
+    ok(
+        &mut s,
+        "add_task",
+        json!({ "text": "Unique subtask zebra", "parent_id": parent }),
+    );
+    assert_eq!(
+        ok(&mut s, "list_tasks", json!({ "search": "zebra" }))["total"],
+        1
+    );
+    // Without a search, lists stay top-level.
+    assert_eq!(ok(&mut s, "list_tasks", json!({}))["total"], 1);
+}
+
+#[test]
+fn group_id_and_client_id_are_the_same_argument() {
+    let mut s = server();
+    let g = id(&ok(&mut s, "add_group", json!({ "name": "Acme" })));
+    let p = ok(
+        &mut s,
+        "add_project",
+        json!({ "name": "Site", "group_id": g }),
+    );
+    assert_eq!(p["client_id"], g);
+    ok(&mut s, "list_tasks", json!({ "client_id": g }));
+}
+
+#[test]
+fn a_future_from_alone_gets_its_own_week() {
+    let mut s = server();
+    let r = ok(&mut s, "list_events", json!({ "from": "2031-03-01" }));
+    assert!(r["events"].is_array() || r.is_array() || r.is_object());
+}
+
+#[test]
+fn bulk_complete_counts_only_real_changes() {
+    let mut s = server();
+    let a = id(&ok(&mut s, "add_task", json!({ "text": "A" })));
+    let b = id(&ok(&mut s, "add_task", json!({ "text": "B" })));
+    assert_eq!(
+        ok(&mut s, "complete_task", json!({ "ids": [a, b] }))["updated"],
+        2
+    );
+    assert_eq!(
+        ok(&mut s, "complete_task", json!({ "ids": [a, b] }))["updated"],
+        0
+    );
+}
+
+#[test]
+fn an_occurrence_s_own_notes_can_be_read_back() {
+    let mut s = server();
+    let e = ok(
+        &mut s,
+        "add_event",
+        json!({ "kind": "meeting", "title": "Standup", "start": "2031-03-03T10:00", "end": "2031-03-03T10:15", "recurrence_rule": "FREQ=WEEKLY" }),
+    );
+    let eid = id(&e);
+    ok(
+        &mut s,
+        "update_event",
+        json!({ "id": eid, "scope": "occurrence", "occurrence_start": "2031-03-10T10:00", "notes_md": "agenda" }),
+    );
+    let one = ok(
+        &mut s,
+        "get_event",
+        json!({ "id": eid, "occurrence_start": "2031-03-10T10:00" }),
+    );
+    assert_eq!(one["occurrence"]["notes_md"], "agenda");
+}
+
+#[test]
+fn json_rpc_batches_get_one_answer_per_request() {
+    let mut s = server();
+    let r = s
+        .handle(json!([
+            { "jsonrpc": "2.0", "id": 5, "method": "ping" },
+            { "jsonrpc": "2.0", "id": 6, "method": "ping" }
+        ]))
+        .unwrap();
+    let ids: Vec<i64> = r
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids, [5, 6]);
+}

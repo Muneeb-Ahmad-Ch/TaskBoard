@@ -105,6 +105,14 @@ impl Server {
 
     /// Handles one message; returns the response, or None for a notification.
     pub fn handle(&mut self, msg: Value) -> Option<Value> {
+        // A batch: one answer per request in it (notifications get none).
+        if let Value::Array(list) = msg {
+            if list.is_empty() {
+                return Some(error(Value::Null, -32600, "invalid request: empty batch"));
+            }
+            let answers: Vec<Value> = list.into_iter().filter_map(|m| self.handle(m)).collect();
+            return (!answers.is_empty()).then_some(Value::Array(answers));
+        }
         let id = msg.get("id").cloned().filter(|v| !v.is_null());
         let Some(method) = msg.get("method").and_then(Value::as_str) else {
             return Some(error(

@@ -454,9 +454,7 @@ pub fn parse(input: &str, today: Date) -> ParsedQuickAdd {
         // "#design," and "#billing." are tags; the punctuation belongs to the sentence.
         if let Some(tag) = text
             .strip_prefix('#')
-            .map(|t| {
-                t.trim_end_matches(|c: char| matches!(c, ',' | '.' | ';' | ':' | '!' | '?' | ')'))
-            })
+            .map(|t| t.trim_end_matches([',', '.', ';', ':', '!', '?', ')']))
             .filter(|t| !t.is_empty() && !t.starts_with('#'))
         {
             out.tags.push(tag.to_owned());

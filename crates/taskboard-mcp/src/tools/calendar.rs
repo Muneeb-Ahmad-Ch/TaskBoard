@@ -44,8 +44,15 @@ pub(super) const TOOLS: &[Tool] = &[
     },
     Tool {
         name: "get_event",
-        description: "One meeting or time block in full: notes, attendees, link, repeat rule.",
-        fields: &[("id", ID, true)],
+        description: "One meeting or time block in full: notes, attendees, link, repeat rule. With occurrence_start (from list_events), also that occurrence's own notes.",
+        fields: &[
+            ("id", ID, true),
+            (
+                "occurrence_start",
+                r#"{"type":"string","description":"For a repeating event: the occurrence_start of one occurrence, to read its own notes"}"#,
+                false,
+            ),
+        ],
     },
     Tool {
         name: "add_event",
@@ -275,7 +282,16 @@ pub(super) const TOOLS: &[Tool] = &[
 pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
     match name {
         "list_events" => list_events(db, args),
-        "get_event" => event_json(&db.event(id_arg(args, "id")?).map_err(err)?),
+        "get_event" => {
+            let id = id_arg(args, "id")?;
+            let mut v = event_json(&db.event(id).map_err(err)?)?;
+            if let Some(s) = str_arg(args, "occurrence_start") {
+                let original = parse_when("occurrence_start", s)?;
+                let notes = db.occurrence_notes(id, original).map_err(err)?;
+                v["occurrence"] = json!({ "occurrence_start": s, "notes_md": notes });
+            }
+            Ok(v)
+        }
         "add_event" => {
             let input: NewEvent = from_args(with_times(args.clone(), Times::Add)?)?;
             if input.kind == EventKind::Meeting && input.title.trim().is_empty() {

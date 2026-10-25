@@ -16,7 +16,7 @@ use super::{
 pub(super) const TOOLS: &[Tool] = &[
     Tool {
         name: "list_tasks",
-        description: "Tasks matching filters, soonest due first. Defaults to open, top-level, unarchived tasks (subtasks appear under their parent in get_task). Use search for free text, due_from/due_to for a date window, statuses / priorities / tags / project_ids to narrow like the app's Filter menu (any of the listed values), completed_since for \"what did I finish today\", added_since for what was added recently. Sort by any table column.",
+        description: "Tasks matching filters, soonest due first. Defaults to open, top-level, unarchived tasks (subtasks appear under their parent in get_task); a search or a due_from/due_to window includes subtasks too (with parent_title). Use search for free text, due_from/due_to for a date window, statuses / priorities / tags / project_ids to narrow like the app's Filter menu (any of the listed values), completed_since for \"what did I finish today\", added_since for what was added recently. Sort by any table column.",
         fields: &[
             ("project_id", ID, false),
             ("group_id", ID, false),
@@ -157,7 +157,7 @@ pub(super) const TOOLS: &[Tool] = &[
             ),
             (
                 "recurrence_rule",
-                r#"{"type":["string","null"],"description":"RRULE, e.g. FREQ=WEEKLY;BYDAY=MO"}"#,
+                r#"{"type":["string","null"],"description":"RRULE for a fixed schedule (e.g. FREQ=WEEKLY;BYDAY=MO, FREQ=MONTHLY;BYMONTHDAY=1), or AFTER:<n><D|W|M> to repeat n days/weeks/months after it is done (e.g. AFTER:1W)"}"#,
                 false,
             ),
         ],
@@ -169,7 +169,11 @@ pub(super) const TOOLS: &[Tool] = &[
             ("id", ID, false),
             ("ids", IDS, false),
             ("title", STR, false),
-            ("description_md", STR, false),
+            (
+                "description_md",
+                r#"{"type":["string","null"],"description":"Notes, Markdown; null or \"\" clears them"}"#,
+                false,
+            ),
             ("priority", PRIORITY, false),
             ("project_id", ID, false),
             ("status", STATUS_NAME, false),
@@ -187,7 +191,7 @@ pub(super) const TOOLS: &[Tool] = &[
             ),
             (
                 "recurrence_rule",
-                r#"{"type":["string","null"],"description":"RRULE, e.g. FREQ=WEEKLY;BYDAY=MO; null stops repeating"}"#,
+                r#"{"type":["string","null"],"description":"RRULE for a fixed schedule (e.g. FREQ=WEEKLY;BYDAY=MO), or AFTER:<n><D|W|M> to repeat n days/weeks/months after it is done; null stops repeating"}"#,
                 false,
             ),
         ],
@@ -282,10 +286,15 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
             let verb = if done { "Complete" } else { "Reopen" };
             let n = db
                 .batch(&tasks_label(verb, ids.len()), |db| {
+                    // Only the ones that change count.
+                    let mut changed = 0;
                     for id in &ids {
-                        db.set_task_done(*id, done)?;
+                        if db.task(*id)?.completed_at.is_some() != done {
+                            db.set_task_done(*id, done)?;
+                            changed += 1;
+                        }
                     }
-                    Ok(ids.len())
+                    Ok(changed)
                 })
                 .map_err(err)?;
             Ok(json!({ "updated": n }))
@@ -481,7 +490,11 @@ fn list_tasks(db: &mut Db, args: &Args) -> ToolResult {
         created_to: point("added_until", true)?.map(|end| end - 1),
         completed_from,
         parent_id,
-        top_level: parent_id.is_none(),
+        // Like the app: a search or a date window finds subtasks too.
+        top_level: parent_id.is_none()
+            && str_arg(args, "search").is_none_or(|s| s.trim().is_empty())
+            && !args.contains_key("due_from")
+            && !args.contains_key("due_to"),
         include_archived,
         archived_only,
         sort,
@@ -643,7 +656,11 @@ fn add_task(db: &mut Db, args: &Args) -> ToolResult {
 fn update_task(db: &mut Db, args: &Args) -> ToolResult {
     let (ids, many) = id_or_ids(args)?;
     let status_name = str_arg(args, "status").map(str::to_owned);
-    let patch: TaskPatch = from_args(without(args, &["id", "ids", "status"]))?;
+    let mut fields = without(args, &["id", "ids", "status"]);
+    if fields.get("description_md").is_some_and(Value::is_null) {
+        fields.insert("description_md".into(), json!(""));
+    }
+    let patch: TaskPatch = from_args(fields)?;
     let apply = |db: &mut Db, id: Id| -> taskboard_core::Result<taskboard_core::Task> {
         let mut p = patch.clone();
         p.status_id = wanted_status(db, id, p.project_id, status_name.as_deref(), p.status_id)?;
