@@ -243,8 +243,9 @@ fn old_history_is_compacted_and_recent_undo_still_works() {
     let mut db = Db::open_in_memory().unwrap();
     let p = project(&mut db, "Site");
     task(&mut db, "Old work", p);
-    // Everything so far counts as old.
-    let removed = db.compact_history(clock::now_ms() + 1).unwrap();
+    // Everything so far counts as old (the logical clock can run a few ms
+    // ahead of the wall clock after a burst of writes).
+    let removed = db.compact_history(clock::now_ms() + 60_000).unwrap();
     assert!(removed > 0);
     assert_eq!(
         db.history_state().unwrap().undo,
