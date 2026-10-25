@@ -253,9 +253,9 @@
     if (!shownNav.includes('reminders')) return
     let stale = false
     ipc
-      .upcomingReminders({ days: 1 })
-      .then((r) => {
-        if (!stale) remindersLeft = r.items.filter((i) => i.remind_at !== null && i.remind_at > Date.now()).length
+      .remindersLeftToday()
+      .then((n) => {
+        if (!stale) remindersLeft = n
       })
       .catch(() => {})
     return () => {

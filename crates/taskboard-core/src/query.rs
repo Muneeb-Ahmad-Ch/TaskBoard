@@ -236,13 +236,16 @@ impl Db {
 
     /// Tags on live, unarchived tasks, most used first (for filter pickers).
     pub fn tag_names(&self) -> Result<Vec<String>> {
+        // One quick existence check per tag (there are few), not a join over
+        // every tagged task: the Filter menu waits for this.
         let mut stmt = self.conn().prepare(
             "SELECT g.name FROM tag g
-               JOIN task_tag tt ON tt.tag_id = g.id
-               JOIN task t ON t.id = tt.task_id
-              WHERE g.deleted_at IS NULL AND t.deleted_at IS NULL AND t.archived_at IS NULL
-              GROUP BY g.id
-              ORDER BY count(*) DESC, g.name COLLATE NOCASE",
+              WHERE g.deleted_at IS NULL
+                AND EXISTS (SELECT 1 FROM task_tag tt JOIN task t ON t.id = tt.task_id
+                             WHERE tt.tag_id = g.id AND t.deleted_at IS NULL
+                               AND t.archived_at IS NULL)
+              ORDER BY (SELECT count(*) FROM task_tag tt WHERE tt.tag_id = g.id) DESC,
+                       g.name COLLATE NOCASE",
         )?;
         let names = stmt
             .query_map([], |r| r.get(0))?

@@ -15,7 +15,7 @@ Shortcuts don't fire while you're typing in a text field (except where noted).
 | Ctrl+K | Command palette: jump to sections/groups/projects, search tasks, run any action (works while typing) |
 | N | Focus Quick Add |
 | ? | Show all keyboard shortcuts |
-| / or Ctrl+F | Search tasks (Filter, Sort and Group sit next to the search box) |
+| / or Ctrl+F | Search tasks (Filter, Sort and Group sit next to the search box); Ctrl+F works while typing |
 | 1 / 2 / 3 | The visible view tabs, left to right (Table / Board / Calendar by default) |
 | Ctrl+Z | Undo |
 | Ctrl+Shift+Z or Ctrl+Y | Redo |

@@ -158,7 +158,11 @@ fn describe_event_rule(rule: &str) -> String {
 }
 
 impl Db {
-    fn timed_or_repeating_tasks(&self, until: Option<Date>) -> Result<Vec<TaskLine>> {
+    fn timed_or_repeating_tasks(
+        &self,
+        until: Option<Date>,
+        rules_only: bool,
+    ) -> Result<Vec<TaskLine>> {
         let mut stmt = self.conn().prepare(
             "SELECT t.id, t.title, t.due_date, t.due_time, t.recurrence_rule, t.project_id,
                     p.name, p.color, c.name, c.color
@@ -170,10 +174,11 @@ impl Db {
                 AND (t.recurrence_rule IS NOT NULL
                      OR (t.due_time IS NOT NULL AND t.due_date IS NOT NULL))
                 AND (?1 IS NULL OR t.due_date IS NULL OR t.due_date <= ?1)
+                AND (?2 = 0 OR t.recurrence_rule IS NOT NULL)
               ORDER BY coalesce(t.due_date, '~'), coalesce(t.due_time, ''), t.sort_key",
         )?;
         let rows = stmt
-            .query_map(params![until.map(|d| d.to_string())], |r| {
+            .query_map(params![until.map(|d| d.to_string()), rules_only], |r| {
                 let due: Option<String> = r.get(2)?;
                 let time: Option<String> = r.get(3)?;
                 let color: String = r.get(7)?;
@@ -196,6 +201,11 @@ impl Db {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         Ok(rows)
+    }
+
+    /// Open, unarchived repeating tasks (dated or not).
+    fn repeating_tasks(&self) -> Result<Vec<TaskLine>> {
+        self.timed_or_repeating_tasks(None, true)
     }
 
     /// Repeating event series: id → stored rule.
@@ -238,7 +248,7 @@ impl Db {
         let mut items = Vec::new();
 
         if kinds.contains(&ReminderKind::Task) {
-            for t in self.timed_or_repeating_tasks(Some(last))? {
+            for t in self.timed_or_repeating_tasks(Some(last), false)? {
                 let Some(due) = t.due else { continue };
                 let overdue = due < today;
                 let repeat = t.rule.as_deref().map(describe_task_rule);
@@ -381,10 +391,52 @@ impl Db {
         })
     }
 
+    /// How many reminders will still fire today (the sidebar badge): timed
+    /// open tasks due later today and today's meetings that haven't started.
+    pub fn reminders_left_today(&self, now: i64) -> Result<usize> {
+        let s = self.notify_settings()?;
+        if !s.enabled {
+            return Ok(0);
+        }
+        let (tz, _) = local_zone();
+        let today = jiff::Timestamp::from_millisecond(now)
+            .map(|t| t.to_zoned(tz.clone()).date())
+            .map_err(|e| invalid(e.to_string()))?;
+        let mut stmt = self.conn().prepare(
+            "SELECT t.due_time FROM task t
+               JOIN project p ON p.id = t.project_id
+              WHERE t.deleted_at IS NULL AND t.archived_at IS NULL AND t.completed_at IS NULL
+                AND p.archived_at IS NULL AND t.due_date = ?1 AND t.due_time IS NOT NULL",
+        )?;
+        let mut left = 0;
+        for time in stmt.query_map([today.to_string()], |r| r.get::<_, String>(0))? {
+            if let Ok(time) = time?.parse::<Time>()
+                && local_ms(today, time).is_some_and(|at| at - s.task_lead_min * MINUTE > now)
+            {
+                left += 1;
+            }
+        }
+        let end =
+            local_ms(today.tomorrow().unwrap_or(today), Time::midnight()).unwrap_or(now + DAY);
+        if end > now {
+            left += self
+                .occurrences(now, end)?
+                .iter()
+                .filter(|o| {
+                    o.kind == EventKind::Meeting
+                        && o.status != EventStatus::Cancelled
+                        && !o.all_day
+                        && o.start_at - s.meeting_lead_min * MINUTE > now
+                })
+                .count();
+        }
+        Ok(left)
+    }
+
     /// Every repeating task and event series that hasn't ended, soonest first.
     pub fn repeating(&self, now: i64) -> Result<Vec<RepeatingItem>> {
         let mut out = Vec::new();
-        for t in self.timed_or_repeating_tasks(None)? {
+        for t in self.repeating_tasks()? {
             let Some(rule) = t.rule else { continue };
             let after_completion = matches!(TaskRule::parse(&rule), Ok(TaskRule::After { .. }));
             out.push(RepeatingItem {

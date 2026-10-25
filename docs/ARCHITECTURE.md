@@ -102,13 +102,28 @@ ui/ (Svelte 5)  ── invoke(typed) ──▶  src-tauri/ (thin)  ──▶  ta
 - **Reminders** (migration 5): a `reminders` thread checks every 20 s for due
   meeting/task reminders and the daily digest, records each in
   `notification_log` (fires once), and shows a Windows toast plus an in-app
-  banner with Join (http/https links only, via the opener plugin).
+  banner with Join (http/https links only, via the opener plugin). A task's
+  lead can reach across midnight (the window spans the days it covers).
+- **Reminders page** (`core/src/upcoming.rs`): timed tasks, meetings (and
+  time blocks if asked) for 1–366 days, plus the coming repeats of repeating
+  tasks computed like completing them would (not stored; `projected`), and
+  every repeating series with its next date. Served to the UI and to the MCP
+  `list_reminders` / `list_repeating` tools.
+- **List filters and grouping**: `TaskQuery` filters (priorities, column
+  names, tags, projects, dated, created window) and sorts by any table column
+  run in core (`query.rs`); grouping is client-side (`ui/src/lib/grouping.ts`)
+  over the whole list (up to 5,000 rows); the Filter menu's choices map to a
+  query in `ui/src/lib/filters.ts`.
 - **Dashboard**: streaks, a 14-day trend, per-client summary and project
   burndown, all computed in core (`dashboard.rs`).
 - **Settings** live as JSON in the `setting` table and are not undoable.
 - **Backups**: `VACUUM INTO` + integrity check of the copy; daily automatic
   backup (first check 2 min after launch, then hourly) with 7 daily / 4 weekly
-  / 12 monthly retention; restore swaps the file and restarts.
+  / 12 monthly retention. Restore copies the backup into the open database
+  with SQLite's online backup (works while an assistant's server has the
+  file open; a newer-version backup is refused first), then reopens it.
+  Undo steps and the change log older than 90 days are compacted after the
+  daily backup.
 - **Import/export**: JSON (merge by key, deferred foreign-key checks), CSV
   (Taskboard, Todoist, Trello, Notion), ICS (with EXDATE and UID dedup).
 - **Desktop**: tray icon, close-to-tray, autostart with `--minimized`,

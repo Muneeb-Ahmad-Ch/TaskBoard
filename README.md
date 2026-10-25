@@ -120,8 +120,9 @@ pins; tasks and subtasks (board columns by name, bulk edits, archiving);
 meetings and time blocks (one occurrence or a whole series, booking time
 for a task, finding free slots); working hours and days off; timers and
 logged time; saved views, reminders and backups. Everything it changes is
-undoable (Ctrl+Z) and appears in the app within a second. It can't change
-the app's settings or its own access.
+undoable (Ctrl+Z) and appears in the app within a second. It can change a
+few settings (Start with Windows, Keep running in the tray, leaving out
+repeated names) but never its own access, backups or imports.
 
 1. Open **Settings → AI assistants** (or Ctrl+K → "Connect an AI assistant…").
 2. Click **Copy config** next to your assistant and paste it where that

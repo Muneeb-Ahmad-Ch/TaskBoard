@@ -606,6 +606,11 @@ async fn upcoming_reminders(
 }
 
 #[tauri::command]
+async fn reminders_left_today(state: State<'_, AppState>) -> CmdResult<usize> {
+    read(state, |db| db.reminders_left_today(taskboard_core::clock::now_ms())).await
+}
+
+#[tauri::command]
 async fn repeating(state: State<'_, AppState>) -> CmdResult<Vec<RepeatingItem>> {
     read(state, |db| db.repeating(taskboard_core::clock::now_ms())).await
 }
@@ -1207,6 +1212,7 @@ pub fn run() {
             all_statuses,
             list_tags,
             upcoming_reminders,
+            reminders_left_today,
             occurrence_notes,
             repeating,
             create_status,

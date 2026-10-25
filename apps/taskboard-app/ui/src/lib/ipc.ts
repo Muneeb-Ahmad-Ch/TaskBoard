@@ -136,6 +136,8 @@ export const ipc = {
   /** Reminders page: what will remind you in a window, and every repeating series. */
   upcomingReminders: (query: ReminderQuery) => invoke<UpcomingReminders>('upcoming_reminders', { query }),
   repeating: () => invoke<RepeatingItem[]>('repeating'),
+  /** Reminders still to fire today (the sidebar badge). */
+  remindersLeftToday: () => invoke<number>('reminders_left_today'),
   /** Notes written for one occurrence of a series (null: it uses the series' notes). */
   occurrenceNotes: (id: Id, originalStart: number) => invoke<string | null>('occurrence_notes', { id, originalStart }),
   createStatus: (input: NewStatus) => invoke<Status>('create_status', { input }),

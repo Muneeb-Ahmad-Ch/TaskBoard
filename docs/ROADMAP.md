@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 2026-10-18. Scope is the Windows desktop app (SPEC §14); other
+Status as of 2026-10-25. Scope is the Windows desktop app (SPEC §14); other
 platforms and sync come later.
 
 ## Milestones
@@ -66,8 +66,10 @@ Bigger (done after 0.3.1):
 
 ## AI assistants (done after 0.3.1)
 
-- [x] MCP server (`taskboard-app.exe --mcp`, `taskboard mcp`): 25 tools over
-      sections, groups, projects, tasks, events, time, undo/redo.
+- [x] MCP server (`taskboard-app.exe --mcp`, `taskboard mcp`): 72 tools over
+      sections, groups, projects, tasks, board columns, events, slots,
+      working hours, time, saved views, reminders, settings, backups and
+      undo/redo; arguments are checked against their schemas.
 - [x] App refreshes on outside commits (SQLite `data_version` watcher).
 - [x] Settings → AI assistants: switch, configs, self-test, connection log.
 - [ ] MCP resources (read-only views of today / a project) and prompts.
@@ -75,9 +77,12 @@ Bigger (done after 0.3.1):
 
 ## Next improvements
 
-- Table: group by client / project / status; drag column headers to reorder
-  (reordering works today from Settings → Layout).
-- In-app updates (needs the owner's updater key; see RELEASING.md §4).
+- Table: drag column headers to reorder (grouping shipped in 0.5.2;
+  reordering works today from Settings → Views & table).
+- Large databases (50k tasks): the All work board, grouped table, dashboard,
+  month view and Reminders page reload in 200–450 ms per change. Needs new
+  indexes (a schema migration): covering index for board columns,
+  rules-only index for repeating tasks, joined sorts for status / project.
 - Meeting notes: turn `- [ ]` action items into tasks.
 - Calendar: keyboard moving and resizing of events.
 - Subscribe to an ICS feed (read-only calendar layer; schema exists).

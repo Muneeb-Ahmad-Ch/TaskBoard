@@ -395,3 +395,21 @@ fn a_long_window_that_hits_the_cap_says_how_far_it_got() {
     let last: Vec<_> = u.items.iter().filter(|i| i.date == u.to).collect();
     assert_eq!(last.len(), 12);
 }
+
+#[test]
+fn reminders_left_today_counts_only_what_will_still_fire() {
+    let mut db = Db::open_in_memory().unwrap();
+    let now = clock::now_ms();
+    let in_two_hours = jiff::Timestamp::from_millisecond(now + 2 * 3_600_000)
+        .unwrap()
+        .to_zoned(jiff::tz::TimeZone::system());
+    let late = in_two_hours.date() == today();
+    if late {
+        let t = format!("{:02}:{:02}", in_two_hours.hour(), in_two_hours.minute());
+        task(&mut db, "Later today", Some(today()), Some(&t), None);
+    }
+    task(&mut db, "Missed", Some(day(-1)), Some("09:00"), None);
+    task(&mut db, "Tomorrow", Some(day(1)), Some("09:00"), None);
+    let n = db.reminders_left_today(now).unwrap();
+    assert_eq!(n, usize::from(late));
+}
