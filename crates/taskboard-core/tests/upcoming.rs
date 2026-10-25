@@ -423,3 +423,29 @@ fn the_page_shows_a_task_s_own_reminder_time() {
     let u = upcoming(&db, 7, vec![]);
     assert_eq!(u.items[0].remind_at, Some(at(day(1), 15, 0) - 30 * MIN));
 }
+
+#[test]
+fn a_rule_anchored_on_its_date_says_which_day() {
+    let mut db = Db::open_in_memory().unwrap();
+    let due = jiff::civil::date(2031, 3, 3);
+    task(&mut db, "Pay rent", Some(due), None, Some("FREQ=MONTHLY"));
+    task(
+        &mut db,
+        "Renew domain",
+        Some(due),
+        None,
+        Some("FREQ=YEARLY"),
+    );
+    task(
+        &mut db,
+        "Standup notes",
+        Some(due),
+        None,
+        Some("FREQ=WEEKLY;BYDAY=MO"),
+    );
+    let list = db.repeating(clock::now_ms()).unwrap();
+    let said = |t: &str| list.iter().find(|r| r.title == t).unwrap().describe.clone();
+    assert_eq!(said("Pay rent"), "Every month on the 3rd");
+    assert_eq!(said("Renew domain"), "Every year on Mar 3");
+    assert_eq!(said("Standup notes"), "Every week on Mon");
+}

@@ -17,7 +17,7 @@ use crate::id::Id;
 use crate::model::clean_date;
 use crate::notify::local_ms;
 use crate::recur::TaskRule;
-use crate::rrule::Rule;
+use crate::rrule::{Freq, Rule};
 use crate::storage::Db;
 
 const MINUTE: i64 = 60_000;
@@ -149,12 +149,47 @@ fn hm(t: Time) -> String {
     format!("{:02}:{:02}", t.hour(), t.minute())
 }
 
-fn describe_task_rule(rule: &str) -> String {
-    TaskRule::parse(rule).map_or_else(|_| rule.to_owned(), |r| r.describe())
+fn describe_task_rule(rule: &str, anchor: Option<Date>) -> String {
+    match TaskRule::parse(rule) {
+        Ok(TaskRule::Fixed(r)) => describe_fixed(&r, anchor),
+        Ok(other) => other.describe(),
+        Err(_) => rule.to_owned(),
+    }
 }
 
-fn describe_event_rule(rule: &str) -> String {
-    Rule::parse(rule).map_or_else(|_| rule.to_owned(), |r| r.describe())
+fn describe_event_rule(rule: &str, anchor: Option<Date>) -> String {
+    Rule::parse(rule).map_or_else(|_| rule.to_owned(), |r| describe_fixed(&r, anchor))
+}
+
+/// A rule in words, saying which day when it takes it from its date
+/// ("Every month" → "Every month on the 3rd", "Every year" → "on Mar 3").
+fn describe_fixed(r: &Rule, anchor: Option<Date>) -> String {
+    let text = r.describe();
+    let Some(d) = anchor else { return text };
+    if !r.by_day.is_empty() || !r.by_month_day.is_empty() {
+        return text;
+    }
+    let on = match r.freq {
+        Freq::Monthly => format!(" on the {}", ordinal(d.day())),
+        Freq::Yearly => format!(" on {}", d.strftime("%b %-d")),
+        _ => return text,
+    };
+    // Before ", 3 times" / ", until …" if the rule has them.
+    match text.find(", ") {
+        Some(i) => format!("{}{on}{}", &text[..i], &text[i..]),
+        None => format!("{text}{on}"),
+    }
+}
+
+fn ordinal(n: i8) -> String {
+    let tail = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{tail}")
 }
 
 impl Db {
@@ -252,7 +287,7 @@ impl Db {
             for t in self.timed_or_repeating_tasks(Some(last), false)? {
                 let Some(due) = t.due else { continue };
                 let overdue = due < today;
-                let repeat = t.rule.as_deref().map(describe_task_rule);
+                let repeat = t.rule.as_deref().map(|r| describe_task_rule(r, Some(due)));
                 let mut push = |date: Date, projected: bool| {
                     let at = local_ms(date, t.time.unwrap_or(Time::midnight())).unwrap_or(now);
                     // An overdue one has passed; its repeats will still remind.
@@ -349,7 +384,9 @@ impl Db {
                     time: (!o.all_day).then(|| hm(starts.time())),
                     at: o.start_at,
                     remind_at,
-                    repeat: rules.get(&o.event_id).map(|r| describe_event_rule(r)),
+                    repeat: rules
+                        .get(&o.event_id)
+                        .map(|r| describe_event_rule(r, Some(starts.date()))),
                     projected: false,
                     overdue: false,
                     task_id: o.task_id,
@@ -459,7 +496,7 @@ impl Db {
             out.push(RepeatingItem {
                 kind: ReminderKind::Task,
                 title: t.title,
-                describe: describe_task_rule(&rule),
+                describe: describe_task_rule(&rule, t.due),
                 rule,
                 after_completion,
                 next_date: t.due.map(|d| d.to_string()),
@@ -503,7 +540,7 @@ impl Db {
                         ReminderKind::Meeting
                     },
                     title: o.title,
-                    describe: describe_event_rule(&rule),
+                    describe: describe_event_rule(&rule, Some(starts.date())),
                     rule,
                     after_completion: false,
                     next_date: Some(starts.date().to_string()),

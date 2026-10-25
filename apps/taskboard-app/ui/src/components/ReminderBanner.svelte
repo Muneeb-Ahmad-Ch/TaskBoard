@@ -24,7 +24,7 @@
 
   // ---------- snooze ----------
   let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
-  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
   async function snooze(n: Notification, until: number) {
     try {
