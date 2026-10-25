@@ -83,6 +83,52 @@
   /** Changes that can only apply to every event in the series. */
   const seriesChanged = $derived(loaded && editing && seriesKey() !== seriesAsLoaded)
 
+  /** The meeting's own reminder lead (null = the app's setting), as loaded and now. */
+  let lead = $state<number | null>(null)
+  let leadAsLoaded: number | null = null
+  let defaultLead = $state(10)
+  $effect(() => {
+    void ipc
+      .notifySettings()
+      .then((s) => (defaultLead = s.meeting_lead_min))
+      .catch(() => {})
+  })
+  const LEADS: { value: number; label: string }[] = [
+    { value: 0, label: 'At the start' },
+    { value: 5, label: '5 minutes before' },
+    { value: 10, label: '10 minutes before' },
+    { value: 15, label: '15 minutes before' },
+    { value: 30, label: '30 minutes before' },
+    { value: 60, label: '1 hour before' },
+    { value: 120, label: '2 hours before' },
+    { value: 1440, label: '1 day before' },
+  ]
+  const leadText = (m: number) => LEADS.find((l) => l.value === m)?.label.toLowerCase() ?? `${m} minutes before`
+
+  /** Unchecked `- [ ]` items in the notes not yet made into tasks. */
+  const openItems = $derived(
+    f.notes.split('\n').filter((l) => /^\s*[-*+] \[ \] \S/.test(l) && !/\(added as a task\)\s*$/.test(l)).length,
+  )
+
+  async function makeTasks() {
+    try {
+      const r = await ipc.tasksFromNotes(f.notes, owner().project_id)
+      f.notes = r.notes
+      // Keep the marks with the meeting at once, so the items aren't made twice.
+      if (initial.id && loaded) {
+        if (recurring && initial.originalStart !== undefined && scope === 'one') {
+          await ipc.editOccurrence(initial.id, initial.originalStart, { notes_md: r.notes })
+        } else {
+          await ipc.updateEvent(initial.id, { notes_md: r.notes })
+        }
+        shown = { ...shown, notes: r.notes }
+      }
+      toast(`Added ${r.created} ${r.created === 1 ? 'task' : 'tasks'}${owner().project_id ? '' : ' to the Inbox'}`)
+    } catch (err) {
+      toast(errorMessage(err), { kind: 'error' })
+    }
+  }
+
   /** Title and notes as the dialog opened (the occurrence's own, if it has them),
    *  so saving sends only what was changed. */
   let shown = { title: initial.title ?? '', notes: '' }
@@ -92,8 +138,14 @@
     if (!initial.id) return
     const id = initial.id
     const original = initial.originalStart
-    Promise.all([ipc.getEvent(id), original === undefined ? null : ipc.occurrenceNotes(id, original).catch(() => null)])
-      .then(([e, ownNotes]) => {
+    Promise.all([
+      ipc.getEvent(id),
+      original === undefined ? null : ipc.occurrenceNotes(id, original).catch(() => null),
+      ipc.reminderLead({ kind: 'event', id }).catch(() => null),
+    ])
+      .then(([e, ownNotes, own]) => {
+        lead = own
+        leadAsLoaded = own
         f.title = initial.title ?? e.title
         f.kind = e.kind
         f.owner = e.project_id ? `p:${e.project_id}` : e.client_id ? `c:${e.client_id}` : ''
@@ -172,7 +224,7 @@
         ...(f.counts === null ? {} : { counts_as_time: f.counts }),
       }
       if (!initial.id) {
-        await ipc.createEvent({
+        const made = await ipc.createEvent({
           kind: f.kind,
           title: f.title,
           client_id: o.client_id ?? undefined,
@@ -188,6 +240,7 @@
           ...(f.counts === null ? {} : { counts_as_time: f.counts }),
           recurrence_rule: f.rule ?? undefined,
         })
+        if (lead !== null) await ipc.setReminderLead({ kind: 'event', id: made.id }, lead)
         toast(f.kind === 'meeting' ? 'Meeting added' : 'Time block added')
       } else if (!recurring || initial.originalStart === undefined) {
         await ipc.updateEvent(initial.id, { ...fields, ...t, recurrence_rule: f.rule })
@@ -248,6 +301,8 @@
           await ipc.updateEvent(initial.id, shared)
         }
       }
+      // The meeting's own reminder time applies to every occurrence.
+      if (initial.id && lead !== leadAsLoaded) await ipc.setReminderLead({ kind: 'event', id: initial.id }, lead)
       onclose()
     } catch (err) {
       toast(errorMessage(err), { kind: 'error' })
@@ -399,6 +454,11 @@
         placeholder={f.kind === 'meeting' ? 'Agenda, decisions, - [ ] action items (Markdown)' : 'Notes (Markdown)'}
         onsave={(v) => (f.notes = v)}
       />
+      {#if openItems}
+        <button class="btn mt-1.5 !h-7 text-xs" title="Each unchecked “- [ ]” line becomes a task{owner().project_id ? ' in this project' : ' in the Inbox'}" onclick={() => void makeTasks()}>
+          Make {openItems === 1 ? 'a task' : `${openItems} tasks`} from action items
+        </button>
+      {/if}
     </div>
 
     <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
@@ -410,6 +470,14 @@
         <label class="flex items-center gap-1.5">
           <input type="checkbox" class="accent-[var(--accent)]" checked={f.status === 'tentative'} onchange={(e) => (f.status = e.currentTarget.checked ? 'tentative' : 'confirmed')} />
           Tentative
+        </label>
+        <label class="flex items-center gap-1.5">
+          Remind
+          <select class="field !h-7 !w-auto !py-0 text-[13px]" aria-label="Remind" value={lead === null ? '' : String(lead)} onchange={(e) => (lead = e.currentTarget.value === '' ? null : Number(e.currentTarget.value))}>
+            <option value="">As in Settings ({leadText(defaultLead)})</option>
+            {#each LEADS as l (l.value)}<option value={String(l.value)}>{l.label}</option>{/each}
+            {#if lead !== null && !LEADS.some((l) => l.value === lead)}<option value={String(lead)}>{leadText(lead)}</option>{/if}
+          </select>
         </label>
       {:else}
         <label class="flex items-center gap-1.5" title="Flexible blocks can be booked over by the slot finder">

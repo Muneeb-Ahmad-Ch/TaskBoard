@@ -4,13 +4,13 @@
 use serde_json::{Value, json};
 use taskboard_core::error::invalid;
 use taskboard_core::{
-    Category, Db, Id, MoveTask, NewTask, Priority, TaskPatch, TaskQuery, TaskSort,
+    Category, Db, Id, MoveTask, NewTask, Priority, RemindTarget, TaskPatch, TaskQuery, TaskSort,
 };
 
 use super::{
-    Args, BOOL, DATE, ID, IDS, INT, NULLABLE_ID, PRIORITY, STATUS_NAME, STR, TAGS, TIME, Tool,
-    ToolResult, bool_arg, err, from_args, id_arg, id_or_ids, opt_id, parse_id, parse_point,
-    str_arg, tasks_label, today, without,
+    Args, BOOL, DATE, ID, IDS, INT, NULLABLE_ID, PRIORITY, REMIND, STATUS_NAME, STR, TAGS, TIME,
+    Tool, ToolResult, bool_arg, err, from_args, id_arg, id_or_ids, opt_id, parse_id, parse_point,
+    remind_arg, str_arg, tasks_label, today, without,
 };
 
 pub(super) const TOOLS: &[Tool] = &[
@@ -150,6 +150,7 @@ pub(super) const TOOLS: &[Tool] = &[
             ("due_time", TIME, false),
             ("estimate_minutes", INT, false),
             ("tags", TAGS, false),
+            ("remind_before_min", REMIND, false),
             (
                 "progress",
                 r#"{"type":["integer","null"],"description":"0-100"}"#,
@@ -184,6 +185,7 @@ pub(super) const TOOLS: &[Tool] = &[
             ("due_time", TIME, false),
             ("estimate_minutes", INT, false),
             ("tags", TAGS, false),
+            ("remind_before_min", REMIND, false),
             (
                 "progress",
                 r#"{"type":["integer","null"],"description":"0-100; null = from subtasks"}"#,
@@ -568,7 +570,9 @@ fn task_json(db: &mut Db, task: &taskboard_core::Task) -> ToolResult {
             ..Default::default()
         })
         .map_err(err)?;
+    let lead = db.reminder_lead(RemindTarget::Task(task.id)).map_err(err)?;
     if let Value::Object(m) = &mut v {
+        m.insert("remind_before_min".into(), json!(lead));
         m.insert("project_name".into(), json!(project.name));
         m.insert("status".into(), json!(status.map(|s| s.name.clone())));
         m.insert("category".into(), json!(status.map(|s| s.category)));
@@ -593,7 +597,14 @@ fn add_task(db: &mut Db, args: &Args) -> ToolResult {
     }
     let explicit: TaskPatch = from_args(without(
         args,
-        &["text", "project_id", "parent_id", "status", "status_id"],
+        &[
+            "text",
+            "project_id",
+            "parent_id",
+            "status",
+            "status_id",
+            "remind_before_min",
+        ],
     ))?;
     let project_id = match opt_id(args, "project_id")? {
         Some(id) => Some(id),
@@ -650,18 +661,31 @@ fn add_task(db: &mut Db, args: &Args) -> ToolResult {
             },
         })
         .map_err(err)?;
+    if let Some(lead) = remind_arg(args) {
+        db.set_reminder_lead(RemindTarget::Task(task.id), lead)
+            .map_err(err)?;
+    }
     task_json(db, &task)
 }
 
 fn update_task(db: &mut Db, args: &Args) -> ToolResult {
     let (ids, many) = id_or_ids(args)?;
     let status_name = str_arg(args, "status").map(str::to_owned);
-    let mut fields = without(args, &["id", "ids", "status"]);
+    let mut fields = without(args, &["id", "ids", "status", "remind_before_min"]);
+    let lead = remind_arg(args);
+    // Only the reminder changes: no task edit to record.
+    let only_lead = lead.is_some() && fields.is_empty() && status_name.is_none();
     if fields.get("description_md").is_some_and(Value::is_null) {
         fields.insert("description_md".into(), json!(""));
     }
     let patch: TaskPatch = from_args(fields)?;
     let apply = |db: &mut Db, id: Id| -> taskboard_core::Result<taskboard_core::Task> {
+        if let Some(lead) = lead {
+            db.set_reminder_lead(RemindTarget::Task(id), lead)?;
+        }
+        if only_lead {
+            return db.task(id);
+        }
         let mut p = patch.clone();
         p.status_id = wanted_status(db, id, p.project_id, status_name.as_deref(), p.status_id)?;
         db.update_task(id, p)

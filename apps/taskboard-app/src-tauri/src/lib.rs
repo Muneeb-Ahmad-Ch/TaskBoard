@@ -17,11 +17,12 @@ use desktop::focus_main;
 use taskboard_core::{
     AppSettings, Client, ClientHours, ClientPatch, Dashboard, DayOverride, DayPlan, Db, DbInfo,
     Direction, ErrorInfo, Event, EventPatch, FindSlots, HistoryState, Id, LoggedTime, MoveTask,
-    NewClient, NewEvent, NewProject, NewSection, NewStatus, NewTask, NewTimeEntry, NotifySettings,
-    Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectPlace, ProjectSummary,
-    QuickAddPreview, ReminderQuery, RepeatingItem, SavedView, SavedViewPatch, Section,
-    SectionDelete, SectionPatch, Setup, SidebarCounts, SlotResult, Status, StatusPatch, Task,
-    TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch, UpcomingReminders, WorkingDay,
+    NewClient, NewEvent, NewProject, NewSection, NewStatus, NewTask, NewTimeEntry, NotesToTasks,
+    NotifySettings, Occurrence, OccurrencePatch, Project, ProjectPatch, ProjectPlace,
+    ProjectSummary, QuickAddPreview, RemindTarget, ReminderQuery, RepeatingItem, SavedView,
+    SavedViewPatch, Section, SectionDelete, SectionPatch, Setup, SidebarCounts, SlotResult, Status,
+    StatusPatch, Task, TaskPage, TaskPatch, TaskQuery, TaskSummary, TimeEntryPatch,
+    UpcomingReminders, WorkingDay,
 };
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -606,8 +607,49 @@ async fn upcoming_reminders(
 }
 
 #[tauri::command]
+async fn reminder_lead(state: State<'_, AppState>, target: RemindTarget) -> CmdResult<Option<i64>> {
+    read(state, move |db| db.reminder_lead(target)).await
+}
+
+#[tauri::command]
+async fn set_reminder_lead(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    target: RemindTarget,
+    minutes: Option<i64>,
+) -> CmdResult<()> {
+    write(app, state, move |db| db.set_reminder_lead(target, minutes)).await
+}
+
+#[tauri::command]
+async fn snooze_reminder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    key: String,
+    until: i64,
+) -> CmdResult<()> {
+    write(app, state, move |db| db.snooze(&key, until)).await
+}
+
+#[tauri::command]
+async fn tasks_from_notes(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    notes: String,
+    project_id: Option<Id>,
+) -> CmdResult<NotesToTasks> {
+    write(app, state, move |db| {
+        db.tasks_from_notes(&notes, project_id)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn reminders_left_today(state: State<'_, AppState>) -> CmdResult<usize> {
-    read(state, |db| db.reminders_left_today(taskboard_core::clock::now_ms())).await
+    read(state, |db| {
+        db.reminders_left_today(taskboard_core::clock::now_ms())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1213,6 +1255,11 @@ pub fn run() {
             list_tags,
             upcoming_reminders,
             reminders_left_today,
+            reminder_lead,
+            set_reminder_lead,
+            snooze_reminder,
+            tasks_from_notes,
+            data::export_list_csv,
             occurrence_notes,
             repeating,
             create_status,

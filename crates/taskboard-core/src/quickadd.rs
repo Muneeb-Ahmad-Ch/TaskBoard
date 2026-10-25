@@ -526,6 +526,22 @@ pub fn parse(input: &str, today: Date) -> ParsedQuickAdd {
     if out.due_time.is_some() && out.due_date.is_none() {
         out.due_date = Some(today.to_string());
     }
+    // "remind me (to) …" at the start is how people say it; it isn't the title.
+    let said = |i: usize, word: &str| {
+        ws.get(i)
+            .is_some_and(|w| !w.quoted && !used[i] && w.text.eq_ignore_ascii_case(word))
+    };
+    let mut reminder = false;
+    if said(0, "remind") && said(1, "me") {
+        let n = if said(2, "to") { 3 } else { 2 };
+        // Keep it when nothing would be left of the title.
+        if ws.iter().zip(&used).skip(n).any(|(_, u)| !*u) {
+            for u in used.iter_mut().take(n) {
+                *u = true;
+            }
+            reminder = true;
+        }
+    }
     out.title = ws
         .iter()
         .zip(&used)
@@ -539,6 +555,12 @@ pub fn parse(input: &str, today: Date) -> ParsedQuickAdd {
         })
         .collect::<Vec<_>>()
         .join(" ");
+    if reminder {
+        let mut chars = out.title.chars();
+        if let Some(first) = chars.next() {
+            out.title = first.to_uppercase().chain(chars).collect();
+        }
+    }
     out.tokens.sort_by_key(|t| t.start);
     out
 }

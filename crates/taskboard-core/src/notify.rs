@@ -14,9 +14,11 @@ use crate::error::{Result, invalid};
 use crate::events::{EventKind, EventStatus, local_zone};
 use crate::id::Id;
 use crate::model::{Category, clean_time, text};
+use crate::model::{int, opt_id};
 use crate::query::TaskQuery;
 use crate::storage::Db;
 use crate::tx::Table;
+use std::collections::HashMap;
 
 const MINUTE: i64 = 60_000;
 const NOTIFY_KEY: &str = "notify";
@@ -92,6 +94,18 @@ impl Default for AppSettings {
 }
 
 const APP_KEY: &str = "app";
+
+/// What a reminder (a lead time or a snooze) belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", content = "id", rename_all = "lowercase")]
+#[ts(export)]
+pub enum RemindTarget {
+    Task(Id),
+    Event(Id),
+}
+
+/// Longest lead a single task or meeting can have: a week.
+const MAX_LEAD_MIN: i64 = 7 * 24 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
@@ -219,6 +233,132 @@ impl Db {
         )?)
     }
 
+    /// A task's or meeting's own lead (minutes before), if it has one; else
+    /// the global setting applies.
+    pub fn reminder_lead(&self, target: RemindTarget) -> Result<Option<i64>> {
+        let (task, event) = match target {
+            RemindTarget::Task(id) => (Some(id), None),
+            RemindTarget::Event(id) => (None, Some(id)),
+        };
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT offset_min FROM reminder
+                  WHERE offset_min IS NOT NULL AND task_id IS ?1 AND event_id IS ?2",
+                params![task, event],
+                |r| r.get(0),
+            )
+            .optional()?)
+    }
+
+    /// Sets (or with `None` clears) a task's or meeting's own reminder lead,
+    /// 0 (at the time) to a week, as one undoable step.
+    pub fn set_reminder_lead(&mut self, target: RemindTarget, minutes: Option<i64>) -> Result<()> {
+        if let Some(m) = minutes
+            && !(0..=MAX_LEAD_MIN).contains(&m)
+        {
+            return Err(invalid("a reminder can be 0 minutes to a week before"));
+        }
+        let (task, event) = match target {
+            RemindTarget::Task(id) => (Some(self.task(id)?.id), None),
+            RemindTarget::Event(id) => (None, Some(self.event(id)?.id)),
+        };
+        let existing: Vec<Id> = {
+            let mut stmt = self.conn().prepare(
+                "SELECT id FROM reminder WHERE offset_min IS NOT NULL AND task_id IS ?1 AND event_id IS ?2",
+            )?;
+            stmt.query_map(params![task, event], |r| r.get(0))?
+                .collect::<rusqlite::Result<_>>()?
+        };
+        self.transact("Change reminder", |tx| {
+            for id in &existing {
+                tx.delete(Table::Reminder, &[(*id).into()])?;
+            }
+            if let Some(m) = minutes {
+                tx.insert(
+                    Table::Reminder,
+                    &[
+                        ("id", Id::new().into()),
+                        ("task_id", opt_id(task)),
+                        ("event_id", opt_id(event)),
+                        ("offset_min", int(m)),
+                    ],
+                )?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Shows a reminder again at `until` (Unix ms). `key` is a notification's
+    /// key: a task's, a meeting's, or a snoozed one's. Not an undo step.
+    pub fn snooze(&mut self, key: &str, until: i64) -> Result<()> {
+        let target = match key.split(':').collect::<Vec<_>>().as_slice() {
+            ["task", id, ..] => {
+                RemindTarget::Task(id.parse().map_err(|_| invalid("bad reminder"))?)
+            }
+            ["ev", id, ..] => RemindTarget::Event(id.parse().map_err(|_| invalid("bad reminder"))?),
+            ["snooze", id] => {
+                let row: Id = id.parse().map_err(|_| invalid("bad reminder"))?;
+                self.conn()
+                    .query_row(
+                        "SELECT task_id, event_id FROM reminder WHERE id = ?1",
+                        [row],
+                        |r| Ok((r.get::<_, Option<Id>>(0)?, r.get::<_, Option<Id>>(1)?)),
+                    )
+                    .optional()?
+                    .and_then(|(t, e)| t.map(RemindTarget::Task).or(e.map(RemindTarget::Event)))
+                    .ok_or_else(|| invalid("that reminder is gone"))?
+            }
+            _ => return Err(invalid("only task and meeting reminders can be snoozed")),
+        };
+        self.snooze_target(target, until)
+    }
+
+    /// Shows a task's or meeting's reminder (again) at `until`.
+    pub fn snooze_target(&mut self, target: RemindTarget, until: i64) -> Result<()> {
+        let (task, event) = match target {
+            RemindTarget::Task(id) => (Some(self.task(id)?.id), None),
+            RemindTarget::Event(id) => (None, Some(self.event(id)?.id)),
+        };
+        self.transact_system(|tx| {
+            tx.insert(
+                Table::Reminder,
+                &[
+                    ("id", Id::new().into()),
+                    ("task_id", opt_id(task)),
+                    ("event_id", opt_id(event)),
+                    ("at", int(until)),
+                ],
+            )
+        })
+    }
+
+    /// Own leads of tasks and meetings (minutes), keyed by id.
+    pub(crate) fn own_leads(&self) -> Result<(HashMap<Id, i64>, HashMap<Id, i64>)> {
+        let mut stmt = self.conn().prepare(
+            "SELECT task_id, event_id, offset_min FROM reminder WHERE offset_min IS NOT NULL",
+        )?;
+        let (mut tasks, mut events) = (HashMap::new(), HashMap::new());
+        for row in stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, Option<Id>>(0)?,
+                r.get::<_, Option<Id>>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })? {
+            match row? {
+                (Some(t), _, m) => {
+                    tasks.insert(t, m);
+                }
+                (None, Some(e), m) => {
+                    events.insert(e, m);
+                }
+                _ => {}
+            }
+        }
+        Ok((tasks, events))
+    }
+
     /// Reminders that are due at `now` and haven't fired yet.
     pub fn pending_notifications(&self, now: i64) -> Result<Vec<Notification>> {
         let s = self.notify_settings()?;
@@ -230,13 +370,24 @@ impl Db {
         let today = jiff::Timestamp::from_millisecond(now)
             .map(|t| t.to_zoned(tz.clone()).date())
             .map_err(|e| invalid(e.to_string()))?;
+        let (task_leads, event_leads) = self.own_leads()?;
 
         // Meetings: from `lead` before the start until 5 minutes after it.
-        let lead = s.meeting_lead_min * MINUTE;
-        for o in self.occurrences(now - 10 * MINUTE, now + lead + MINUTE)? {
+        let longest = event_leads
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .max(s.meeting_lead_min);
+        for o in self.occurrences(now - 10 * MINUTE, now + longest * MINUTE + MINUTE)? {
             if o.kind != EventKind::Meeting || o.status == EventStatus::Cancelled || o.all_day {
                 continue;
             }
+            let lead = event_leads
+                .get(&o.event_id)
+                .copied()
+                .unwrap_or(s.meeting_lead_min)
+                * MINUTE;
             if now < o.start_at - lead || now > o.start_at + 5 * MINUTE {
                 continue;
             }
@@ -276,10 +427,16 @@ impl Db {
                 .map(|t| t.to_zoned(tz.clone()).date())
                 .map_err(|e| invalid(e.to_string()))
         };
+        let longest = task_leads
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(0)
+            .max(s.task_lead_min);
         let page = self.list_tasks(&TaskQuery {
             categories: vec![Category::Todo, Category::Active],
             due_from: Some(day_of(now - 60 * MINUTE)?.to_string()),
-            due_to: Some(day_of(now + s.task_lead_min * MINUTE)?.to_string()),
+            due_to: Some(day_of(now + longest * MINUTE)?.to_string()),
             limit: 500,
             ..Default::default()
         })?;
@@ -293,7 +450,8 @@ impl Db {
             let Some(due) = local_ms(date, time) else {
                 continue;
             };
-            if now < due - s.task_lead_min * MINUTE || now > due + 60 * MINUTE {
+            let lead = task_leads.get(&t.id).copied().unwrap_or(s.task_lead_min);
+            if now < due - lead * MINUTE || now > due + 60 * MINUTE {
                 continue;
             }
             let key = format!(
@@ -319,6 +477,58 @@ impl Db {
                 task_id: Some(t.id),
                 event_id: None,
             });
+        }
+
+        // Snoozed reminders, once their time comes (within a day).
+        let snoozed: Vec<(Id, Option<Id>, Option<Id>, i64)> = {
+            let mut stmt = self.conn().prepare(
+                "SELECT id, task_id, event_id, at FROM reminder
+                  WHERE at IS NOT NULL AND at <= ?1 AND at > ?2",
+            )?;
+            stmt.query_map(params![now, now - 24 * 60 * MINUTE], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })?
+            .collect::<rusqlite::Result<_>>()?
+        };
+        for (id, task, event, at) in snoozed {
+            let key = format!("snooze:{id}");
+            if self.already_fired(&key)? {
+                continue;
+            }
+            if let Some(task) = task {
+                // Only while the task is still open and not deleted.
+                let Ok(t) = self.task(task) else { continue };
+                if t.completed_at.is_some() || t.archived_at.is_some() {
+                    continue;
+                }
+                let due = match (&t.due_date, &t.due_time) {
+                    (Some(d), Some(time)) => format!(" · due {d} {time}"),
+                    (Some(d), None) => format!(" · due {d}"),
+                    _ => String::new(),
+                };
+                out.push(Notification {
+                    key,
+                    kind: NotificationKind::Task,
+                    title: format!("Reminder: {}", t.title),
+                    body: format!("Snoozed{due}"),
+                    at,
+                    url: None,
+                    task_id: Some(t.id),
+                    event_id: None,
+                });
+            } else if let Some(event) = event {
+                let Ok(e) = self.event(event) else { continue };
+                out.push(Notification {
+                    key,
+                    kind: NotificationKind::Meeting,
+                    title: format!("Reminder: {}", e.title),
+                    body: "Snoozed".into(),
+                    at,
+                    url: (!e.meeting_url.is_empty()).then(|| e.meeting_url.clone()),
+                    task_id: None,
+                    event_id: Some(e.id),
+                });
+            }
         }
 
         // Morning digest, within four hours of the chosen time.

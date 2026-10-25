@@ -55,6 +55,14 @@ pub(crate) const INT: &str = r#"{"type":["integer","null"]}"#;
 pub(crate) const TAGS: &str = r#"{"type":"array","items":{"type":"string"}}"#;
 pub(crate) const NULLABLE_ID: &str = r#"{"type":["string","null"]}"#;
 pub(crate) const NULLABLE_STR: &str = r#"{"type":["string","null"]}"#;
+pub(crate) const REMIND: &str = r#"{"type":["integer","null"],"description":"Remind this many minutes before (0 = at the time, up to 10080 = a week); null = use the app's setting"}"#;
+
+/// A task's or meeting's own reminder lead, when the arguments set one
+/// (`Some(None)` clears it).
+pub(crate) fn remind_arg(args: &Args) -> Option<Option<i64>> {
+    args.get("remind_before_min").map(Value::as_i64)
+}
+
 pub(crate) const STATUS_NAME: &str = r#"{"type":"string","description":"Column name in the task's project, any case (e.g. \"In Progress\"); see get_overview or list_statuses"}"#;
 
 /// Every tool, by area, in the order `tools/list` shows them.

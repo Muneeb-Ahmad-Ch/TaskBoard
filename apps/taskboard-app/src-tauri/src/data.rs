@@ -80,6 +80,17 @@ pub async fn export_data(state: State<'_, AppState>, kind: String, path: String)
     write_atomic(Path::new(&path), &contents)
 }
 
+/// The list on screen (its scope, filters and sort) as CSV.
+#[tauri::command]
+pub async fn export_list_csv(
+    state: State<'_, AppState>,
+    query: TaskQuery,
+    path: String,
+) -> CmdResult<()> {
+    let contents = read(state, move |db| db.export_tasks_csv(&query)).await?;
+    write_atomic(Path::new(&path), &contents)
+}
+
 /// Imports a file; a `pre-import` backup is taken first.
 #[tauri::command]
 pub async fn import_data(

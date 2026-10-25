@@ -322,3 +322,24 @@ fn a_backup_from_a_newer_version_is_refused_before_anything_changes() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].title, "Mine");
 }
+
+#[test]
+fn quick_add_understands_remind_me_to() {
+    let db = Db::open_in_memory().unwrap();
+    let day = jiff::civil::date(2031, 1, 6);
+    let p = db
+        .preview_quick_add("remind me to pay rent every month 9am", day)
+        .unwrap();
+    assert_eq!(p.parsed.title, "Pay rent");
+    assert_eq!(p.parsed.due_time.as_deref(), Some("09:00"));
+    assert!(p.parsed.recurrence_rule.is_some());
+    let q = db
+        .preview_quick_add("Remind me call Ann tomorrow", day)
+        .unwrap();
+    assert_eq!(q.parsed.title, "Call Ann");
+    // Only at the start.
+    let r = db
+        .preview_quick_add("Ask Bob to remind me to sign", day)
+        .unwrap();
+    assert_eq!(r.parsed.title, "Ask Bob to remind me to sign");
+}

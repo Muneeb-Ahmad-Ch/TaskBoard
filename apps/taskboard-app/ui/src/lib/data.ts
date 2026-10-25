@@ -3,6 +3,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import { isoDate } from './format'
 import { errorMessage, ipc } from './ipc'
 import { toast } from './toast.svelte'
+import type { TaskQuery } from './bindings/TaskQuery'
 
 export type DataKind = 'json' | 'csv' | 'ics'
 
@@ -22,6 +23,20 @@ export async function exportTo(kind: DataKind) {
   if (!path) return
   try {
     await ipc.exportData(kind, path)
+    toast(`Exported to ${path.split(/[\\/]/).pop()}`)
+  } catch (err) {
+    toast(errorMessage(err), { kind: 'error' })
+  }
+}
+
+/** The list on screen (scope, filters, sort) as a spreadsheet file. */
+export async function exportList(query: TaskQuery, name: string) {
+  const safe = name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'tasks'
+  const path = await save({ defaultPath: `${safe} ${isoDate(new Date())}.csv`, filters: [FILTERS.csv] })
+  if (!path) return
+  try {
+    // Every row of the list, not just the loaded pages.
+    await ipc.exportListCsv({ ...query, offset: 0, limit: 0 }, path)
     toast(`Exported to ${path.split(/[\\/]/).pop()}`)
   } catch (err) {
     toast(errorMessage(err), { kind: 'error' })

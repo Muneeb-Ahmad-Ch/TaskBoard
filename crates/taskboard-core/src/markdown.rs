@@ -1,9 +1,9 @@
 //! Markdown for task, meeting and client notes, rendered and sanitized in core
 //! so the webview only ever receives safe HTML (SPEC §2, §3 security).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use pulldown_cmark::{Event, Options, Parser, html};
+use pulldown_cmark::{Event, Options, Parser, Tag, html};
 
 /// Notes larger than this are shown as plain text instead (keeps rendering cheap).
 const MAX_RENDER_BYTES: usize = 256 * 1024;
@@ -20,9 +20,35 @@ pub fn render_markdown(source: &str) -> String {
     }
     let options =
         Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
-    let events = Parser::new_ext(source, options).map(|event| match event {
-        // Show raw HTML as typed rather than interpreting it.
-        Event::Html(raw) | Event::InlineHtml(raw) => Event::Text(raw),
+    let mut events: Vec<Event<'_>> = Parser::new_ext(source, options)
+        .map(|event| match event {
+            // Show raw HTML as typed rather than interpreting it.
+            Event::Html(raw) | Event::InlineHtml(raw) => Event::Text(raw),
+            other => other,
+        })
+        .collect();
+    // A task-list item opens as `<li class="task">` (or "task done") so the
+    // page can show its box instead of a bullet; the box itself is a symbol.
+    for i in 0..events.len() {
+        let done = match events.get(i + 1) {
+            Some(Event::TaskListMarker(done)) => *done,
+            _ => continue,
+        };
+        if let Some(start @ Event::Start(Tag::Item)) = events.get_mut(i) {
+            *start = Event::Html(
+                if done {
+                    r#"<li class="task done">"#
+                } else {
+                    r#"<li class="task">"#
+                }
+                .into(),
+            );
+        }
+        if let Some(marker) = events.get_mut(i + 1) {
+            *marker = Event::Text(if done { "☑ " } else { "☐ " }.into());
+        }
+    }
+    let events = events.into_iter().map(|event| match event {
         Event::TaskListMarker(done) => Event::Text(if done { "☑ " } else { "☐ " }.into()),
         other => other,
     });
@@ -33,6 +59,8 @@ pub fn render_markdown(source: &str) -> String {
     tags.remove("img");
     ammonia::Builder::default()
         .tags(tags)
+        // Only the two classes made above survive; any typed class is dropped.
+        .allowed_classes(HashMap::from([("li", HashSet::from(["task", "done"]))]))
         .url_schemes(HashSet::from(["http", "https", "mailto"]))
         .link_rel(Some("noopener noreferrer"))
         .clean(&unsafe_html)
@@ -62,6 +90,17 @@ mod tests {
             "{html}"
         );
         assert!(!html.contains("<input"), "{html}");
+    }
+
+    #[test]
+    fn task_list_items_are_marked_so_they_show_without_a_bullet() {
+        let html = render_markdown("- [ ] draft\n- [x] send\n- plain");
+        assert!(html.contains(r#"<li class="task">☐ draft"#), "{html}");
+        assert!(html.contains(r#"<li class="task done">☑ send"#), "{html}");
+        assert!(html.contains("<li>plain"), "{html}");
+        // Classes from the source never get through.
+        let typed = render_markdown(r#"<li class="evil task">x</li>"#);
+        assert!(!typed.contains("<li class"), "{typed}");
     }
 
     #[test]

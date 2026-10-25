@@ -245,6 +245,7 @@ impl Db {
             q.kinds.clone()
         };
         let s = self.notify_settings()?;
+        let (task_leads, event_leads) = self.own_leads()?;
         let mut items = Vec::new();
 
         if kinds.contains(&ReminderKind::Task) {
@@ -255,8 +256,9 @@ impl Db {
                 let mut push = |date: Date, projected: bool| {
                     let at = local_ms(date, t.time.unwrap_or(Time::midnight())).unwrap_or(now);
                     // An overdue one has passed; its repeats will still remind.
+                    let lead = task_leads.get(&t.id).copied().unwrap_or(s.task_lead_min);
                     let remind_at = (s.enabled && !(overdue && !projected) && t.time.is_some())
-                        .then(|| at - s.task_lead_min * MINUTE);
+                        .then(|| at - lead * MINUTE);
                     items.push(ReminderItem {
                         kind: ReminderKind::Task,
                         key: format!("task:{}:{date}", t.id),
@@ -332,8 +334,12 @@ impl Db {
                 let starts = jiff::Timestamp::from_millisecond(o.start_at)
                     .map(|t| t.to_zoned(tz.clone()))
                     .map_err(|e| invalid(e.to_string()))?;
+                let lead = event_leads
+                    .get(&o.event_id)
+                    .copied()
+                    .unwrap_or(s.meeting_lead_min);
                 let remind_at = (s.enabled && kind == ReminderKind::Meeting && !o.all_day)
-                    .then(|| o.start_at - s.meeting_lead_min * MINUTE);
+                    .then(|| o.start_at - lead * MINUTE);
                 items.push(ReminderItem {
                     kind,
                     key: format!("ev:{}:{}", o.event_id, o.original_start),
@@ -402,16 +408,21 @@ impl Db {
         let today = jiff::Timestamp::from_millisecond(now)
             .map(|t| t.to_zoned(tz.clone()).date())
             .map_err(|e| invalid(e.to_string()))?;
+        let (task_leads, event_leads) = self.own_leads()?;
         let mut stmt = self.conn().prepare(
-            "SELECT t.due_time FROM task t
+            "SELECT t.id, t.due_time FROM task t
                JOIN project p ON p.id = t.project_id
               WHERE t.deleted_at IS NULL AND t.archived_at IS NULL AND t.completed_at IS NULL
                 AND p.archived_at IS NULL AND t.due_date = ?1 AND t.due_time IS NOT NULL",
         )?;
         let mut left = 0;
-        for time in stmt.query_map([today.to_string()], |r| r.get::<_, String>(0))? {
-            if let Ok(time) = time?.parse::<Time>()
-                && local_ms(today, time).is_some_and(|at| at - s.task_lead_min * MINUTE > now)
+        for row in stmt.query_map([today.to_string()], |r| {
+            Ok((r.get::<_, Id>(0)?, r.get::<_, String>(1)?))
+        })? {
+            let (id, time) = row?;
+            let lead = task_leads.get(&id).copied().unwrap_or(s.task_lead_min);
+            if let Ok(time) = time.parse::<Time>()
+                && local_ms(today, time).is_some_and(|at| at - lead * MINUTE > now)
             {
                 left += 1;
             }
@@ -426,7 +437,13 @@ impl Db {
                     o.kind == EventKind::Meeting
                         && o.status != EventStatus::Cancelled
                         && !o.all_day
-                        && o.start_at - s.meeting_lead_min * MINUTE > now
+                        && o.start_at
+                            - event_leads
+                                .get(&o.event_id)
+                                .copied()
+                                .unwrap_or(s.meeting_lead_min)
+                                * MINUTE
+                            > now
                 })
                 .count();
         }

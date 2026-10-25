@@ -1,5 +1,6 @@
 //! Taskboard core: domain model, storage, queries. No UI code.
 
+mod action_items;
 pub mod backup;
 mod clients;
 pub mod clock;
@@ -32,6 +33,7 @@ pub mod tx;
 pub mod upcoming;
 pub mod views;
 
+pub use action_items::NotesToTasks;
 pub use backup::BackupInfo;
 pub use columns::DefaultColumn;
 pub use dashboard::{ClientSummary, Dashboard, DayCount, ProjectProgress};
@@ -42,7 +44,9 @@ pub use events::{
 pub use exchange::ImportReport;
 pub use id::Id;
 pub use model::*;
-pub use notify::{AppSettings, DisplaySettings, Notification, NotificationKind, NotifySettings};
+pub use notify::{
+    AppSettings, DisplaySettings, Notification, NotificationKind, NotifySettings, RemindTarget,
+};
 pub use planning::{
     ClientHours, DayOverride, DayPlan, FindSlots, Interval, LoggedTime, NewTimeEntry, OverrideKind,
     Slot, SlotDay, SlotResult, TimeEntryPatch, WorkingDay,

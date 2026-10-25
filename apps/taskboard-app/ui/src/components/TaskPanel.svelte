@@ -30,6 +30,31 @@
   /** Progress as the core computes it (derived from subtasks when present). */
   let computed = $state(0)
   let slider = $state(0)
+  /** The task's own reminder lead (null = the app's setting) and that setting. */
+  let lead = $state<number | null>(null)
+  let defaultLead = $state(0)
+  const LEADS: { value: number; label: string }[] = [
+    { value: 0, label: 'At the time' },
+    { value: 5, label: '5 minutes before' },
+    { value: 10, label: '10 minutes before' },
+    { value: 15, label: '15 minutes before' },
+    { value: 30, label: '30 minutes before' },
+    { value: 60, label: '1 hour before' },
+    { value: 120, label: '2 hours before' },
+    { value: 1440, label: '1 day before' },
+  ]
+  const leadText = (m: number) => LEADS.find((l) => l.value === m)?.label.toLowerCase() ?? `${m} minutes before`
+
+  async function saveLead(value: string) {
+    if (!task) return
+    const minutes = value === '' ? null : Number(value)
+    try {
+      await ipc.setReminderLead({ kind: 'task', id: task.id }, minutes)
+      lead = minutes
+    } catch (err) {
+      toast(errorMessage(err), { kind: 'error' })
+    }
+  }
 
   // Load (and reload on any data change) the open task.
   $effect(() => {
@@ -43,14 +68,18 @@
     ;(async () => {
       try {
         const t = await ipc.getTask(id)
-        const [st, subs, self, up] = await Promise.all([
+        const [st, subs, self, up, own, settings] = await Promise.all([
           ipc.listStatuses(t.project_id),
           ipc.listTasks({ parent_id: id, sort: 'manual', limit: 500 }),
           ipc.listTasks({ id, include_archived: true, limit: 1 }),
           t.parent_id ? ipc.getTask(t.parent_id).catch(() => null) : Promise.resolve(null),
+          ipc.reminderLead({ kind: 'task', id }).catch(() => null),
+          ipc.notifySettings().catch(() => null),
         ])
         if (cancelled) return
         task = t
+        lead = own
+        defaultLead = settings?.task_lead_min ?? 0
         parent = up
         statuses = st
         subtasks = subs.rows
@@ -287,6 +316,17 @@
             <DateField kind="time" label="Due time" placeholder="Add time" value={task.due_time} onchange={(v) => void save({ due_time: v })} />
           {/if}
         </dd>
+
+        {#if task.due_date && task.due_time}
+        <dt>Remind</dt>
+        <dd>
+          <select class="prop-input" aria-label="Remind" value={lead === null ? '' : String(lead)} onchange={(e) => void saveLead(e.currentTarget.value)}>
+            <option value="">As in Settings ({leadText(defaultLead)})</option>
+            {#each LEADS as l (l.value)}<option value={String(l.value)}>{l.label}</option>{/each}
+            {#if lead !== null && !LEADS.some((l) => l.value === lead)}<option value={String(lead)}>{leadText(lead)}</option>{/if}
+          </select>
+        </dd>
+        {/if}
 
         {#if !task.parent_id || task.recurrence_rule}
         <dt>Repeat</dt>

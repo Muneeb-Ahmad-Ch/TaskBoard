@@ -1054,3 +1054,84 @@ fn json_rpc_batches_get_one_answer_per_request() {
         .collect();
     assert_eq!(ids, [5, 6]);
 }
+
+#[test]
+fn own_reminder_times_snooze_and_action_items() {
+    let mut s = server();
+    let p = project(&mut s, "Home");
+    let t = ok(
+        &mut s,
+        "add_task",
+        json!({ "text": "Dentist", "project_id": p, "due_date": "2031-05-06", "due_time": "15:00", "remind_before_min": 30 }),
+    );
+    assert_eq!(t["remind_before_min"], 30);
+    let id_t = id(&t);
+    let u = ok(
+        &mut s,
+        "update_task",
+        json!({ "id": id_t, "remind_before_min": 60 }),
+    );
+    assert_eq!(u["remind_before_min"], 60);
+    let cleared = ok(
+        &mut s,
+        "update_task",
+        json!({ "id": id_t, "remind_before_min": null }),
+    );
+    assert!(cleared["remind_before_min"].is_null());
+    assert!(
+        err(
+            &mut s,
+            "update_task",
+            json!({ "id": id_t, "remind_before_min": 99999 })
+        )
+        .contains("week")
+    );
+    let e = ok(
+        &mut s,
+        "add_event",
+        json!({ "kind": "meeting", "title": "Kickoff", "project_id": p, "start": "2031-05-07T10:00", "end": "2031-05-07T11:00", "remind_before_min": 45, "notes_md": "- [ ] Send quote\n- [ ] Book venue" }),
+    );
+    assert_eq!(e["remind_before_min"], 45);
+    let eid = id(&e);
+    assert_eq!(
+        ok(&mut s, "get_event", json!({ "id": eid }))["remind_before_min"],
+        45
+    );
+    // Snooze by task or meeting.
+    ok(
+        &mut s,
+        "snooze_reminder",
+        json!({ "task_id": id_t, "until": "2031-05-06T14:00" }),
+    );
+    assert!(
+        err(
+            &mut s,
+            "snooze_reminder",
+            json!({ "until": "2031-05-06T14:00" })
+        )
+        .contains("task_id")
+    );
+    // Action items become tasks once.
+    let made = ok(
+        &mut s,
+        "tasks_from_meeting_notes",
+        json!({ "event_id": eid }),
+    );
+    assert_eq!(made["created"], 2);
+    assert_eq!(
+        ok(
+            &mut s,
+            "tasks_from_meeting_notes",
+            json!({ "event_id": eid })
+        )["created"],
+        0
+    );
+    assert_eq!(
+        ok(
+            &mut s,
+            "list_tasks",
+            json!({ "project_id": p, "search": "venue" })
+        )["total"],
+        1
+    );
+}

@@ -7,6 +7,8 @@ import type { BackupInfo } from './bindings/BackupInfo'
 import type { ImportReport } from './bindings/ImportReport'
 import type { Dashboard } from './bindings/Dashboard'
 import type { ReminderQuery } from './bindings/ReminderQuery'
+import type { RemindTarget } from './bindings/RemindTarget'
+import type { NotesToTasks } from './bindings/NotesToTasks'
 import type { RepeatingItem } from './bindings/RepeatingItem'
 import type { UpcomingReminders } from './bindings/UpcomingReminders'
 import type { Notification } from './bindings/Notification'
@@ -138,6 +140,14 @@ export const ipc = {
   repeating: () => invoke<RepeatingItem[]>('repeating'),
   /** Reminders still to fire today (the sidebar badge). */
   remindersLeftToday: () => invoke<number>('reminders_left_today'),
+  /** A task's or meeting's own reminder lead in minutes (null = the app's setting). */
+  reminderLead: (target: RemindTarget) => invoke<number | null>('reminder_lead', { target }),
+  setReminderLead: (target: RemindTarget, minutes: number | null) => invoke<void>('set_reminder_lead', { target, minutes }),
+  /** Show a reminder again at `until` (Unix ms). */
+  snoozeReminder: (key: string, until: number) => invoke<void>('snooze_reminder', { key, until }),
+  /** `- [ ]` action items in notes become tasks; returns the marked notes. */
+  tasksFromNotes: (notes: string, projectId: Id | null) => invoke<NotesToTasks>('tasks_from_notes', { notes, projectId }),
+  exportListCsv: (query: TaskQuery, path: string) => invoke<void>('export_list_csv', { query, path }),
   /** Notes written for one occurrence of a series (null: it uses the series' notes). */
   occurrenceNotes: (id: Id, originalStart: number) => invoke<string | null>('occurrence_notes', { id, originalStart }),
   createStatus: (input: NewStatus) => invoke<Status>('create_status', { input }),

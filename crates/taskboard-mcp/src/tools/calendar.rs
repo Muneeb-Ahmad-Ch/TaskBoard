@@ -6,13 +6,13 @@ use jiff::ToSpan;
 use serde_json::{Value, json};
 use taskboard_core::{
     DayOverride, Db, EventKind, EventPatch, FindSlots, Interval, NewEvent, OccurrencePatch,
-    OverrideKind, ReminderKind, ReminderQuery, WorkingDay,
+    OverrideKind, RemindTarget, ReminderKind, ReminderQuery, WorkingDay,
 };
 
 use super::{
-    Args, BOOL, DAY, EVENT_WHEN, ID, NULLABLE_ID, NULLABLE_STR, RANGE_FROM, RANGE_TO, STR, Tool,
-    ToolResult, day_start, err, from_args, hm, id_arg, iso, opt_id, parse_date, parse_when,
-    str_arg, window, without,
+    Args, BOOL, DAY, EVENT_WHEN, ID, NULLABLE_ID, NULLABLE_STR, RANGE_FROM, RANGE_TO, REMIND, STR,
+    Tool, ToolResult, WHEN, day_start, err, from_args, hm, id_arg, iso, opt_id, parse_date,
+    parse_when, remind_arg, str_arg, window, without,
 };
 use taskboard_core::Id;
 
@@ -93,6 +93,7 @@ pub(super) const TOOLS: &[Tool] = &[
                 r#"{"type":"string","description":"RRULE, e.g. FREQ=WEEKLY;BYDAY=TU"}"#,
                 false,
             ),
+            ("remind_before_min", REMIND, false),
         ],
     },
     Tool {
@@ -153,6 +154,7 @@ pub(super) const TOOLS: &[Tool] = &[
             ("counts_as_time", BOOL, false),
             ("flexible", BOOL, false),
             ("recurrence_rule", NULLABLE_STR, false),
+            ("remind_before_min", REMIND, false),
         ],
     },
     Tool {
@@ -264,6 +266,27 @@ pub(super) const TOOLS: &[Tool] = &[
         ],
     },
     Tool {
+        name: "snooze_reminder",
+        description: "Shows a task's or meeting's reminder (again) at a later time, like Snooze on the app's banner; not an undo step.",
+        fields: &[
+            ("task_id", ID, false),
+            ("event_id", ID, false),
+            ("until", WHEN, true),
+        ],
+    },
+    Tool {
+        name: "tasks_from_meeting_notes",
+        description: "Makes a task of each unchecked \"- [ ] ...\" action item in a meeting's notes (in the meeting's project, else the Inbox), one undo step, and marks each line \"(added as a task)\" so it isn't added twice. With occurrence_start, uses that occurrence's own notes.",
+        fields: &[
+            ("event_id", ID, true),
+            (
+                "occurrence_start",
+                r#"{"type":"string","description":"occurrence_start from list_events, for one occurrence's own notes"}"#,
+                false,
+            ),
+        ],
+    },
+    Tool {
         name: "list_repeating",
         description: "Every repeating task, meeting series and time-block series, soonest next date first, with its rule in words. To stop a task repeating: update_task with recurrence_rule null.",
         fields: &[(
@@ -284,7 +307,8 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
         "list_events" => list_events(db, args),
         "get_event" => {
             let id = id_arg(args, "id")?;
-            let mut v = event_json(&db.event(id).map_err(err)?)?;
+            let e = db.event(id).map_err(err)?;
+            let mut v = event_json(db, &e)?;
             if let Some(s) = str_arg(args, "occurrence_start") {
                 let original = parse_when("occurrence_start", s)?;
                 let notes = db.occurrence_notes(id, original).map_err(err)?;
@@ -293,11 +317,16 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
             Ok(v)
         }
         "add_event" => {
-            let input: NewEvent = from_args(with_times(args.clone(), Times::Add)?)?;
+            let input: NewEvent = from_args(with_times(
+                without(args, &["remind_before_min"]),
+                Times::Add,
+            )?)?;
             if input.kind == EventKind::Meeting && input.title.trim().is_empty() {
                 return Err("title must not be empty".to_owned());
             }
-            event_json(&db.create_event(input).map_err(err)?)
+            let e = db.create_event(input).map_err(err)?;
+            apply_event_lead(db, e.id, args)?;
+            event_json(db, &e)
         }
         "schedule_task" => schedule_task(db, args),
         "update_event" => update_event(db, args),
@@ -341,6 +370,25 @@ pub(super) fn call(db: &mut Db, name: &str, args: &Args) -> ToolResult {
         }
         "find_slots" => find_slots(db, args),
         "list_reminders" => list_reminders(db, args),
+        "snooze_reminder" => {
+            let until = parse_when("until", str_arg(args, "until").unwrap_or(""))?;
+            let target = match (opt_id(args, "task_id")?, opt_id(args, "event_id")?) {
+                (Some(t), None) => RemindTarget::Task(t),
+                (None, Some(e)) => RemindTarget::Event(e),
+                _ => return Err("give task_id or event_id (one of them)".to_owned()),
+            };
+            db.snooze_target(target, until).map_err(err)?;
+            Ok(json!({ "snoozed_until": iso(until) }))
+        }
+        "tasks_from_meeting_notes" => {
+            let id = id_arg(args, "event_id")?;
+            let original = match str_arg(args, "occurrence_start") {
+                Some(s) => Some(parse_when("occurrence_start", s)?),
+                None => None,
+            };
+            let created = db.tasks_from_event_notes(id, original).map_err(err)?;
+            Ok(json!({ "created": created }))
+        }
         "list_repeating" => list_repeating(db, args),
         "get_day_plans" => {
             let (from, to) = date_range(args, 62)?;
@@ -420,13 +468,24 @@ fn list_repeating(db: &mut Db, args: &Args) -> ToolResult {
     }))
 }
 
-fn event_json(e: &taskboard_core::Event) -> ToolResult {
+fn event_json(db: &Db, e: &taskboard_core::Event) -> ToolResult {
     let mut v = serde_json::to_value(e).map_err(|x| x.to_string())?;
+    let lead = db.reminder_lead(RemindTarget::Event(e.id)).map_err(err)?;
     if let Value::Object(m) = &mut v {
         m.insert("start".into(), json!(e.start_at.map(iso)));
         m.insert("end".into(), json!(e.end_at.map(iso)));
+        m.insert("remind_before_min".into(), json!(lead));
     }
     Ok(v)
+}
+
+/// Applies `remind_before_min` from the arguments to an event, if given.
+fn apply_event_lead(db: &mut Db, id: Id, args: &Args) -> Result<(), String> {
+    if let Some(lead) = remind_arg(args) {
+        db.set_reminder_lead(RemindTarget::Event(id), lead)
+            .map_err(err)?;
+    }
+    Ok(())
 }
 
 fn list_events(db: &mut Db, args: &Args) -> ToolResult {
@@ -591,7 +650,8 @@ fn schedule_task(db: &mut Db, args: &Args) -> ToolResult {
         ),
     );
     let event: NewEvent = from_args(input)?;
-    event_json(&db.create_event(event).map_err(err)?)
+    let e = db.create_event(event).map_err(err)?;
+    event_json(db, &e)
 }
 
 fn update_event(db: &mut Db, args: &Args) -> ToolResult {
@@ -607,10 +667,19 @@ fn update_event(db: &mut Db, args: &Args) -> ToolResult {
             if args.contains_key("cancelled") || args.contains_key("occurrence_start") {
                 return Err("cancelled / occurrence_start apply to scope occurrence; for the whole series use status".to_owned());
             }
-            let mut changes = with_times(without(args, &["id", "scope"]), Times::Change)?;
+            let mut changes = with_times(
+                without(args, &["id", "scope", "remind_before_min"]),
+                Times::Change,
+            )?;
             keep_length(db, id, &mut changes)?;
-            let patch: EventPatch = from_args(changes)?;
-            event_json(&db.update_event(id, patch).map_err(err)?)
+            apply_event_lead(db, id, args)?;
+            let e = if changes.is_empty() {
+                db.event(id).map_err(err)?
+            } else {
+                let patch: EventPatch = from_args(changes)?;
+                db.update_event(id, patch).map_err(err)?
+            };
+            event_json(db, &e)
         }
         "occurrence" => {
             let original = occurrence()?;
@@ -653,12 +722,17 @@ fn update_event(db: &mut Db, args: &Args) -> ToolResult {
                 );
             }
             let mut changes = with_times(
-                without(args, &["id", "scope", "occurrence_start"]),
+                without(
+                    args,
+                    &["id", "scope", "occurrence_start", "remind_before_min"],
+                ),
                 Times::Change,
             )?;
             keep_length(db, id, &mut changes)?;
             let patch: EventPatch = from_args(changes)?;
-            event_json(&db.split_series(id, original, patch).map_err(err)?)
+            let e = db.split_series(id, original, patch).map_err(err)?;
+            apply_event_lead(db, e.id, args)?;
+            event_json(db, &e)
         }
         other => Err(format!(
             "scope must be series, occurrence or following, got {other:?}"

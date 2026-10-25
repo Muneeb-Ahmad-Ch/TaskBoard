@@ -1,6 +1,6 @@
 <script lang="ts">
   import { beginDrag } from '../lib/dnd.svelte'
-  import { Archive, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, CircleDashed, Columns3, Hourglass, Inbox, ListFilter, ListTodo, Repeat, Search, Star, Trash2, X } from '@lucide/svelte'
+  import { Archive, ArrowDown, ArrowUp, CalendarDays, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleDot, CircleDashed, Columns3, Download, Hourglass, Inbox, ListFilter, ListTodo, Repeat, Search, Star, Trash2, X } from '@lucide/svelte'
   import { untrack } from 'svelte'
   import { SvelteMap, SvelteSet } from 'svelte/reactivity'
   import type { Id } from '../lib/bindings/Id'
@@ -15,7 +15,8 @@
   import { addedLabel, addedTitle, dueLabel, isOverdue, isTyping, isoDate, minutes, parseMinutes, plural, swatch, todayIso } from '../lib/format'
   import { flattenGroups, groupRows, type GroupItem } from '../lib/grouping'
   import { errorMessage, inTauri, ipc } from '../lib/ipc'
-  import { act, app, archiveCompleted, clearFilter, listQuery, scopeProjectIds, sectionById } from '../lib/store.svelte'
+  import { act, app, archiveCompleted, clearFilter, listQuery, scopeProjectIds, scopeTitle, sectionById } from '../lib/store.svelte'
+  import { exportList } from '../lib/data'
   import { layout as viewLayout } from '../lib/layout.svelte'
   import { toast } from '../lib/toast.svelte'
   import Menu, { type MenuEntry } from './Menu.svelte'
@@ -1046,6 +1047,9 @@
       <button class="bulk ml-auto" onclick={() => selected.clear()}><X size={13} /> Clear</button>
     {:else if summary}
       <span class="tabular">{plural(summary.total, 'task')}</span>
+      {#if summary.total}
+        <button class="bulk" title="Save this list (with its filters and sort) as a spreadsheet file" onclick={() => void exportList(JSON.parse(queryKey), scopeTitle())}><Download size={13} /> Export</button>
+      {/if}
       {#if grouped && total > GROUP_CAP}
         <span class="text-subtle" title="Narrow the list with a filter or search to group the rest">· grouping the first {GROUP_CAP.toLocaleString()}</span>
       {/if}

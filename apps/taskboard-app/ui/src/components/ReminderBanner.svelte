@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { Bell, CalendarClock, ExternalLink, Sun, X } from '@lucide/svelte'
+  import { AlarmClock, Bell, CalendarClock, ExternalLink, Sun, X } from '@lucide/svelte'
   import type { Notification } from '../lib/bindings/Notification'
-  import { onReminders, openLink } from '../lib/ipc'
+  import { errorMessage, ipc, onReminders, openLink } from '../lib/ipc'
   import { app, setScope } from '../lib/store.svelte'
+  import { toast } from '../lib/toast.svelte'
+  import Menu, { type MenuEntry } from './Menu.svelte'
 
   // In-app copies of reminders (the Windows toast can't carry a Join button).
   let items = $state<Notification[]>([])
@@ -18,6 +20,38 @@
 
   function dismiss(key: string) {
     items = items.filter((n) => n.key !== key)
+  }
+
+  // ---------- snooze ----------
+  let menu = $state<{ x: number; y: number; items: MenuEntry[] } | null>(null)
+  const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+
+  async function snooze(n: Notification, until: number) {
+    try {
+      await ipc.snoozeReminder(n.key, until)
+      dismiss(n.key)
+      toast(`Snoozed until ${timeFmt.format(until)}${new Date(until).getDate() !== new Date().getDate() ? ' tomorrow' : ''}`)
+    } catch (err) {
+      toast(errorMessage(err), { kind: 'error' })
+    }
+  }
+
+  function snoozeMenu(e: MouseEvent, n: Notification) {
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    const now = Date.now()
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(9, 0, 0, 0)
+    menu = {
+      x: r.left,
+      y: r.top - 4 - 4 * 30,
+      items: [
+        { label: '10 minutes', run: () => void snooze(n, now + 10 * 60_000) },
+        { label: '30 minutes', run: () => void snooze(n, now + 30 * 60_000) },
+        { label: '1 hour', run: () => void snooze(n, now + 60 * 60_000) },
+        { label: 'Tomorrow at 9:00', run: () => void snooze(n, tomorrow.getTime()) },
+      ],
+    }
   }
 </script>
 
@@ -41,6 +75,8 @@
             {/if}
             {#if n.kind === 'digest'}
               <button class="act" onclick={() => { setScope({ kind: 'today' }); app.view = 'table'; dismiss(n.key) }}>Show today</button>
+            {:else}
+              <button class="act" aria-haspopup="menu" title="Remind me again later" onclick={(e) => snoozeMenu(e, n)}><AlarmClock size={13} /> Snooze</button>
             {/if}
           </div>
         </div>
@@ -48,6 +84,10 @@
       </div>
     {/each}
   </div>
+{/if}
+
+{#if menu}
+  <Menu x={menu.x} y={menu.y} items={menu.items} onclose={() => (menu = null)} />
 {/if}
 
 <style>

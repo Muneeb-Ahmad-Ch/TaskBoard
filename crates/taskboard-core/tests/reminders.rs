@@ -276,3 +276,115 @@ fn task_reminders_reach_across_midnight() {
         "{later:?}"
     );
 }
+
+fn due_task(db: &mut Db, title: &str, date: jiff::civil::Date, time: &str) -> Task {
+    let inbox = db.inbox_id().unwrap();
+    db.create_task(NewTask {
+        title: title.into(),
+        project_id: Some(inbox),
+        due_date: Some(date.to_string()),
+        due_time: Some(time.into()),
+        ..Default::default()
+    })
+    .unwrap()
+}
+
+fn titles(list: &[Notification]) -> Vec<String> {
+    list.iter().map(|n| n.title.clone()).collect()
+}
+
+#[test]
+fn a_task_can_remind_earlier_than_the_global_setting() {
+    let mut db = db();
+    no_digest(&mut db);
+    let day = jiff::civil::date(2031, 5, 6);
+    let early = due_task(&mut db, "Client call", day, "10:00");
+    due_task(&mut db, "Plain", day, "10:00");
+    db.set_reminder_lead(RemindTarget::Task(early.id), Some(60))
+        .unwrap();
+    assert_eq!(
+        db.reminder_lead(RemindTarget::Task(early.id)).unwrap(),
+        Some(60)
+    );
+    let at_905 = db.pending_notifications(local(day, 9, 5)).unwrap();
+    assert_eq!(titles(&at_905).len(), 1, "{at_905:?}");
+    assert!(at_905[0].title.ends_with("Client call"));
+    // Back to the global setting; one undo step brings the lead back.
+    db.set_reminder_lead(RemindTarget::Task(early.id), None)
+        .unwrap();
+    assert_eq!(
+        db.reminder_lead(RemindTarget::Task(early.id)).unwrap(),
+        None
+    );
+    db.undo().unwrap();
+    assert_eq!(
+        db.reminder_lead(RemindTarget::Task(early.id)).unwrap(),
+        Some(60)
+    );
+    assert!(
+        db.set_reminder_lead(RemindTarget::Task(early.id), Some(-5))
+            .is_err()
+    );
+    assert!(
+        db.set_reminder_lead(RemindTarget::Task(early.id), Some(99_999))
+            .is_err()
+    );
+}
+
+#[test]
+fn a_meeting_can_remind_earlier_than_the_global_setting() {
+    let mut db = db();
+    no_digest(&mut db);
+    let day = jiff::civil::date(2031, 5, 6);
+    let ev = db
+        .create_event(meeting("Across town", local(day, 10, 0), local(day, 11, 0)))
+        .unwrap();
+    db.set_reminder_lead(RemindTarget::Event(ev.id), Some(45))
+        .unwrap();
+    assert!(
+        db.pending_notifications(local(day, 9, 10))
+            .unwrap()
+            .is_empty()
+    );
+    let at_920 = db.pending_notifications(local(day, 9, 20)).unwrap();
+    assert_eq!(at_920.len(), 1, "{at_920:?}");
+}
+
+#[test]
+fn a_snoozed_reminder_comes_back_once_later() {
+    let mut db = db();
+    no_digest(&mut db);
+    let day = jiff::civil::date(2031, 5, 6);
+    due_task(&mut db, "Pay rent", day, "09:00");
+    let first = db.pending_notifications(local(day, 9, 0)).unwrap();
+    assert_eq!(first.len(), 1);
+    let keys: Vec<String> = first.iter().map(|n| n.key.clone()).collect();
+    db.mark_notified(&keys, local(day, 9, 0)).unwrap();
+    db.snooze(&keys[0], local(day, 9, 10)).unwrap();
+    assert!(
+        db.pending_notifications(local(day, 9, 5))
+            .unwrap()
+            .is_empty()
+    );
+    let again = db.pending_notifications(local(day, 9, 11)).unwrap();
+    assert_eq!(again.len(), 1, "{again:?}");
+    assert!(again[0].title.contains("Pay rent"));
+    assert_eq!(again[0].task_id, first[0].task_id);
+    let k: Vec<String> = again.iter().map(|n| n.key.clone()).collect();
+    db.mark_notified(&k, local(day, 9, 11)).unwrap();
+    assert!(
+        db.pending_notifications(local(day, 9, 12))
+            .unwrap()
+            .is_empty()
+    );
+    // Snoozing the snoozed one works too; a finished task doesn't come back.
+    db.snooze(&k[0], local(day, 9, 30)).unwrap();
+    let t = again[0].task_id.unwrap();
+    db.set_task_done(t, true).unwrap();
+    assert!(
+        db.pending_notifications(local(day, 9, 31))
+            .unwrap()
+            .is_empty()
+    );
+    assert!(db.snooze("digest:2031-05-06", local(day, 10, 0)).is_err());
+}

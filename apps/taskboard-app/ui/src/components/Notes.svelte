@@ -189,4 +189,14 @@
     border: 0;
     border-top: 1px solid var(--border);
   }
+  /* Checklist items show their box instead of a bullet; done ones fade. */
+  .md :global(li.task) {
+    list-style: none;
+    margin-left: -1.1em;
+  }
+  .md :global(li.task.done) {
+    color: var(--text-subtle);
+    text-decoration: line-through;
+    text-decoration-color: var(--border-strong);
+  }
 </style>

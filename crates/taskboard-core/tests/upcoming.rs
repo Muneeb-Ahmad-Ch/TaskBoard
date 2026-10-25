@@ -413,3 +413,13 @@ fn reminders_left_today_counts_only_what_will_still_fire() {
     let n = db.reminders_left_today(now).unwrap();
     assert_eq!(n, usize::from(late));
 }
+
+#[test]
+fn the_page_shows_a_task_s_own_reminder_time() {
+    let mut db = Db::open_in_memory().unwrap();
+    let t = task(&mut db, "Dentist", Some(day(1)), Some("15:00"), None);
+    db.set_reminder_lead(RemindTarget::Task(t.id), Some(30))
+        .unwrap();
+    let u = upcoming(&db, 7, vec![]);
+    assert_eq!(u.items[0].remind_at, Some(at(day(1), 15, 0) - 30 * MIN));
+}
