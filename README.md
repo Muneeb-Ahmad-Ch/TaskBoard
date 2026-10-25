@@ -74,7 +74,8 @@ needs permission (see [License](#license)).
 - **Reminders**: one page for everything that will remind you (tasks with
   a time, meetings) and every repeating task or series, with the coming
   dates of "every month" tasks shown ahead of time. New reminder makes one
-  in a few clicks: what, when, and how it repeats.
+  in a few clicks: what, when, and how it repeats. Any task or meeting can
+  remind at its own time, and a reminder can be snoozed.
 - **Meetings** with links, attendees, notes, reminders with a Join button,
   repeating series (edit one, this-and-following, or all), and optional
   "counts as work time". A Meetings page lists what's coming up (or past),
@@ -85,7 +86,8 @@ needs permission (see [License](#license)).
 - **Saved views**: keep any combination of scope, filter, sort and view in
   the sidebar and command palette.
 - **Markdown notes** on tasks, meetings and groups (rendered safely, links
-  open in your browser).
+  open in your browser). A meeting's "- [ ]" action items become tasks in
+  one click.
 - **Time and progress**: task timer, logged hours per group, task progress
   from subtasks (color-coded, ✓ when done), and progress (% and done/total)
   on every list: Today, Upcoming, Inbox, All work, each section, group and

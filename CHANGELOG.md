@@ -18,11 +18,40 @@ Download any version from the
   meeting and time block with its rule in words and next date; Stop
   repeating keeps the task and ends the series (undoable).
 - **New reminder** (on the page, the sidebar's +, or Ctrl+K): what, when,
-  at what time, and how it repeats (every day, weekday, week, other week,
-  month, last day of the month, year), in plain words for the chosen day.
+  at what time, and how it repeats, with the same plain-words choices as the
+  task panel and meetings (including the last day of the month). Quick add
+  understands "remind me to …" too.
+- **Remind me at my own time**: a task (task panel → Remind) or a meeting
+  (meeting dialog → Remind) can remind from the start to a day before,
+  instead of the one setting for everything.
+- **Snooze** a reminder from its banner: 10 or 30 minutes, an hour, or
+  tomorrow at 9:00.
+- **Action items to tasks**: in a meeting's notes, "Make N tasks from action
+  items" turns each unchecked "- [ ]" line into a task in the meeting's
+  project (else the Inbox), in one undo step, and marks the line so it's
+  never added twice. Checklists in notes show their box instead of a
+  bullet; done items fade.
+- **Export a list**: the table's Export saves the list on screen (with its
+  filters and sort) as a spreadsheet file.
+- **Quick add**: a time range ("Acme sync tomorrow 3-4pm") opens a meeting.
 - The sidebar counts reminders still to come today.
-- **Assistants:** `list_reminders` (what will remind you in a window, with
-  the coming repeats) and `list_repeating` (every repeating series).
+- **Assistants:** `list_reminders` (what will remind you, with the coming
+  repeats), `list_repeating`, `snooze_reminder`, `tasks_from_meeting_notes`,
+  and `remind_before_min` on tasks and meetings. Every argument is now
+  checked against its description (a wrong type or value is an error naming
+  the field, not a silent default); `group_id` and `client_id` both work;
+  search finds subtasks; batches of requests are answered.
+
+### Changed
+- Undo steps and the change log older than 90 days are cleared after the
+  daily backup (they stay in the backups), so the file stops growing.
+- Restoring a backup works while an AI assistant has Taskboard open, and a
+  backup from a newer version is refused before anything changes.
+- Repeat rules that aren't in the menu are shown in words ("Every month on
+  the 15th") instead of "Custom: FREQ=…".
+- Menus, radio groups and tabs work with the arrow keys and announce what's
+  chosen; the table's keyboard cursor is announced; toasts' Undo only undoes
+  the step they describe.
 
 ### Fixed
 - Importing a Taskboard backup (JSON) into a database that already had
@@ -45,6 +74,38 @@ Download any version from the
   you clicked away. Menus now give focus back to where you were.
 - Assistant tools stated limits the app didn't accept (find slots: 31 days,
   meetings up to 8 hours; day plans: 62 days).
+- A repeat rule or imported sort key with unusual characters could crash a
+  command and leave the app unable to save until restarted.
+- Calendar files from Outlook (zones like "Eastern Standard Time") landed at
+  the wrong hour; unknown zones are now reported.
+- Backup import stopped on meetings or logged time in the Inbox, or on a tag
+  that already existed here.
+- Task reminders set to fire earlier than midnight (or due just before it)
+  were late or missed.
+- The Reminders page: a later window missed repeating tasks; counted series
+  showed too many repeats; overdue tasks' next repeats showed no reminder;
+  very long windows stopped silently (they now say where).
+- Project counts included archived tasks; the dashboard counted cancelled
+  tasks as done.
+- A project could lose its last open column (new tasks then started done).
+- Moving and completing a repeating task at once made the next one in the
+  old project; restoring a task into an archived project made it vanish.
+- Saving a meeting before its details loaded could wipe its link, notes and
+  repeat; one occurrence's link, place and options were silently dropped
+  (they now apply to the series, with a note); all-day occurrences couldn't
+  be moved; Delete this-and-following needed two Undos.
+- Keys typed inside a dialog (N, /, 1–3, ?) acted on the page behind it.
+- Board: Overdue showed finished cards; the add box ignored repeat syntax;
+  Escape still created a new column.
+- The month view showed only the first 1,000 tasks; dragging a meeting that
+  started the evening before moved it too far; "today" stayed on yesterday
+  after midnight.
+- The Reminders page's settings link opened General; a reminder made late at
+  night defaulted to a time already past.
+- Saved views whose list was deleted (or whose tab is hidden) opened empty
+  or as "edited"; Find slot showed a toast per keystroke for bad options;
+  Join stayed on ended meetings; Escape in a rename saved it.
+- Starting minimized (from Windows startup) showed the window anyway.
 
 ## [0.5.2] - 2026-10-22
 
