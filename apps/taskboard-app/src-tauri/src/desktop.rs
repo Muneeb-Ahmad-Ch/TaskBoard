@@ -178,3 +178,99 @@ pub fn spawn_reminders(app: AppHandle, db: Arc<Mutex<Db>>) {
         .map(drop)
         .unwrap_or_else(|err| tracing::error!(%err, "reminder thread failed to start"));
 }
+
+/// A window rectangle (x, y, width, height) in physical pixels.
+type Rect = (i32, i32, u32, u32);
+
+/// Where a window must go to sit fully inside `area` (a monitor's work area,
+/// i.e. without the taskbar): no larger than it, and moved in from its edges.
+/// `None` when it already fits.
+fn fit_into(win: Rect, area: Rect) -> Option<Rect> {
+    let (x, y, w, h) = win;
+    let (ax, ay, aw, ah) = area;
+    let (w2, h2) = (w.min(aw), h.min(ah));
+    let room_x = ax + i32::try_from(aw - w2).unwrap_or(0);
+    let room_y = ay + i32::try_from(ah - h2).unwrap_or(0);
+    let fitted = (x.clamp(ax, room_x), y.clamp(ay, room_y), w2, h2);
+    (fitted != win).then_some(fitted)
+}
+
+/// Brings the main window back inside the screen if a saved size or place
+/// (from another monitor or display scale) put part of it off screen or under
+/// the taskbar. Maximized windows are left to Windows.
+pub fn keep_on_screen(window: &tauri::WebviewWindow) {
+    if window.is_maximized().unwrap_or(false) {
+        return;
+    }
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+    let (Some(monitor), Ok(pos), Ok(size)) =
+        (monitor, window.outer_position(), window.outer_size())
+    else {
+        return;
+    };
+    let area = monitor.work_area();
+    let target = fit_into(
+        (pos.x, pos.y, size.width, size.height),
+        (
+            area.position.x,
+            area.position.y,
+            area.size.width,
+            area.size.height,
+        ),
+    );
+    if let Some((x, y, w, h)) = target {
+        tracing::info!(?target, "window was off screen; moved inside");
+        let _ = window.set_size(tauri::PhysicalSize::new(w, h));
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fit_into;
+
+    const SCREEN: (i32, i32, u32, u32) = (0, 0, 1920, 1040);
+
+    #[test]
+    fn a_window_that_fits_stays() {
+        assert_eq!(fit_into((100, 50, 1280, 800), SCREEN), None);
+    }
+
+    #[test]
+    fn a_window_taller_than_the_screen_shrinks_and_moves_up() {
+        assert_eq!(
+            fit_into((0, 0, 1920, 1120), SCREEN),
+            Some((0, 0, 1920, 1040))
+        );
+        assert_eq!(
+            fit_into((200, 400, 1280, 800), SCREEN),
+            Some((200, 240, 1280, 800))
+        );
+    }
+
+    #[test]
+    fn a_window_on_a_monitor_that_is_gone_comes_back() {
+        assert_eq!(
+            fit_into((2500, 100, 1280, 800), SCREEN),
+            Some((640, 100, 1280, 800))
+        );
+        assert_eq!(
+            fit_into((-1500, -30, 1280, 800), SCREEN),
+            Some((0, 0, 1280, 800))
+        );
+    }
+
+    #[test]
+    fn a_second_monitor_s_work_area_counts_from_its_corner() {
+        let right = (1920, 0, 2560, 1400);
+        assert_eq!(fit_into((2000, 100, 1280, 800), right), None);
+        assert_eq!(
+            fit_into((4000, 100, 1280, 800), right),
+            Some((3200, 100, 1280, 800))
+        );
+    }
+}

@@ -1180,6 +1180,11 @@ pub fn run() {
                 updated_from,
                 close_to_tray: AtomicBool::new(settings.close_to_tray),
             });
+            // A size or place saved on another monitor or display scale can
+            // leave the window partly off screen or under the taskbar.
+            if let Some(window) = app.get_webview_window("main") {
+                desktop::keep_on_screen(&window);
+            }
             if let Err(err) = desktop::build_tray(app.handle()) {
                 tracing::warn!(%err, "tray icon unavailable");
             }
