@@ -170,7 +170,7 @@
   })
 </script>
 
-<div class="mx-auto flex min-h-0 w-full max-w-[1180px] flex-1 flex-col gap-3">
+<div class="flex min-h-0 w-full flex-1 flex-col gap-3">
   <div class="flex min-h-8 shrink-0 flex-wrap items-center gap-2">
     <div class="flex rounded-md border border-border bg-surface-2 p-0.5" role="tablist" aria-label="Reminders" use:segmented>
       <button role="tab" id="rem-tab-upcoming" aria-controls="rem-panel" aria-selected={tab === 'upcoming'} class="seg" onclick={() => (tab = 'upcoming')}>Coming up</button>

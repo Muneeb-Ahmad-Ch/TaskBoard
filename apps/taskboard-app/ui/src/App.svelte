@@ -95,6 +95,8 @@
   })
 
   const subtitle = $derived.by(() => {
+    // Pages (Dashboard, Meetings, Reminders) aren't the list: no list summary.
+    if (isPage()) return null
     const s = app.scope
     if (s.kind === 'project') {
       const p = app.projects.find((x) => x.id === s.id)
