@@ -11,6 +11,17 @@ Download any version from the
 
 _Nothing yet._
 
+## [0.6.1] - 2026-10-26
+
+### Fixed
+- Reminders, Meetings and the calendar's Agenda use the whole window like the
+  other views, instead of a centered column with an empty band beside it.
+- The Today summary ("1 overdue · 2 due today") no longer shows next to the
+  titles of pages like Reminders, Meetings and Dashboard.
+- A window whose saved size or place didn't fit the screen (after a monitor or
+  display-scale change) opened partly under the taskbar, hiding the status bar;
+  it's now brought back inside the screen at start.
+
 ## [0.6.0] - 2026-10-25
 
 ### Added
@@ -445,7 +456,8 @@ First release, for Windows 10 (1809+) and Windows 11.
   first install ("More info" → "Run anyway").
 - No automatic updates yet: download new versions from the Releases page.
 
-[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/Muneeb-Ahmad-Ch/TaskBoard/compare/v0.5.0...v0.5.1
